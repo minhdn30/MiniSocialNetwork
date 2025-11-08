@@ -1,0 +1,33 @@
+﻿# Build folders
+bin/
+obj/
+Debug/
+Release/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+*.dbmdl
+
+# NuGet
+*.nupkg
+packages/
+*.nuget.props
+*.nuget.targets
+
+# EF Core Migrations (nếu không muốn commit)
+# Migrations/
+
+# User-specific files
+*.rsuser
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log
+
+# Others
+*.db
+*.DS_Store
