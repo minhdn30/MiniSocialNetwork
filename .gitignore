@@ -1,0 +1,18 @@
+﻿# Build folders
+bin/
+obj/
+Debug/
+Release/
+
+# NuGet
+*.nupkg
+packages/
+*.nuget.props
+*.nuget.targets
+
+# Logs
+*.log
+
+# Others
+*.db
+*.DS_Store
