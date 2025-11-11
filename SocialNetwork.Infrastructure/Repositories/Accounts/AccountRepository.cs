@@ -38,5 +38,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
             _context.Accounts.Update(account);
             await _context.SaveChangesAsync();
         }
+        public async Task<Account?> GetAccountByUsername(string username)
+        {
+            return await _context.Accounts.FirstOrDefaultAsync(a => a.Username == username);
+        }
     }
 }

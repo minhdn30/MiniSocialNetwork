@@ -10,10 +10,10 @@ namespace SocialNetwork.Application.DTOs.AuthDTOs
 {
     public class RegisterResponse
     {
+        public Guid AccountId { get; set; }
         public string Username { get; set; } = null!;
         public string Email { get; set; } = null!;
         public string FullName { get; set; } = null!;
         public bool? Gender { get; set; }
-        public string PasswordHash { get; set; } = null!;
     }
 }

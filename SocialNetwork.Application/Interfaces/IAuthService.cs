@@ -10,5 +10,7 @@ namespace SocialNetwork.Application.Interfaces
     public interface IAuthService
     {
         Task<RegisterResponse> RegisterAsync(RegisterDTO registerRequest);
+        Task<LoginResponse?> LoginAsync(LoginRequest loginRequest);
+        Task<LoginResponse> LoginWithGoogleAsync(string idToken);
     }
 }

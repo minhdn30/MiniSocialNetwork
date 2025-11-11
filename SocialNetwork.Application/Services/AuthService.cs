@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.Http.HttpResults;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.Exceptions;
@@ -19,10 +20,12 @@ namespace SocialNetwork.Application.Services
     {
         private readonly IAccountRepository _accountRepository;
         private readonly IMapper _mapper;
-        public AuthService(IAccountRepository accountRepository, IMapper mapper)
+        private readonly IJwtService _jwtService;
+        public AuthService(IAccountRepository accountRepository, IMapper mapper, IJwtService jwtService)
         {
             _accountRepository = accountRepository;
             _mapper = mapper;
+            _jwtService = jwtService;
         }
         public async Task<RegisterResponse> RegisterAsync(RegisterDTO registerRequest)
         {
@@ -44,6 +47,66 @@ namespace SocialNetwork.Application.Services
 
             var accountMapped = _mapper.Map<RegisterResponse>(account);
             return accountMapped;
+        }
+        public async Task<LoginResponse?> LoginAsync(LoginRequest loginRequest)
+        {
+            var account = await _accountRepository.GetAccountByUsername(loginRequest.Username);
+            if(account == null)
+            {
+                throw new UnauthorizedException("Invalid username or password.");
+            }
+            var isPasswordValid = BCrypt.Net.BCrypt.Verify(loginRequest.Password, account.PasswordHash);
+            if(!isPasswordValid)
+            {
+                throw new UnauthorizedException("Invalid username or password.");
+            }
+            var accessToken = _jwtService.GenerateToken(account);
+
+            // Tạo refresh token
+            var refreshToken = Guid.NewGuid().ToString();
+            account.RefreshToken = refreshToken;
+            account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            account.LastActiveAt = DateTime.UtcNow;
+
+            await _accountRepository.UpdateAccount(account);
+
+            return new LoginResponse
+            {
+                AccessToken = accessToken,
+                RefreshToken = refreshToken,
+                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value
+            };
+        }
+        public async Task<LoginResponse> LoginWithGoogleAsync(string idToken)
+        {
+            // Xác thực token với Google
+            var payload = await GoogleJsonWebSignature.ValidateAsync(idToken, new GoogleJsonWebSignature.ValidationSettings());
+            var email = payload.Email;
+
+            // Kiểm tra xem account có tồn tại không
+            var account = await _accountRepository.GetAccountByEmail(email);
+            if (account == null)
+            {
+                throw new UnauthorizedException("Account not registered. Please sign up first.");
+            }
+
+            // Sinh access token
+            var accessToken = _jwtService.GenerateToken(account);
+
+            // Tạo refresh token
+            var refreshToken = Guid.NewGuid().ToString();
+            account.RefreshToken = refreshToken;
+            account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            account.LastActiveAt = DateTime.UtcNow;
+
+            await _accountRepository.UpdateAccount(account);
+
+            return new LoginResponse
+            {
+                AccessToken = accessToken,
+                RefreshToken = refreshToken,
+                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value
+            };
         }
     }
 }

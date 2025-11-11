@@ -19,8 +19,8 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDTO registerDTO)
         {
-            var rs = await _authService.RegisterAsync(registerDTO);
-            return Ok(rs);
+            var result = await _authService.RegisterAsync(registerDTO);
+            return Ok(result);
         }
         [HttpPost("send-email")]
         public async Task<IActionResult> SendVerificationEmail([FromBody] string email)
@@ -35,6 +35,18 @@ namespace SocialNetwork.API.Controllers
             if (!result) return BadRequest(new { message = "Code is invalid or expired." });
 
             return Ok(new { message = "Email verification successful." });
+        }
+        [HttpPost("login-with-username")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        {
+            var result = await _authService.LoginAsync(request);
+            return Ok(result);
+        }
+        [HttpPost("login-with-google")]
+        public async Task<ActionResult<LoginResponse>> LoginWithGoogle([FromBody] GoogleLoginRequest request)
+        {
+            var result = await _authService.LoginWithGoogleAsync(request.IdToken);
+            return Ok(result);
         }
     }
 }

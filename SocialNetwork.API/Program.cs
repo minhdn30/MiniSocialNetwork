@@ -20,7 +20,8 @@ namespace SocialNetwork.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-
+            // Automatically load User Secrets if in development mode.
+            builder.Configuration.AddUserSecrets<Program>();
             // Add services to the container.
             builder.Services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlServer(builder.Configuration.GetConnectionString("MyCnn")));
@@ -31,15 +32,13 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddTransient<IEmailService, EmailService>();
             builder.Services.AddScoped<IEmailVerificationService ,EmailVerificationService>();
-            // JWT
-            var jwtKey = builder.Configuration["Jwt:Key"] ?? "this_is_a_very_long_secret_key_123456";
-            var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "MiniSocialNetwork";
+            builder.Services.AddScoped<IJwtService, JwtService>();
 
-            // Automatically load User Secrets if in development mode.
-            builder.Configuration.AddUserSecrets<Program>();
+            
             var smtpUser = builder.Configuration["Email:SmtpUser"];
             var smtpPass = builder.Configuration["Email:SmtpPass"];
 
+            var jwtSettings = builder.Configuration.GetSection("Jwt");
             builder.Services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -50,11 +49,11 @@ namespace SocialNetwork.API
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
-                    ValidateAudience = false,
-                    ValidateLifetime = true,
+                    ValidateAudience = true,
                     ValidateIssuerSigningKey = true,
-                    ValidIssuer = jwtIssuer,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+                    ValidIssuer = jwtSettings["Issuer"],
+                    ValidAudience = jwtSettings["Audience"],
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]!))
                 };
             });
             // AutoMapper

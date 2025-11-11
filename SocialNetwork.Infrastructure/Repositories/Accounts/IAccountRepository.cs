@@ -14,5 +14,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task AddAccount(Account account);
         Task<Account?> GetAccountByEmail(string email);
         Task UpdateAccount(Account account);
+        Task<Account?> GetAccountByUsername(string username);
     }
 }
