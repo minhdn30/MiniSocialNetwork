@@ -16,7 +16,7 @@ A mini social network project built with **ASP.NET Core 8 (API)** and **ReactJS*
 
 ## 🛠️ Tech Stack
 - **Backend:** ASP.NET Core Web API, Entity Framework Core, SQL Server
-- **Frontend:** ReactJS
+- **Frontend:** HTML, CSS, JS
 - **Authentication:** JWT + OAuth2 (Google/Facebook)
 - **Database:** Microsoft SQL Server
 - **Realtime:** SignalR
