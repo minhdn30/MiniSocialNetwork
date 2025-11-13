@@ -76,10 +76,9 @@ namespace SocialNetwork.API
             app.UseSwaggerUI(c =>
             {
                 c.SwaggerEndpoint("/swagger/v1/swagger.json", "MiniSocialNetwork API V1");
+                c.RoutePrefix = string.Empty;
             });
 
-
-            // Optional: comment nếu Render handle HTTPS
             // app.UseHttpsRedirection();
 
             app.UseAuthentication();
