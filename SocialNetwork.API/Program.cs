@@ -21,15 +21,15 @@ namespace SocialNetwork.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Load User Secrets nếu Development
             builder.Configuration.AddUserSecrets<Program>();
 
-            // Lấy connection string từ environment variable hoặc appsettings
             var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
-                                   ?? builder.Configuration.GetConnectionString("MyCnn");
+                                   ?? builder.Configuration.GetConnectionString("Default");
 
             builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseSqlServer(connectionString));
+                options.UseNpgsql(connectionString)
+            );
+
 
             // Repositories
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
@@ -71,7 +71,7 @@ namespace SocialNetwork.API
             var app = builder.Build();
             app.UseMiddleware<ExceptionMiddleware>();
 
-            // Bật Swagger cho tất cả môi trường
+
             app.UseSwagger();
             app.UseSwaggerUI(c =>
             {
