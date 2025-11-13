@@ -1,4 +1,4 @@
-
+﻿
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,24 +20,28 @@ namespace SocialNetwork.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-            // Automatically load User Secrets if in development mode.
+
+            // Load User Secrets nếu Development
             builder.Configuration.AddUserSecrets<Program>();
-            // Add services to the container.
+
+            // Lấy connection string từ environment variable hoặc appsettings
+            var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+                                   ?? builder.Configuration.GetConnectionString("MyCnn");
+
             builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseSqlServer(builder.Configuration.GetConnectionString("MyCnn")));
-            //repositories
+                options.UseSqlServer(connectionString));
+
+            // Repositories
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
-            //services
+
+            // Services
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddTransient<IEmailService, EmailService>();
-            builder.Services.AddScoped<IEmailVerificationService ,EmailVerificationService>();
+            builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
 
-            
-            var smtpUser = builder.Configuration["Email:SmtpUser"];
-            var smtpPass = builder.Configuration["Email:SmtpPass"];
-
+            // JWT
             var jwtSettings = builder.Configuration.GetSection("Jwt");
             builder.Services.AddAuthentication(options =>
             {
@@ -56,31 +60,36 @@ namespace SocialNetwork.API
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]!))
                 };
             });
+
             // AutoMapper
             builder.Services.AddAutoMapper(typeof(MappingProfile));
 
             builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
             var app = builder.Build();
             app.UseMiddleware<ExceptionMiddleware>();
-            // Configure the HTTP request pipeline.
+
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
 
-            app.UseHttpsRedirection();
+            // Optional: comment nếu Render handle HTTPS
+            // app.UseHttpsRedirection();
+
             app.UseAuthentication();
             app.UseAuthorization();
-
-
             app.MapControllers();
 
+            // Bind port từ Render
+            var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+            app.Urls.Add($"http://*:{port}");
+
             app.Run();
+
         }
     }
 }

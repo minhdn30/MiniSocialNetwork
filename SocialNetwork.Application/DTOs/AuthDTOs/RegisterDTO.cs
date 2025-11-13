@@ -18,7 +18,6 @@ namespace SocialNetwork.Application.DTOs.AuthDTOs
         public string Email { get; set; } = null!;
         [Required, MaxLength(100)]
         public string FullName { get; set; } = null!;
-        public bool? Gender { get; set; }
         [Required]
         public string Password { get; set; } = null!;
     }
