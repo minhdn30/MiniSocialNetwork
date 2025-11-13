@@ -71,11 +71,13 @@ namespace SocialNetwork.API
             var app = builder.Build();
             app.UseMiddleware<ExceptionMiddleware>();
 
-            if (app.Environment.IsDevelopment())
+            // Bật Swagger cho tất cả môi trường
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
             {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "MiniSocialNetwork API V1");
+            });
+
 
             // Optional: comment nếu Render handle HTTPS
             // app.UseHttpsRedirection();
