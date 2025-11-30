@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Application.DTOs.AuthDTOs;
+﻿using Microsoft.AspNetCore.Http;
+using SocialNetwork.Application.DTOs.AuthDTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,5 +13,7 @@ namespace SocialNetwork.Application.Interfaces
         Task<RegisterResponse> RegisterAsync(RegisterDTO registerRequest);
         Task<LoginResponse?> LoginAsync(LoginRequest loginRequest);
         Task<LoginResponse> LoginWithGoogleAsync(string idToken);
+        Task<LoginResponse?> RefreshTokenAsync(string refreshToken);
+        Task LogoutAsync(Guid accountId, HttpResponse response);
     }
 }

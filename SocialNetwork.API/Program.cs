@@ -1,4 +1,5 @@
 ﻿
+using Google.Apis.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,8 @@ using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using System;
 using System.Text;
+using System.Text.Json;
+
 
 namespace SocialNetwork.API
 {
@@ -23,8 +26,12 @@ namespace SocialNetwork.API
 
             builder.Configuration.AddUserSecrets<Program>();
 
-            var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
-                                   ?? builder.Configuration.GetConnectionString("Default");
+
+            //var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+            //                       ?? builder.Configuration.GetConnectionString("Default");
+
+            //override connection string for local development
+            var connectionString = "Host=localhost;Port=5432;Database=cloudm;Username=postgres;Password=12345678";
 
             builder.Services.AddDbContext<AppDbContext>(options =>
                 options.UseNpgsql(connectionString)
@@ -59,11 +66,35 @@ namespace SocialNetwork.API
                     ValidAudience = jwtSettings["Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]!))
                 };
+                options.Events = new JwtBearerEvents
+                {
+                    OnAuthenticationFailed = context =>
+                    {
+                        if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
+                        {
+                            context.Response.StatusCode = 401;
+                            context.Response.ContentType = "application/json";
+                            var result = JsonSerializer.Serialize(new { message = "Token expired" });
+                            return context.Response.WriteAsync(result);
+                        }
+                        return Task.CompletedTask;
+                    }
+                };
             });
 
             // AutoMapper
             builder.Services.AddAutoMapper(typeof(MappingProfile));
-
+            //Cors
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy
+                        .AllowAnyOrigin()  
+                        .AllowAnyHeader()   
+                        .AllowAnyMethod(); 
+                });
+            });
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
@@ -71,23 +102,26 @@ namespace SocialNetwork.API
             var app = builder.Build();
             app.UseMiddleware<ExceptionMiddleware>();
 
-
+            var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+            app.Urls.Add($"http://*:{port}");
             app.UseSwagger();
+            var swaggerUrl = builder.Environment.IsDevelopment()
+                ? "/swagger/v1/swagger.json"   // relative URL để local dev luôn đúng
+                : "/swagger/v1/swagger.json";  // prod
             app.UseSwaggerUI(c =>
             {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "MiniSocialNetwork API V1");
-                c.RoutePrefix = string.Empty;
+                c.SwaggerEndpoint(swaggerUrl, "MiniSocialNetwork API V1");
+                c.RoutePrefix = "swagger";      // hoặc string.Empty
             });
 
-            // app.UseHttpsRedirection();
 
+            // app.UseHttpsRedirection();
+            app.UseCors("AllowAll");
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
 
-            // Bind port từ Render
-            var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
-            app.Urls.Add($"http://*:{port}");
+            
 
             app.Run();
 

@@ -13,7 +13,7 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
         Task UpdateEmailVerificationAsync(EmailVerification emailVerification);
         Task<bool> IsEmailExist(string email);
         Task<bool> VerifyCodeAsync(string email, string code);
-        Task DeleteEmailVerificationAsync(string email, string code);
+        Task DeleteEmailVerificationAsync(string email);
         
      }
 }

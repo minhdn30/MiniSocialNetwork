@@ -1,6 +1,8 @@
 ﻿using AutoMapper;
 using Google.Apis.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Identity.Data;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.Exceptions;
 using SocialNetwork.Application.Interfaces;
@@ -13,6 +15,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using LoginRequest = SocialNetwork.Application.DTOs.AuthDTOs.LoginRequest;
 
 namespace SocialNetwork.Application.Services
 {
@@ -60,18 +63,28 @@ namespace SocialNetwork.Application.Services
             {
                 throw new UnauthorizedException("Invalid username or password.");
             }
+            
+            if(!account.Status)
+            {
+                throw new UnauthorizedException("Account is inactive. Please contact support.");
+            }
+            if(!account.IsEmailVerified)
+            {
+                throw new UnauthorizedException("Email is not verified. Please verify your email.");
+            }
+            //create access token
             var accessToken = _jwtService.GenerateToken(account);
-
-            // Tạo refresh token
+            //create refresh token
             var refreshToken = Guid.NewGuid().ToString();
             account.RefreshToken = refreshToken;
             account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-            account.LastActiveAt = DateTime.UtcNow;
 
             await _accountRepository.UpdateAccount(account);
 
             return new LoginResponse
             {
+                Fullname = account.FullName,
+                AvatarUrl = account.AvatarUrl,
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value
@@ -107,6 +120,46 @@ namespace SocialNetwork.Application.Services
                 RefreshToken = refreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value
             };
+        }
+        public async Task<LoginResponse?> RefreshTokenAsync(string refreshToken)
+        {
+            if (string.IsNullOrEmpty(refreshToken))
+                throw new UnauthorizedException("No refresh token provided.");
+
+            var account = await _accountRepository.GetByRefreshToken(refreshToken);
+            if (account == null || account.RefreshTokenExpiryTime < DateTime.UtcNow)
+                throw new UnauthorizedException("Invalid or expired refresh token.");
+
+            // Tạo access token mới
+            var accessToken = _jwtService.GenerateToken(account);
+
+            // Optional: tạo refresh token mới (rotating)
+            var newRefreshToken = Guid.NewGuid().ToString();
+            account.RefreshToken = newRefreshToken;
+            account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+
+            await _accountRepository.UpdateAccount(account);
+
+            return new LoginResponse
+            {
+                AccessToken = accessToken,
+                RefreshToken = newRefreshToken,
+                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
+                Fullname = account.FullName,
+                AvatarUrl = account.AvatarUrl
+            };
+        }
+        public async Task LogoutAsync(Guid accountId, HttpResponse response)
+        {
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account == null)
+                throw new NotFoundException("Account not found.");
+
+            account.RefreshToken = null;
+            account.RefreshTokenExpiryTime = null;
+            await _accountRepository.UpdateAccount(account);
+
+            response.Cookies.Delete("refreshToken");
         }
     }
 }

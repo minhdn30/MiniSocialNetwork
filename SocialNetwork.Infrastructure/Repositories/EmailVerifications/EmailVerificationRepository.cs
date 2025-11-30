@@ -32,14 +32,21 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
         }
         public async Task<bool> VerifyCodeAsync(string email, string code)
         {
-            var verification = await _context.EmailVerifications
-                .FirstOrDefaultAsync(e => e.Email == email && e.Code == code);
-            return verification != null && verification.ExpiredAt > DateTime.UtcNow;
+            var latestVerification = await _context.EmailVerifications
+                .Where(e => e.Email == email)
+                .OrderByDescending(e => e.ExpiredAt) 
+                .FirstOrDefaultAsync();
+
+            if (latestVerification == null || latestVerification.ExpiredAt <= DateTime.UtcNow)
+                return false;
+
+            return latestVerification.Code == code;
         }
-        public async Task DeleteEmailVerificationAsync(string email, string code)
+
+        public async Task DeleteEmailVerificationAsync(string email)
         {
             var verification = await _context.EmailVerifications
-                .FirstOrDefaultAsync(e => e.Email == email && e.Code == code);
+                .FirstOrDefaultAsync(e => e.Email == email);
             if (verification != null)
             {
                 _context.EmailVerifications.Remove(verification);

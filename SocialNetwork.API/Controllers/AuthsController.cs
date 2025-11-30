@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.Interfaces;
@@ -40,6 +41,14 @@ namespace SocialNetwork.API.Controllers
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             var result = await _authService.LoginAsync(request);
+            // Set refresh token in HttpOnly cookie
+            Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = false, 
+                SameSite = SameSiteMode.None,
+                Expires = result.RefreshTokenExpiryTime
+            });
             return Ok(result);
         }
         [HttpPost("login-with-google")]
@@ -47,6 +56,42 @@ namespace SocialNetwork.API.Controllers
         {
             var result = await _authService.LoginWithGoogleAsync(request.IdToken);
             return Ok(result);
+        }
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            // Lấy refresh token từ cookie nếu FE không gửi body
+            var token = request.RefreshToken ?? Request.Cookies["refreshToken"];
+            var result = await _authService.RefreshTokenAsync(token);
+
+            // Gửi refresh token mới qua cookie
+            Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = false,
+                SameSite = SameSiteMode.None,
+                Expires = result.RefreshTokenExpiryTime
+            });
+
+            return Ok(new
+            {
+                result.AccessToken,
+                result.RefreshToken,
+                result.Fullname,
+                result.AvatarUrl
+            });
+        }
+        [HttpPost("logout")]
+        [Authorize]
+        public async Task<IActionResult> Logout()
+        {
+            var userId = User.FindFirst("id")?.Value;
+            if (userId == null)
+                return Unauthorized();
+
+            await _authService.LogoutAsync(Guid.Parse(userId), Response);
+
+            return Ok(new { message = "Logged out successfully." });
         }
     }
 }

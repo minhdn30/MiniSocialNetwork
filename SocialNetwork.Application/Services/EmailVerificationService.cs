@@ -122,7 +122,7 @@ If you did not request this code, please ignore this email.<br/>
             {
                 return false;
             }
-            await _emailVerificationRepository.DeleteEmailVerificationAsync(email, code);
+            await _emailVerificationRepository.DeleteEmailVerificationAsync(email);
             var account  = await _accountRepository.GetAccountByEmail(email);
             if(account != null)
             {

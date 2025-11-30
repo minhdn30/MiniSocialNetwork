@@ -15,7 +15,8 @@ namespace SocialNetwork.Application.Mapping
         {
             CreateMap<Account, RegisterResponse>();
             CreateMap<RegisterDTO, Account>()
-                .ForMember(dest => dest.PasswordHash, opt => opt.Ignore());
+                .ForMember(dest => dest.PasswordHash, opt => opt.Ignore())
+                .ForMember(dest => dest.Username, opt => opt.MapFrom(src => src.Username.ToLower()));
         }
     }
 }

@@ -27,11 +27,13 @@ namespace SocialNetwork.Application.Services
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new[]
-            {
-            new Claim(JwtRegisteredClaimNames.Sub, account.AccountId.ToString()),
+    {
+            new Claim("id", account.AccountId.ToString()),           // account id
+            new Claim(ClaimTypes.Name, account.Username),           // username
+            new Claim(ClaimTypes.Role, account.Role?.RoleName ?? ""),   // role
             new Claim(JwtRegisteredClaimNames.Email, account.Email),
             new Claim("isVerified", account.IsEmailVerified.ToString())
-        };
+    };
 
             var token = new JwtSecurityToken(
                 issuer: jwtSettings["Issuer"],
@@ -66,7 +68,7 @@ namespace SocialNetwork.Application.Services
                 }, out SecurityToken validatedToken);
 
                 var jwtToken = (JwtSecurityToken)validatedToken;
-                return jwtToken.Claims.First(x => x.Type == JwtRegisteredClaimNames.Sub).Value;
+                return jwtToken.Claims.First(x => x.Type == "id").Value;
             }
             catch
             {
