@@ -1,16 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.DTOs.AuthDTOs
+namespace SocialNetwork.Application.DTOs.AccountDTOs
 {
-    public class RegisterDTO
+    public class AccountCreateRequest
     {
-
         [Required(ErrorMessage = "Username is required.")]
         [StringLength(100, ErrorMessage = "Username cannot be longer than 100 characters.")]
 
@@ -24,7 +22,8 @@ namespace SocialNetwork.Application.DTOs.AuthDTOs
 
         public string FullName { get; set; } = null!;
         [Required(ErrorMessage = "Password is required.")]
-
         public string Password { get; set; } = null!;
+        public int RoleId { get; set; }
+        public bool IsEmailVerified { get; set; }
     }
 }

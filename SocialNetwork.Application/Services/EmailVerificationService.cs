@@ -5,8 +5,10 @@ using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services
 {
@@ -23,21 +25,31 @@ namespace SocialNetwork.Application.Services
         }
         public async Task SendVerificationEmailAsync(string email)
         {
-            var code = new Random().Next(100000, 999999).ToString();
+            var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
 
-            var verification = new EmailVerification
-            {
-                Email = email,
-                Code = code,
-                ExpiredAt = DateTime.UtcNow.AddMinutes(5)
-            };
 
-            if (await _emailVerificationRepository.IsEmailExist(email))
+            var exist = await _emailVerificationRepository.GetByEmailAsync(email);
+            if (exist != null)
             {
-                await _emailVerificationRepository.UpdateEmailVerificationAsync(verification);
+                var secondsSinceLastSent = (DateTime.UtcNow - exist.ExpiredAt.AddMinutes(-5)).TotalSeconds;
+                if (secondsSinceLastSent < 60)
+                {
+                    throw new BadRequestException($"Please wait {60 - (int)secondsSinceLastSent} seconds before requesting another code.");
+                }
+                exist.Code = code;
+                exist.ExpiredAt = DateTime.UtcNow.AddMinutes(5);
+
+                await _emailVerificationRepository.UpdateEmailVerificationAsync(exist);
             }
             else
             {
+                var verification = new EmailVerification
+                {
+                    Email = email,
+                    Code = code,
+                    ExpiredAt = DateTime.UtcNow.AddMinutes(5)
+                };
+
                 await _emailVerificationRepository.AddEmailVerificationAsync(verification);
             }
 

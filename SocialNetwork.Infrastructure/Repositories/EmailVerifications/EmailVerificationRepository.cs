@@ -16,6 +16,12 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
         {
             _context = context;
         }
+        public async Task<EmailVerification?> GetByEmailAsync(string email)
+        {
+            return await _context.EmailVerifications
+                .FirstOrDefaultAsync(e => e.Email == email);
+        }
+
         public async Task AddEmailVerificationAsync(EmailVerification emailVerification)
         {
             await _context.EmailVerifications.AddAsync(emailVerification);

@@ -17,5 +17,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task UpdateAccount(Account account);
         Task<Account?> GetAccountByUsername(string username);
         Task<Account?> GetByRefreshToken(string refreshToken);
+        Task<(List<Account> Items, int TotalItems)> GetAccountsAsync(Guid? id, string? username, string? email,
+            string? fullname, string? phone, int? roleId, bool? gender, bool? status, bool? isEmailVerified, int page, int pageSize);
     }
 }
