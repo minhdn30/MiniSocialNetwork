@@ -9,6 +9,7 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
 {
     public interface IEmailVerificationRepository
     {
+        Task<EmailVerification?> GetByEmailAsync(string email);
         Task AddEmailVerificationAsync(EmailVerification emailVerification);
         Task UpdateEmailVerificationAsync(EmailVerification emailVerification);
         Task<bool> IsEmailExist(string email);
