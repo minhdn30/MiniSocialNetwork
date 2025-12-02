@@ -15,5 +15,6 @@ namespace SocialNetwork.Application.Interfaces
         Task<ActionResult<AccountDetailResponse?>> GetAccountByGuid(Guid accountId);
         Task<AccountDetailResponse> CreateAccount([FromBody] AccountCreateRequest request);
         Task<AccountDetailResponse> UpdateAccount(Guid accountId, [FromBody] AccountUpdateRequest request);
+        Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, [FromBody] ProfileUpdateRequest request);
     }
 }

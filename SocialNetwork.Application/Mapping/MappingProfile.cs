@@ -26,7 +26,9 @@ namespace SocialNetwork.Application.Mapping
             CreateMap<AccountCreateRequest, Account>()
                 .ForMember(dest => dest.PasswordHash, opt => opt.Ignore());
             CreateMap<AccountUpdateRequest, Account>()
-            .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+            CreateMap<ProfileUpdateRequest, Account>()
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
         }
     }
 }
