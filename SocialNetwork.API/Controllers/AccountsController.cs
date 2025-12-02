@@ -38,6 +38,14 @@ namespace SocialNetwork.API.Controllers
             var result = await _accountService.UpdateAccount(accountId, request);
             return Ok(result); 
         }
+        [HttpPut("profile/{accountId}")]
+        [Consumes("multipart/form-data")]
+
+        public async Task<ActionResult<AccountDetailResponse>> UpdateAccountProfile([FromRoute] Guid accountId, [FromForm] ProfileUpdateRequest request)
+        {
+            var result = await _accountService.UpdateAccountProfile(accountId, request);
+            return Ok(result);
+        }
 
     }
 }

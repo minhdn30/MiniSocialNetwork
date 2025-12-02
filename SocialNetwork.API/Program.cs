@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using SocialNetwork.API.Middleware;
+using SocialNetwork.Application.Helpers;
 using SocialNetwork.Application.Interfaces;
 using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services;
@@ -45,6 +47,8 @@ namespace SocialNetwork.API
             // Services
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
+            builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+
             builder.Services.AddTransient<IEmailService, EmailService>();
             builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
@@ -98,7 +102,38 @@ namespace SocialNetwork.API
             });
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            builder.Services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new OpenApiInfo { Title = "CloudM API", Version = "v1" });
+
+                c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Description = "Nhập token theo format: Bearer {token}",
+                    Name = "Authorization",
+                    In = ParameterLocation.Header,
+                    Type = SecuritySchemeType.ApiKey,
+                    Scheme = "Bearer"
+                });
+
+                c.AddSecurityRequirement(new OpenApiSecurityRequirement()
+                {
+                    {
+                        new OpenApiSecurityScheme
+                    {
+                        Reference = new OpenApiReference
+                        {
+                          Type = ReferenceType.SecurityScheme,
+                          Id = "Bearer"
+                        },
+                        Name = "Bearer",
+                        In = ParameterLocation.Header,
+                        Scheme = "Bearer"
+                    },
+                    new List<string>()
+                    }
+                });
+                c.OperationFilter<FileUploadOperation>();
+            });
 
             var app = builder.Build();
             app.UseMiddleware<ExceptionMiddleware>();

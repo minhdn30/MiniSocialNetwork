@@ -21,10 +21,12 @@ namespace SocialNetwork.Application.Services
     {
         private readonly IAccountRepository _accountRepository;
         private readonly IMapper _mapper;
-        public AccountService(IAccountRepository accountRepository, IMapper mapper)
+        private readonly ICloudinaryService _cloudinary;
+        public AccountService(IAccountRepository accountRepository, IMapper mapper, ICloudinaryService cloudinary)
         {
             _accountRepository = accountRepository;
             _mapper = mapper;
+            _cloudinary = cloudinary;
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync([FromQuery] AccountPagingRequest request)
         {
@@ -90,5 +92,36 @@ namespace SocialNetwork.Application.Services
             await _accountRepository.UpdateAccount(account);
             return _mapper.Map<AccountDetailResponse>(account);
         }
+        public async Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, [FromBody] ProfileUpdateRequest request)
+        {
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account == null)
+            {
+                throw new NotFoundException($"Account with ID {accountId} not found.");
+            }
+            if (request.Image != null)
+            {
+                if (!string.IsNullOrEmpty(account.AvatarUrl))
+                {
+                    var publicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
+                    if (!string.IsNullOrEmpty(publicId))
+                    {
+                        await _cloudinary.DeleteImageAsync(publicId);
+                    }
+                }
+                var imageURL = await _cloudinary.UploadImageAsync(request.Image);
+                if (string.IsNullOrEmpty(imageURL))
+                {
+                    throw new InternalServerException("Image upload failed.");
+                }
+                account.AvatarUrl = imageURL;
+                
+            }
+            _mapper.Map(request, account);
+            account.UpdatedAt = DateTime.UtcNow;
+            await _accountRepository.UpdateAccount(account);
+            return _mapper.Map<AccountDetailResponse>(account);
+        }
+
     }
 }
