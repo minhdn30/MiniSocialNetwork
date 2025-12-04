@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocialNetwork.Application.DTOs.FollowDTOs;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -27,5 +28,6 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiryTime { get; set; }
         public DateTime? LastActiveAt { get; set; }
+        
     }
 }

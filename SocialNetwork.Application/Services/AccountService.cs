@@ -4,10 +4,12 @@ using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
+using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Application.Interfaces;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
+using SocialNetwork.Infrastructure.Repositories.Follows;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,11 +24,13 @@ namespace SocialNetwork.Application.Services
         private readonly IAccountRepository _accountRepository;
         private readonly IMapper _mapper;
         private readonly ICloudinaryService _cloudinary;
-        public AccountService(IAccountRepository accountRepository, IMapper mapper, ICloudinaryService cloudinary)
+        private readonly IFollowRepository _followRepository;
+        public AccountService(IAccountRepository accountRepository, IMapper mapper, ICloudinaryService cloudinary, IFollowRepository followRepository)
         {
             _accountRepository = accountRepository;
             _mapper = mapper;
             _cloudinary = cloudinary;
+            _followRepository = followRepository;
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync([FromQuery] AccountPagingRequest request)
         {
@@ -42,15 +46,34 @@ namespace SocialNetwork.Application.Services
             };
             return rs;
         }
-        public async Task<ActionResult<AccountDetailResponse?>> GetAccountByGuid(Guid accountId)
+        public async Task<ActionResult<ProfileResponse?>> GetAccountByGuid(Guid accountId)
         {
             var account = await _accountRepository.GetAccountById(accountId);
             if(account == null)
             {
                 throw new NotFoundException($"Account with ID {accountId} not found.");
             }
-            var mappedAccount = _mapper.Map<AccountDetailResponse>(account);
-            return mappedAccount;
+            var followers = await _followRepository.CountFollowersAsync(accountId);
+            var following = await _followRepository.CountFollowingAsync(accountId);
+            //Guid? currentUserId = _currentUser.GetUserId();
+            //bool isFollowedByCurrentUser = false;
+
+            //if (currentUserId.HasValue)
+            //{
+            //    isFollowedByCurrentUser =
+            //        await _followRepository.IsFollowingAsync(currentUserId.Value, accountId);
+            //}
+            var result = new ProfileResponse
+            {
+                AccountInfo = _mapper.Map<AccountDetailResponse>(account),
+                FollowInfo = new FollowCountResponse
+                {
+                    Followers = followers,
+                    Following = following,
+                    //IsFollowedByCurrentUser = isFollowedByCurrentUser
+                }
+            };
+            return result;
         }
         public async Task<AccountDetailResponse> CreateAccount([FromBody] AccountCreateRequest request)
         {

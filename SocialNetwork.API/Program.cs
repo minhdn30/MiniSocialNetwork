@@ -13,6 +13,7 @@ using SocialNetwork.Application.Services;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
+using SocialNetwork.Infrastructure.Repositories.Follows;
 using System;
 using System.Text;
 using System.Text.Json;
@@ -43,6 +44,7 @@ namespace SocialNetwork.API
             // Repositories
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
+            builder.Services.AddScoped<IFollowRepository, FollowRepository>();
 
             // Services
             builder.Services.AddScoped<IAuthService, AuthService>();
@@ -52,6 +54,7 @@ namespace SocialNetwork.API
             builder.Services.AddTransient<IEmailService, EmailService>();
             builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
+            builder.Services.AddScoped<IFollowService, FollowService>();
 
             // JWT
             var jwtSettings = builder.Configuration.GetSection("Jwt");
