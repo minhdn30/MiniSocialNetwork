@@ -8,10 +8,11 @@ namespace SocialNetwork.Application.DTOs.AuthDTOs
 {
     public class LoginResponse
     {
+        public Guid AccountId { get; set; }
         public string Fullname { get; set; } = null!;
-        public string AvatarUrl { get; set; } = null!;
-        public string AccessToken { get; set; } = null!;
-        public string RefreshToken { get; set; } = null!;
+        public string? AvatarUrl { get; set; }
+        public string? AccessToken { get; set; }
+        public string? RefreshToken { get; set; }
         public DateTime RefreshTokenExpiryTime { get; set; }
     }
 }

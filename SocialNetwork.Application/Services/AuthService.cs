@@ -83,6 +83,7 @@ namespace SocialNetwork.Application.Services
 
             return new LoginResponse
             {
+                AccountId = account.AccountId,
                 Fullname = account.FullName,
                 AvatarUrl = account.AvatarUrl,
                 AccessToken = accessToken,

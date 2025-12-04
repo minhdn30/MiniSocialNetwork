@@ -14,30 +14,35 @@ namespace SocialNetwork.API.Controllers
         {
             _accountService = accountService;
         }
+        //admin
         [HttpGet("get-all")]
         public async Task<IActionResult> GetAccounts([FromQuery] AccountPagingRequest request)
         {
             var result = await _accountService.GetAccountsAsync(request);
             return Ok(result);
         }
+        //admin, user
         [HttpGet("{accountId}")]
         public async Task<ActionResult<AccountDetailResponse>> GetAccountByGuid([FromRoute] Guid accountId)
         {
             var result = await _accountService.GetAccountByGuid(accountId);
             return Ok(result);
         }
+        //admin
         [HttpPost]
         public async Task<ActionResult<AccountDetailResponse>> AddAccount([FromBody] AccountCreateRequest request)
         {
             var result = await _accountService.CreateAccount(request);
             return Ok(result);
         }
+        //admin
         [HttpPut("{accountId}")]
         public async Task<ActionResult<AccountDetailResponse>> UpdateAccount([FromRoute] Guid accountId, [FromBody] AccountUpdateRequest request)
         {
             var result = await _accountService.UpdateAccount(accountId, request);
             return Ok(result); 
         }
+        //user
         [HttpPut("profile/{accountId}")]
         [Consumes("multipart/form-data")]
 

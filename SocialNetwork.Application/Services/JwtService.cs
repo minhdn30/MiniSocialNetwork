@@ -27,13 +27,14 @@ namespace SocialNetwork.Application.Services
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new[]
-    {
-            new Claim("id", account.AccountId.ToString()),           // account id
-            new Claim(ClaimTypes.Name, account.Username),           // username
-            new Claim(ClaimTypes.Role, account.Role?.RoleName ?? ""),   // role
-            new Claim(JwtRegisteredClaimNames.Email, account.Email),
-            new Claim("isVerified", account.IsEmailVerified.ToString())
-    };
+            {
+                new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()),     // account id
+                new Claim(ClaimTypes.Name, account.Username),                            // username
+                new Claim(ClaimTypes.Role, account.Role?.RoleName ?? ""),               // role
+                new Claim(JwtRegisteredClaimNames.Email, account.Email),                //email
+                new Claim("fullName", account.FullName ?? ""),                           //fullname
+                new Claim("isVerified", account.IsEmailVerified.ToString())
+            };
 
             var token = new JwtSecurityToken(
                 issuer: jwtSettings["Issuer"],

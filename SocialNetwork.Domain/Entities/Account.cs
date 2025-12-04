@@ -38,6 +38,9 @@ namespace SocialNetwork.Domain.Entities
         public DateTime? RefreshTokenExpiryTime { get; set; }
         public DateTime? LastActiveAt { get; set; }
         public virtual Role Role { get; set; } = null!;
+        public ICollection<Follow> Followers { get; set; } = new List<Follow>(); // Accounts that follow this account
+        public ICollection<Follow> Followings { get; set; } = new List<Follow>(); // Accounts that this account follows
+
 
     }
 }
