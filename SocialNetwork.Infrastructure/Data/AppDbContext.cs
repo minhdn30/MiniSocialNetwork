@@ -16,6 +16,8 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
+        public virtual DbSet<Follow> Follows { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -37,6 +39,20 @@ namespace SocialNetwork.Infrastructure.Data
                 entity.HasIndex(e => e.RoleName).IsUnique();
             }
             );
+            modelBuilder.Entity<Follow>()
+                .HasKey(f => new { f.FollowerId, f.FollowedId });  // Composite key
+
+            modelBuilder.Entity<Follow>()
+                .HasOne(f => f.Follower)
+                .WithMany(a => a.Followings)
+                .HasForeignKey(f => f.FollowerId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<Follow>()
+                .HasOne(f => f.Followed)
+                .WithMany(a => a.Followers)
+                .HasForeignKey(f => f.FollowedId)
+                .OnDelete(DeleteBehavior.NoAction);
         }
     }
 }

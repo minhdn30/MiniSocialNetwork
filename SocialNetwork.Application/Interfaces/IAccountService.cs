@@ -12,7 +12,7 @@ namespace SocialNetwork.Application.Interfaces
     public interface IAccountService
     {
         Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync([FromQuery] AccountPagingRequest request);
-        Task<ActionResult<AccountDetailResponse?>> GetAccountByGuid(Guid accountId);
+        Task<ActionResult<ProfileResponse?>> GetAccountByGuid(Guid accountId);
         Task<AccountDetailResponse> CreateAccount([FromBody] AccountCreateRequest request);
         Task<AccountDetailResponse> UpdateAccount(Guid accountId, [FromBody] AccountUpdateRequest request);
         Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, [FromBody] ProfileUpdateRequest request);

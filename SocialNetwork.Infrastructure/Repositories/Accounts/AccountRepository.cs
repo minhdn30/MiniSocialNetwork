@@ -25,6 +25,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         {
             return await _context.Accounts.AnyAsync(a => a.Email == email);
         }
+        public async Task<bool> IsAccountIdExist(Guid accountId)
+        {
+            return await _context.Accounts.AnyAsync(a => a.AccountId == accountId);
+        }
         public async Task AddAccount(Account account)
         {
             await _context.Accounts.AddAsync(account);
