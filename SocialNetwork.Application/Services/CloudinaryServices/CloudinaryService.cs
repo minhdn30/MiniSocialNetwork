@@ -2,7 +2,6 @@
 using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
-using SocialNetwork.Application.Interfaces;
 using SocialNetwork.Domain.Entities;
 using System;
 using System.Collections.Generic;
@@ -10,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.Services
+namespace SocialNetwork.Application.Services.CloudinaryServices
 {
     public class CloudinaryService : ICloudinaryService
     {

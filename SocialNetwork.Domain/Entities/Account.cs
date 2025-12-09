@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocialNetwork.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -18,6 +19,7 @@ namespace SocialNetwork.Domain.Entities
         [Column(TypeName = "varchar(100)")]
         public string Email { get; set; } = null!;
         [Required, MaxLength(100)]
+        [Column(TypeName = "varchar(100)")]
         public string FullName { get; set; } = null!;
         [MaxLength(255)]
         public string? AvatarUrl { get; set; }
@@ -40,6 +42,15 @@ namespace SocialNetwork.Domain.Entities
         public virtual Role Role { get; set; } = null!;
         public ICollection<Follow> Followers { get; set; } = new List<Follow>(); // Accounts that follow this account
         public ICollection<Follow> Followings { get; set; } = new List<Follow>(); // Accounts that this account follows
+        public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
+
+        // Comment-related
+        public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
+
+        // Reacts
+        public virtual ICollection<PostReact> PostReacts { get; set; } = new List<PostReact>();
+        public virtual ICollection<CommentReact> CommentReacts { get; set; } = new List<CommentReact>();
+
 
 
     }

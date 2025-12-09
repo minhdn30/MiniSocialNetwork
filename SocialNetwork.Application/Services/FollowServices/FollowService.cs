@@ -2,7 +2,6 @@
 using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
-using SocialNetwork.Application.Interfaces;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
@@ -13,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
-namespace SocialNetwork.Application.Services
+namespace SocialNetwork.Application.Services.FollowServices
 {
     public class FollowService : IFollowService
     {
