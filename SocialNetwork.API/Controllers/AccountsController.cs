@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AccountDTOs;
-using SocialNetwork.Application.Interfaces;
+using SocialNetwork.Application.Services.AccountServices;
 
 namespace SocialNetwork.API.Controllers
 {

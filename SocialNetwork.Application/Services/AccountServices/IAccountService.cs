@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.Interfaces
+namespace SocialNetwork.Application.Services.AccountServices
 {
     public interface IAccountService
     {

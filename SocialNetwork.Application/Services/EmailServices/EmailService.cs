@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using SocialNetwork.Application.Interfaces;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Data;
 using System;
@@ -12,7 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
-namespace SocialNetwork.Application.Services
+namespace SocialNetwork.Application.Services.EmailServices
 {
     public class EmailService : IEmailService
     {

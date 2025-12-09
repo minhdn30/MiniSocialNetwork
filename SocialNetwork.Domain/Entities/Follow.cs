@@ -11,7 +11,7 @@ namespace SocialNetwork.Domain.Entities
         public Guid FollowerId { get; set; } //the one who follows
         public Guid FollowedId { get; set; } //the one being followed
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public Account Follower { get; set; }
-        public Account Followed { get; set; }
+        public virtual Account Follower { get; set; }
+        public virtual Account Followed { get; set; }
     }
 }

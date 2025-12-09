@@ -1,4 +1,4 @@
-﻿using SocialNetwork.Application.Interfaces;
+﻿using SocialNetwork.Application.Services.EmailServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
@@ -10,7 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
-namespace SocialNetwork.Application.Services
+namespace SocialNetwork.Application.Services.EmailVerificationServices
 {
     public class EmailVerificationService : IEmailVerificationService
     {

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.Interfaces
+namespace SocialNetwork.Application.Services.CloudinaryServices
 {
     public interface ICloudinaryService
     {

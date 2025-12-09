@@ -2,7 +2,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AuthDTOs;
-using SocialNetwork.Application.Interfaces;
+using SocialNetwork.Application.Services.AuthServices;
+using SocialNetwork.Application.Services.EmailVerificationServices;
 
 namespace SocialNetwork.API.Controllers
 {

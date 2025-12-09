@@ -7,13 +7,22 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SocialNetwork.API.Middleware;
 using SocialNetwork.Application.Helpers;
-using SocialNetwork.Application.Interfaces;
 using SocialNetwork.Application.Mapping;
-using SocialNetwork.Application.Services;
+using SocialNetwork.Application.Services.AccountServices;
+using SocialNetwork.Application.Services.AuthServices;
+using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Services.EmailServices;
+using SocialNetwork.Application.Services.EmailVerificationServices;
+using SocialNetwork.Application.Services.FollowServices;
+using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
+using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Infrastructure.Repositories.PostMedias;
+using SocialNetwork.Infrastructure.Repositories.PostReacts;
+using SocialNetwork.Infrastructure.Repositories.Posts;
 using System;
 using System.Text;
 using System.Text.Json;
@@ -45,6 +54,10 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
+            builder.Services.AddScoped<ICommentRepository, CommentRepository>();
+            builder.Services.AddScoped<IPostRepository, PostRepository>();
+            builder.Services.AddScoped<IPostMediaRepository, PostMediaRepository>();
+            builder.Services.AddScoped<IPostReactRepository, PostReactRepository>();
 
             // Services
             builder.Services.AddScoped<IAuthService, AuthService>();

@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using SocialNetwork.Application.Interfaces;
 using SocialNetwork.Domain.Entities;
 using System;
 using System.Collections.Generic;
@@ -10,7 +9,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.Services
+namespace SocialNetwork.Application.Services.JwtServices
 {
     public class JwtService : IJwtService
     {

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SocialNetwork.Infrastructure.Data;
@@ -11,9 +12,11 @@ using SocialNetwork.Infrastructure.Data;
 namespace SocialNetwork.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251206073813_PostMigration")]
+    partial class PostMigration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -47,7 +50,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<bool?>("Gender")
                         .HasColumnType("boolean");
@@ -111,8 +114,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -128,34 +130,11 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasKey("CommentId");
 
-                    b.HasIndex("AccountId");
-
                     b.HasIndex("ParentCommentId");
 
                     b.HasIndex("PostId");
 
                     b.ToTable("Comments");
-                });
-
-            modelBuilder.Entity("SocialNetwork.Domain.Entities.CommentReact", b =>
-                {
-                    b.Property<Guid>("CommentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("ReactType")
-                        .HasColumnType("integer");
-
-                    b.HasKey("CommentId", "AccountId");
-
-                    b.HasIndex("AccountId");
-
-                    b.ToTable("CommentReacts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.EmailVerification", b =>
@@ -170,9 +149,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(15)
                         .HasColumnType("varchar(15)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -211,9 +187,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Content")
                         .HasColumnType("text");
 
@@ -223,6 +196,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Privacy")
                         .HasColumnType("integer");
 
@@ -230,8 +206,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("PostId");
-
-                    b.HasIndex("AccountId");
 
                     b.ToTable("Posts");
                 });
@@ -245,15 +219,15 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("MediaUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<Guid>("PostId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Type")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.HasKey("MediaId");
 
@@ -277,8 +251,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("PostId", "AccountId");
-
-                    b.HasIndex("AccountId");
 
                     b.ToTable("PostReacts");
                 });
@@ -317,16 +289,10 @@ namespace SocialNetwork.Infrastructure.Migrations
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Comment", b =>
                 {
-                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
-                        .WithMany("Comments")
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("SocialNetwork.Domain.Entities.Comment", "ParentComment")
                         .WithMany("Replies")
                         .HasForeignKey("ParentCommentId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("SocialNetwork.Domain.Entities.Post", "Post")
                         .WithMany("Comments")
@@ -334,30 +300,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Account");
-
                     b.Navigation("ParentComment");
 
                     b.Navigation("Post");
-                });
-
-            modelBuilder.Entity("SocialNetwork.Domain.Entities.CommentReact", b =>
-                {
-                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
-                        .WithMany("CommentReacts")
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("SocialNetwork.Domain.Entities.Comment", "Comment")
-                        .WithMany("CommentReacts")
-                        .HasForeignKey("CommentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Account");
-
-                    b.Navigation("Comment");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Follow", b =>
@@ -379,17 +324,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Navigation("Follower");
                 });
 
-            modelBuilder.Entity("SocialNetwork.Domain.Entities.Post", b =>
-                {
-                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
-                        .WithMany("Posts")
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Account");
-                });
-
             modelBuilder.Entity("SocialNetwork.Domain.Entities.PostMedia", b =>
                 {
                     b.HasOne("SocialNetwork.Domain.Entities.Post", "Post")
@@ -403,42 +337,24 @@ namespace SocialNetwork.Infrastructure.Migrations
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.PostReact", b =>
                 {
-                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
-                        .WithMany("PostReacts")
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("SocialNetwork.Domain.Entities.Post", "Post")
                         .WithMany("Reacts")
                         .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Account");
-
                     b.Navigation("Post");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Account", b =>
                 {
-                    b.Navigation("CommentReacts");
-
-                    b.Navigation("Comments");
-
                     b.Navigation("Followers");
 
                     b.Navigation("Followings");
-
-                    b.Navigation("PostReacts");
-
-                    b.Navigation("Posts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Comment", b =>
                 {
-                    b.Navigation("CommentReacts");
-
                     b.Navigation("Replies");
                 });
 

@@ -1,7 +1,8 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.FollowDTOs;
-using SocialNetwork.Application.Interfaces;
+using SocialNetwork.Application.Services.AccountServices;
+using SocialNetwork.Application.Services.FollowServices;
 using System.Security.Claims;
 
 namespace SocialNetwork.API.Controllers
