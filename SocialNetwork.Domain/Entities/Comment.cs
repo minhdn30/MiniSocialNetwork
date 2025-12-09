@@ -9,7 +9,7 @@ namespace SocialNetwork.Domain.Entities
 {
     public class Comment
     {
-        public Guid CommentId { get; set; } = Guid.NewGuid();
+        public Guid CommentId { get; set; }
         public Guid PostId { get; set; }
         public Guid AccountId { get; set; }
         [Required]

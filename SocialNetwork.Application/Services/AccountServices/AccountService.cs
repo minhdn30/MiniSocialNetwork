@@ -94,8 +94,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             var account = _mapper.Map<Account>(request);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             await _accountRepository.AddAccount(account);
-            var accountMapped = _mapper.Map<AccountDetailResponse>(account);
-            return accountMapped;
+            return _mapper.Map<AccountDetailResponse>(account);
         }
         public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, [FromBody] AccountUpdateRequest request)
         {
@@ -129,7 +128,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                     var publicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
                     if (!string.IsNullOrEmpty(publicId))
                     {
-                        await _cloudinary.DeleteImageAsync(publicId);
+                        await _cloudinary.DeleteMediaAsync(publicId);
                     }
                 }
                 var imageURL = await _cloudinary.UploadImageAsync(request.Image);

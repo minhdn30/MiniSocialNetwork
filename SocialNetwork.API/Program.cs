@@ -7,16 +7,20 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SocialNetwork.API.Middleware;
 using SocialNetwork.Application.Helpers;
+using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Services.CommentServices;
 using SocialNetwork.Application.Services.EmailServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
 using SocialNetwork.Application.Services.FollowServices;
 using SocialNetwork.Application.Services.JwtServices;
+using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
+using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using SocialNetwork.Infrastructure.Repositories.Follows;
@@ -58,6 +62,8 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IPostRepository, PostRepository>();
             builder.Services.AddScoped<IPostMediaRepository, PostMediaRepository>();
             builder.Services.AddScoped<IPostReactRepository, PostReactRepository>();
+            builder.Services.AddScoped<ICommentReactRepository, CommentReactRepository>();
+
 
             // Services
             builder.Services.AddScoped<IAuthService, AuthService>();
@@ -68,6 +74,10 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IFollowService, FollowService>();
+            builder.Services.AddScoped<IPostService, PostService>();
+            builder.Services.AddScoped<ICommentService, CommentService>();
+            // Helpers
+            builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
 
             // JWT
             var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -124,7 +134,7 @@ namespace SocialNetwork.API
 
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
-                    Description = "Nhập token theo format: Bearer {token}",
+                    Description = "Enter token in format: Bearer {token}",
                     Name = "Authorization",
                     In = ParameterLocation.Header,
                     Type = SecuritySchemeType.ApiKey,

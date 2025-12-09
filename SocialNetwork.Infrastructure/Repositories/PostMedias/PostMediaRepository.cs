@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Infrastructure.Data;
+﻿using SocialNetwork.Domain.Entities;
+using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,11 @@ namespace SocialNetwork.Infrastructure.Repositories.PostMedias
         public PostMediaRepository(AppDbContext context)
         {
             _context = context;
+        }
+        public async Task AddPostMedias(IEnumerable<PostMedia> medias)
+        {
+            await _context.PostMedias.AddRangeAsync(medias);
+            await _context.SaveChangesAsync();
         }
     }
 }

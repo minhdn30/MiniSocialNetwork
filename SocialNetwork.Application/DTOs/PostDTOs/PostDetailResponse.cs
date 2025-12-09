@@ -1,0 +1,24 @@
+﻿using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.PostMediaDTOs;
+using SocialNetwork.Domain.Enums;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace SocialNetwork.Application.DTOs.PostDTOs
+{
+    public class PostDetailResponse
+    {
+        public Guid PostId { get; set; }
+        public AccountPostDetailResponse Owner { get; set; } = null!;
+        public int Privacy { get; set; }
+        public string? Content { get; set; }
+        public List<PostMediaDetailResponse> Medias { get; set; } = new();
+        public bool IsDeleted { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+
+    }
+}

@@ -33,7 +33,7 @@ namespace SocialNetwork.API.Controllers
         public async Task<ActionResult<AccountDetailResponse>> AddAccount([FromBody] AccountCreateRequest request)
         {
             var result = await _accountService.CreateAccount(request);
-            return Ok(result);
+            return CreatedAtAction(nameof(GetAccountByGuid), new {accountId = result.AccountId}, result);
         }
         //admin
         [HttpPut("{accountId}")]

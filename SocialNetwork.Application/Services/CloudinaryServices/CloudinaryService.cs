@@ -32,7 +32,7 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
             var uploadParams = new ImageUploadParams
             {
                 File = new FileDescription(file.FileName, stream),
-                Folder = "cloudmsocialnetwork/services",
+                Folder = "cloudmsocialnetwork/images",
                 UseFilename = true,
                 UniqueFilename = true,
                 Overwrite = false
@@ -41,23 +41,41 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
             var result = await _cloudinary.UploadAsync(uploadParams);
             return result.SecureUrl?.ToString();
         }
-        public string? GetPublicIdFromUrl(string imageUrl)
+        public async Task<string?> UploadVideoAsync(IFormFile file)
         {
-            if (string.IsNullOrWhiteSpace(imageUrl))
+            if (file == null || file.Length == 0)
                 return null;
 
-            if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
+            await using var stream = file.OpenReadStream();
+
+            var uploadParams = new VideoUploadParams
+            {
+                File = new FileDescription(file.FileName, stream),
+                Folder = "cloudmsocialnetwork/videos", 
+                UseFilename = true,
+                UniqueFilename = true,
+                Overwrite = false
+            };
+
+            var result = await _cloudinary.UploadAsync(uploadParams);
+
+            return result.SecureUrl?.ToString();
+        }
+
+        public string? GetPublicIdFromUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
                 return null;
 
             try
             {
-                var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                if (segments.Length < 3) return null;
+                var uri = new Uri(url);
 
-                var fileName = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-                var folderPath = string.Join('/', segments.Skip(segments.Length - 3).Take(2)); // cloudmsocialnetwork/services
-
-                return $"{folderPath}/{fileName}";
+                var path = uri.AbsolutePath.TrimStart('/');
+                var lastDotIndex = path.LastIndexOf('.');
+                if (lastDotIndex > 0)
+                    path = path[..lastDotIndex];
+                return path;
             }
             catch
             {
@@ -66,7 +84,8 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
         }
 
 
-        public async Task<bool> DeleteImageAsync(string publicId)
+
+        public async Task<bool> DeleteMediaAsync(string publicId)
         {
             var deletionParams = new DeletionParams(publicId);
 
