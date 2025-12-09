@@ -5,7 +5,7 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace SocialNetwork.Application.Helpers
+namespace SocialNetwork.Application.Helpers.SwaggerHelpers
 {
     public class FileUploadOperation : IOperationFilter
     {

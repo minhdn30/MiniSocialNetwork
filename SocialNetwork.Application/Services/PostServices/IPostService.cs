@@ -13,6 +13,8 @@ namespace SocialNetwork.Application.Services.PostServices
     {
         Task<PostDetailResponse?> GetPostById(Guid postId);
         Task<PostDetailResponse> CreatePost([FromBody] PostCreateRequest request);
+        Task<PostDetailResponse> UpdatePost(Guid postId, [FromBody] PostUpdateRequest request);
+        Task SoftDeletePost(Guid postId);
 
     }
 }

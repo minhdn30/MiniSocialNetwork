@@ -30,5 +30,19 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
             await _context.Posts.AddAsync(post);
             await _context.SaveChangesAsync();
         }
+        public async Task UpdatePost(Post post)
+        {
+            _context.Posts.Update(post);
+            await _context.SaveChangesAsync();
+        }
+        public async Task SoftDeletePostAsync(Guid postId)
+        {
+            var post = await _context.Posts.FindAsync(postId);
+            if (post != null)
+            {
+                post.IsDeleted = true;
+                await _context.SaveChangesAsync();
+            }
+        }
     }
 }

@@ -39,6 +39,9 @@ namespace SocialNetwork.Application.Mapping
             CreateMap<PostCreateRequest, Post>()
                 .ForMember(dest => dest.PostId, opt => opt.MapFrom(_ => Guid.NewGuid()))
                 .ForMember(dest => dest.Medias, opt => opt.Ignore());
+            CreateMap<PostUpdateRequest, Post>()
+                .ForMember(dest => dest.Medias, opt => opt.Ignore())
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
             CreateMap<Post, PostDetailResponse>();
 
             //Post Media mappings

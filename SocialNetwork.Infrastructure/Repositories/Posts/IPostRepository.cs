@@ -12,5 +12,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
     {
         Task<Post?> GetPostById(Guid postId);
         Task AddPost(Post post);
+        Task UpdatePost(Post post);
+        Task SoftDeletePostAsync(Guid postId);
     }
 }

@@ -9,6 +9,11 @@ namespace SocialNetwork.Infrastructure.Repositories.PostMedias
 {
     public interface IPostMediaRepository
     {
+        Task<IEnumerable<PostMedia>> GetPostMediasByPostId(Guid postId);
+        Task<PostMedia?> GetPostMediaById(Guid postMediaId);
+        Task<bool> IsPostMediaExist(Guid postMediaId);
         Task AddPostMedias(IEnumerable<PostMedia> medias);
+        Task DeletePostMediasById(Guid postMediaId);
+        Task DeletePostMedias(IEnumerable<PostMedia> postMedias);
     }
 }

@@ -4,6 +4,7 @@ using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.PostServices;
+using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -29,5 +30,19 @@ namespace SocialNetwork.API.Controllers
             var result = await _postService.CreatePost(request);
             return CreatedAtAction(nameof(GetPostById), new { postId = result.PostId }, result);
         }
+        [HttpPut("{postId}")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<PostDetailResponse>> UpdatePost([FromForm] Guid postId, [FromForm] PostUpdateRequest request)
+        {
+            var result = await _postService.UpdatePost(postId, request);
+            return Ok(result);
+        }
+        [HttpDelete("{postId}")]
+        public async Task<IActionResult> SoftDeletePost(Guid postId)
+        {
+            await _postService.SoftDeletePost(postId);
+            return NoContent();            
+        }
+
     }
 }

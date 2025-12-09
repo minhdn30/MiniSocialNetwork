@@ -128,7 +128,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                     var publicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
                     if (!string.IsNullOrEmpty(publicId))
                     {
-                        await _cloudinary.DeleteMediaAsync(publicId);
+                        await _cloudinary.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
                     }
                 }
                 var imageURL = await _cloudinary.UploadImageAsync(request.Image);

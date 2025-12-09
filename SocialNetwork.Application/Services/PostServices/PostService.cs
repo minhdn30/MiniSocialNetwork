@@ -79,11 +79,7 @@ namespace SocialNetwork.Application.Services.PostServices
                 foreach (var media in request.MediaFiles)
                 {
                     var detectedType = await _fileTypeDetector.GetMediaTypeAsync(media);
-                    if (detectedType == null)
-                    {
-                        // Skip unsupported media types
-                        continue;
-                    }
+                    if (detectedType == null) continue; // Skip unsupported media types
                     string? url = null;
                     switch(detectedType.Value)
                     {
@@ -120,5 +116,99 @@ namespace SocialNetwork.Application.Services.PostServices
             return result;
         }
   
+        public async Task<PostDetailResponse> UpdatePost(Guid postId, [FromBody] PostUpdateRequest request)
+        {
+            var post = await _postRepository.GetPostById(postId);
+            if (post == null)
+            {
+                throw new NotFoundException($"Post with ID {postId} not found.");
+            }
+            if (request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
+            {
+                throw new BadRequestException("Invalid privacy setting.");
+            }
+            _mapper.Map(request, post);
+            post.UpdatedAt = DateTime.UtcNow;
+            //remove medias if any
+            if (request.RemoveMediaIds != null && request.RemoveMediaIds.Any())
+            {
+                var removedMedias = new List<PostMedia>();
+                foreach (var mediaId in request.RemoveMediaIds)
+                {
+                    var media = await _postMediaRepository.GetPostMediaById(mediaId);
+                    if (media != null && media.PostId == postId)
+                    {
+                        if (!string.IsNullOrEmpty(media.MediaUrl))
+                        {
+                            var publicId = _cloudinaryService.GetPublicIdFromUrl(media.MediaUrl);
+                            if (!string.IsNullOrEmpty(publicId))
+                            {
+                                await _cloudinaryService.DeleteMediaAsync(publicId, media.Type);                               
+                            }
+                        }
+                        removedMedias.Add(media);
+                    }
+                }
+                if (removedMedias.Any())
+                {
+                    await _postMediaRepository.DeletePostMedias(removedMedias);
+                }
+            }
+            //add new medias if any
+            if (request.NewMediaFiles != null && request.NewMediaFiles.Any())
+            {
+                var newPostMedias = new List<PostMedia>();
+                foreach (var media in request.NewMediaFiles)
+                {
+                    var detectedType = await _fileTypeDetector.GetMediaTypeAsync(media);
+                    if (detectedType == null) continue;  // Skip unsupported media types
+                    string? url = null;
+                    switch (detectedType.Value)
+                    {
+                        case MediaTypeEnum.Image:
+                            url = await _cloudinaryService.UploadImageAsync(media);
+                            break;
+                        case MediaTypeEnum.Video:
+                            url = await _cloudinaryService.UploadVideoAsync(media);
+                            break;
+                        //Audio and Document upload later
+                        default:
+                            continue;
+                    };
+                    if (!string.IsNullOrEmpty(url))
+                    {
+                        var newMedia = new PostMedia
+                        {
+                            PostId = post.PostId,
+                            MediaUrl = url,
+                            Type = detectedType.Value
+                        };
+                        newPostMedias.Add(newMedia);
+                        post.Medias.Add(newMedia);
+                    }
+                }
+                if (newPostMedias.Any())
+                {
+                    await _postMediaRepository.AddPostMedias(newPostMedias);
+                }
+            }
+
+            await _postRepository.UpdatePost(post);
+            var account = await _accountRepository.GetAccountById(post.AccountId);
+            var result = _mapper.Map<PostDetailResponse>(post); 
+            result.Owner = _mapper.Map<AccountPostDetailResponse>(account);
+            result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(post.Medias);
+            return result;
+
+        }
+        public async Task SoftDeletePost(Guid postId)
+        {
+            var post = await _postRepository.GetPostById(postId);
+            if (post == null)
+            {
+                throw new NotFoundException($"Post with ID {postId} not found.");
+            }
+            await _postRepository.SoftDeletePostAsync(postId);
+        }
     }
 }

@@ -3,10 +3,12 @@ using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SocialNetwork.Application.Services.CloudinaryServices
@@ -70,12 +72,18 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
             try
             {
                 var uri = new Uri(url);
+                var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-                var path = uri.AbsolutePath.TrimStart('/');
-                var lastDotIndex = path.LastIndexOf('.');
-                if (lastDotIndex > 0)
-                    path = path[..lastDotIndex];
-                return path;
+                var uploadIndex = Array.FindIndex(segments, s => s.Equals("upload", StringComparison.OrdinalIgnoreCase));
+                if (uploadIndex < 0 || uploadIndex == segments.Length - 1)
+                    return null;
+
+                var pathAfterUpload = string.Join("/", segments.Skip(uploadIndex + 1));
+
+                pathAfterUpload = Regex.Replace(pathAfterUpload, @"^v\d+/", "");
+                var publicId = Path.ChangeExtension(pathAfterUpload, null);
+                //decode
+                return Uri.UnescapeDataString(publicId);
             }
             catch
             {
@@ -84,14 +92,20 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
         }
 
 
-
-        public async Task<bool> DeleteMediaAsync(string publicId)
+        public async Task<bool> DeleteMediaAsync(string publicId, MediaTypeEnum type)
         {
             var deletionParams = new DeletionParams(publicId);
+
+            //Specify resource type if it is video
+            if (type == MediaTypeEnum.Video)
+            {
+                deletionParams.ResourceType = ResourceType.Video;
+            }
 
             var result = await _cloudinary.DestroyAsync(deletionParams);
 
             return result.Result == "ok" || result.Result == "not found";
         }
+
     }
 }
