@@ -10,6 +10,6 @@ namespace SocialNetwork.Application.DTOs.FollowDTOs
     {
         public int Followers { get; set; }
         public int Following { get; set; }
-//        public bool IsFollowedByCurrentUser { get; set; }
+        public bool IsFollowedByCurrentUser { get; set; } = false;
     }
 }

@@ -1,4 +1,4 @@
-﻿using SocialNetwork.Application.DTOs.AccountDTOs;
+﻿using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Domain.Entities;
 using System;
 using System.Collections.Generic;

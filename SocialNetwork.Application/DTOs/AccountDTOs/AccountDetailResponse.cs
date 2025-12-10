@@ -21,12 +21,10 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public string? Address { get; set; }
         public int RoleId { get; set; }
         public string RoleName { get; set; } = null!;
-        public bool Status { get; set; } = true;
+        public bool Status { get; set; }
         public DateTime CreatedAt { get; set; } 
         public DateTime? UpdatedAt { get; set; }
         public bool IsEmailVerified { get; set; } 
-        public string? RefreshToken { get; set; }
-        public DateTime? RefreshTokenExpiryTime { get; set; }
         public DateTime? LastActiveAt { get; set; }
         
     }

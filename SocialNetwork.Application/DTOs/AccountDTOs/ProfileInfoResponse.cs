@@ -7,9 +7,10 @@ using System.Threading.Tasks;
 
 namespace SocialNetwork.Application.DTOs.AccountDTOs
 {
-    public class ProfileResponse
+    public class ProfileInfoResponse
     {
-        public AccountDetailResponse AccountInfo { get; set; }
+        public ProfileDetailResponse AccountInfo { get; set; }
         public FollowCountResponse FollowInfo { get; set; }
+        public int TotalPosts { get; set; }
     }
 }

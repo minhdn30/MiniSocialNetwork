@@ -86,13 +86,14 @@ namespace SocialNetwork.API.Controllers
         [Authorize]
         public async Task<IActionResult> Logout()
         {
-            var userId = User.FindFirst("id")?.Value;
-            if (userId == null)
+            var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (accountIdClaim == null || !Guid.TryParse(accountIdClaim, out var accountId))
                 return Unauthorized();
 
-            await _authService.LogoutAsync(Guid.Parse(userId), Response);
+            await _authService.LogoutAsync(accountId, Response);
 
             return Ok(new { message = "Logged out successfully." });
         }
+
     }
 }

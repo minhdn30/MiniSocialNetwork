@@ -1,5 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using SocialNetwork.API.Hubs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.FollowServices;
@@ -13,10 +15,12 @@ namespace SocialNetwork.API.Controllers
     {
         private readonly IFollowService _followService;
         private readonly IAccountService _accountService;
-        public FollowsController(IFollowService followService, IAccountService accountService)
+        private readonly IHubContext<FollowHub> _hubContext;
+        public FollowsController(IFollowService followService, IAccountService accountService, IHubContext<FollowHub> hubContext)
         {
             _followService = followService;
             _accountService = accountService;
+            _hubContext = hubContext;
         }
         //user
         [HttpPost("{targetId}")]
@@ -29,7 +33,10 @@ namespace SocialNetwork.API.Controllers
             }
 
             var followerId = Guid.Parse(userIdClaim);
-            await _followService.FollowAsync(followerId, targetId);
+            var followCountAfter = await _followService.FollowAsync(followerId, targetId);
+            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { FollowerId = followerId,
+                Action = "follow" , FollowCount = followCountAfter, isFollowing = true});
+
 
             return Ok(new { message = "Followed successfully." });
         }
@@ -44,7 +51,10 @@ namespace SocialNetwork.API.Controllers
             }
             var followerId = Guid.Parse(userIdClaim);
 
-            await _followService.UnfollowAsync(followerId, targetId);
+            var followCountAfter = await _followService.UnfollowAsync(followerId, targetId);
+            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { FollowerId = followerId,
+                Action = "unfollow" , FollowCount = followCountAfter, isFollowing = false });
+
             return Ok(new { message = "Unfollowed successfully." });
         }
 
