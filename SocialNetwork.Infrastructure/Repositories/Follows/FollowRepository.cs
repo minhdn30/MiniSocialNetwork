@@ -1,5 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Data;
 using System;

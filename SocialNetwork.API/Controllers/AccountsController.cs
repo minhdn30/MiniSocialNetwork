@@ -21,7 +21,7 @@ namespace SocialNetwork.API.Controllers
             var result = await _accountService.GetAccountsAsync(request);
             return Ok(result);
         }
-        //admin, user
+        //admin
         [HttpGet("{accountId}")]
         public async Task<ActionResult<AccountDetailResponse>> GetAccountByGuid([FromRoute] Guid accountId)
         {
@@ -33,7 +33,7 @@ namespace SocialNetwork.API.Controllers
         public async Task<ActionResult<AccountDetailResponse>> AddAccount([FromBody] AccountCreateRequest request)
         {
             var result = await _accountService.CreateAccount(request);
-            return Ok(result);
+            return CreatedAtAction(nameof(GetAccountByGuid), new {accountId = result.AccountId}, result);
         }
         //admin
         [HttpPut("{accountId}")]
@@ -51,6 +51,19 @@ namespace SocialNetwork.API.Controllers
             var result = await _accountService.UpdateAccountProfile(accountId, request);
             return Ok(result);
         }
+        // user
+        [HttpGet("profile/{accountId}")]
+        public async Task<ActionResult<AccountDetailResponse>> GetAccountProfileByGuid([FromRoute] Guid accountId)
+        {
+            var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            Guid? currentId = null;
+            if (accountIdClaim != null && Guid.TryParse(accountIdClaim, out var parsedId))
+            {
+                currentId = parsedId;
+            }
 
+            var result = await _accountService.GetAccountProfileByGuid(accountId, currentId);
+            return Ok(result);
+        }
     }
 }

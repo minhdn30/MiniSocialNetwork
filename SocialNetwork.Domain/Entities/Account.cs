@@ -11,7 +11,7 @@ namespace SocialNetwork.Domain.Entities
 {
     public class Account
     {
-        public Guid AccountId { get; set; } = Guid.NewGuid();
+        public Guid AccountId { get; set; }
         [Required, MaxLength(100)]
         [Column(TypeName = "varchar(100)")]
         public string Username { get; set; } = null!;

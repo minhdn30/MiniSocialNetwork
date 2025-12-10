@@ -3,10 +3,12 @@ using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SocialNetwork.Application.Services.CloudinaryServices
@@ -32,7 +34,7 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
             var uploadParams = new ImageUploadParams
             {
                 File = new FileDescription(file.FileName, stream),
-                Folder = "cloudmsocialnetwork/services",
+                Folder = "cloudmsocialnetwork/images",
                 UseFilename = true,
                 UniqueFilename = true,
                 Overwrite = false
@@ -41,23 +43,47 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
             var result = await _cloudinary.UploadAsync(uploadParams);
             return result.SecureUrl?.ToString();
         }
-        public string? GetPublicIdFromUrl(string imageUrl)
+        public async Task<string?> UploadVideoAsync(IFormFile file)
         {
-            if (string.IsNullOrWhiteSpace(imageUrl))
+            if (file == null || file.Length == 0)
                 return null;
 
-            if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
+            await using var stream = file.OpenReadStream();
+
+            var uploadParams = new VideoUploadParams
+            {
+                File = new FileDescription(file.FileName, stream),
+                Folder = "cloudmsocialnetwork/videos", 
+                UseFilename = true,
+                UniqueFilename = true,
+                Overwrite = false
+            };
+
+            var result = await _cloudinary.UploadAsync(uploadParams);
+
+            return result.SecureUrl?.ToString();
+        }
+
+        public string? GetPublicIdFromUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
                 return null;
 
             try
             {
+                var uri = new Uri(url);
                 var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                if (segments.Length < 3) return null;
 
-                var fileName = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-                var folderPath = string.Join('/', segments.Skip(segments.Length - 3).Take(2)); // cloudmsocialnetwork/services
+                var uploadIndex = Array.FindIndex(segments, s => s.Equals("upload", StringComparison.OrdinalIgnoreCase));
+                if (uploadIndex < 0 || uploadIndex == segments.Length - 1)
+                    return null;
 
-                return $"{folderPath}/{fileName}";
+                var pathAfterUpload = string.Join("/", segments.Skip(uploadIndex + 1));
+
+                pathAfterUpload = Regex.Replace(pathAfterUpload, @"^v\d+/", "");
+                var publicId = Path.ChangeExtension(pathAfterUpload, null);
+                //decode
+                return Uri.UnescapeDataString(publicId);
             }
             catch
             {
@@ -66,13 +92,20 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
         }
 
 
-        public async Task<bool> DeleteImageAsync(string publicId)
+        public async Task<bool> DeleteMediaAsync(string publicId, MediaTypeEnum type)
         {
             var deletionParams = new DeletionParams(publicId);
+
+            //Specify resource type if it is video
+            if (type == MediaTypeEnum.Video)
+            {
+                deletionParams.ResourceType = ResourceType.Video;
+            }
 
             var result = await _cloudinary.DestroyAsync(deletionParams);
 
             return result.Result == "ok" || result.Result == "not found";
         }
+
     }
 }

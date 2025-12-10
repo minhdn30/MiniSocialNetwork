@@ -15,6 +15,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task<bool> IsAccountIdExist(Guid accountId);
         Task AddAccount(Account account);
         Task<Account?> GetAccountById(Guid accountId);
+        Task<Account?> GetAccountProfileById(Guid accountId);
         Task<Account?> GetAccountByEmail(string email);
         Task UpdateAccount(Account account);
         Task<Account?> GetAccountByUsername(string username);

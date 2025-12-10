@@ -1,4 +1,6 @@
-﻿using System;
+﻿using SocialNetwork.Domain.Entities;
+using SocialNetwork.Infrastructure.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,5 +10,11 @@ namespace SocialNetwork.Infrastructure.Repositories.PostReacts
 {
     public interface IPostReactRepository
     {
+        Task AddPostReact(PostReact postReact);
+        Task RemovePostReact(PostReact postReact);
+        Task<int> GetReactCountByPostId(Guid postId);
+        Task<PostReact?> GetUserReacteOnPostAsync(Guid postId, Guid accountId);
+        Task<bool> IsCurrentUserReactedOnPostAsync(Guid postId, Guid? currentId);
+        Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, int page, int pageSize);
     }
 }
