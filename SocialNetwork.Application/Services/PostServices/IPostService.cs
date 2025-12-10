@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,10 +13,11 @@ namespace SocialNetwork.Application.Services.PostServices
 {
     public interface IPostService
     {
-        Task<PostDetailResponse?> GetPostById(Guid postId);
+        Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId);
         Task<PostDetailResponse> CreatePost([FromBody] PostCreateRequest request);
-        Task<PostDetailResponse> UpdatePost(Guid postId, [FromBody] PostUpdateRequest request);
-        Task SoftDeletePost(Guid postId);
+        Task<PostDetailResponse> UpdatePost(Guid postId, Guid? currentId, [FromBody] PostUpdateRequest request);
+        Task<Guid?> SoftDeletePost(Guid postId);
+        Task<PagedResponse<PostPersonalListModel>> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize);
 
     }
 }

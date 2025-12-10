@@ -16,9 +16,9 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
         public int Privacy { get; set; }
         public string? Content { get; set; }
         public List<PostMediaDetailResponse> Medias { get; set; } = new();
-        public bool IsDeleted { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+        public bool IsReactedByCurrentUser { get; set; }
 
     }
 }

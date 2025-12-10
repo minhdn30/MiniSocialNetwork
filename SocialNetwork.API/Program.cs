@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using SocialNetwork.API.Hubs;
 using SocialNetwork.API.Middleware;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
@@ -17,6 +18,7 @@ using SocialNetwork.Application.Services.EmailServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
 using SocialNetwork.Application.Services.FollowServices;
 using SocialNetwork.Application.Services.JwtServices;
+using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
@@ -76,6 +78,8 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IFollowService, FollowService>();
             builder.Services.AddScoped<IPostService, PostService>();
             builder.Services.AddScoped<ICommentService, CommentService>();
+            builder.Services.AddScoped<IPostReactService, PostReactService>();
+
             // Helpers
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
 
@@ -121,12 +125,15 @@ namespace SocialNetwork.API
                 options.AddPolicy("AllowAll", policy =>
                 {
                     policy
-                        .AllowAnyOrigin()  
-                        .AllowAnyHeader()   
-                        .AllowAnyMethod(); 
+                        .WithOrigins("http://127.0.0.1:5500")   // FE của bạn
+                        .AllowAnyHeader()
+                        .AllowAnyMethod()
+                        .AllowCredentials();                   // Quan trọng cho SignalR
                 });
             });
+
             builder.Services.AddControllers();
+            builder.Services.AddSignalR();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
             {
@@ -178,12 +185,14 @@ namespace SocialNetwork.API
 
 
             // app.UseHttpsRedirection();
+            app.UseRouting();
             app.UseCors("AllowAll");
+
             app.UseAuthentication();
             app.UseAuthorization();
-            app.MapControllers();
+            app.MapHub<PostHub>("/postHub");
 
-            
+            app.MapControllers();
 
             app.Run();
 

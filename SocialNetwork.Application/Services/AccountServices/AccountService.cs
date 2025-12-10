@@ -10,6 +10,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Infrastructure.Repositories.Posts;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,12 +26,14 @@ namespace SocialNetwork.Application.Services.AccountServices
         private readonly IMapper _mapper;
         private readonly ICloudinaryService _cloudinary;
         private readonly IFollowRepository _followRepository;
-        public AccountService(IAccountRepository accountRepository, IMapper mapper, ICloudinaryService cloudinary, IFollowRepository followRepository)
+        private readonly IPostRepository _postRepository;
+        public AccountService(IAccountRepository accountRepository, IMapper mapper, ICloudinaryService cloudinary, IFollowRepository followRepository, IPostRepository postRepository)
         {
             _accountRepository = accountRepository;
             _mapper = mapper;
             _cloudinary = cloudinary;
             _followRepository = followRepository;
+            _postRepository = postRepository;
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync([FromQuery] AccountPagingRequest request)
         {
@@ -46,7 +49,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             };
             return rs;
         }
-        public async Task<ActionResult<ProfileResponse?>> GetAccountByGuid(Guid accountId)
+        public async Task<ActionResult<AccountInfoResponse?>> GetAccountByGuid(Guid accountId)
         {
             var account = await _accountRepository.GetAccountById(accountId);
             if(account == null)
@@ -55,23 +58,17 @@ namespace SocialNetwork.Application.Services.AccountServices
             }
             var followers = await _followRepository.CountFollowersAsync(accountId);
             var following = await _followRepository.CountFollowingAsync(accountId);
-            //Guid? currentUserId = _currentUser.GetUserId();
-            //bool isFollowedByCurrentUser = false;
-
-            //if (currentUserId.HasValue)
-            //{
-            //    isFollowedByCurrentUser =
-            //        await _followRepository.IsFollowingAsync(currentUserId.Value, accountId);
-            //}
-            var result = new ProfileResponse
+            var totalPosts = await _postRepository.CountPostsByAccountIdAsync(accountId);
+            var result = new AccountInfoResponse
             {
                 AccountInfo = _mapper.Map<AccountDetailResponse>(account),
                 FollowInfo = new FollowCountResponse
                 {
                     Followers = followers,
                     Following = following,
-                    //IsFollowedByCurrentUser = isFollowedByCurrentUser
-                }
+                    IsFollowedByCurrentUser = false
+                },
+                TotalPosts = totalPosts
             };
             return result;
         }
@@ -144,6 +141,32 @@ namespace SocialNetwork.Application.Services.AccountServices
             await _accountRepository.UpdateAccount(account);
             return _mapper.Map<AccountDetailResponse>(account);
         }
+        public async Task<ActionResult<ProfileInfoResponse?>> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
+        {
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account == null)
+            {
+                throw new NotFoundException($"Account with ID {accountId} not found or inactive.");
+            }
+            var followers = await _followRepository.CountFollowersAsync(accountId);
+            var following = await _followRepository.CountFollowingAsync(accountId);
+            bool isFollowedByCurrentUser = false;
 
+            if (currentId.HasValue)         
+                isFollowedByCurrentUser = await _followRepository.IsFollowingAsync(currentId.Value, accountId);
+            var totalPosts = await _postRepository.CountPostsByAccountIdAsync(accountId);
+            var result = new ProfileInfoResponse
+            {
+                AccountInfo = _mapper.Map<ProfileDetailResponse>(account),
+                FollowInfo = new FollowCountResponse
+                {
+                    Followers = followers,
+                    Following = following,
+                    IsFollowedByCurrentUser = isFollowedByCurrentUser
+                },
+                TotalPosts = totalPosts
+            };
+            return result;
+        }
     }
 }

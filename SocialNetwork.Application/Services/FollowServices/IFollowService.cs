@@ -1,4 +1,4 @@
-﻿using SocialNetwork.Application.DTOs.AccountDTOs;
+﻿using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
 using System;

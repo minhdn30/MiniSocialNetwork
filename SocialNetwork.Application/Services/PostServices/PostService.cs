@@ -1,12 +1,15 @@
 ﻿using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
+using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
@@ -46,7 +49,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _fileTypeDetector = fileTypeDetector;
             _mapper = mapper;
         }
-        public async Task<PostDetailResponse?> GetPostById(Guid postId)
+        public async Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId)
         {
             var post = await _postRepository.GetPostById(postId);
             if (post == null)
@@ -56,6 +59,7 @@ namespace SocialNetwork.Application.Services.PostServices
             var result = _mapper.Map<PostDetailResponse>(post);
             result.Owner = _mapper.Map<AccountPostDetailResponse>(post.Account);
             result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(post.Medias);
+            result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
         }
         public async Task<PostDetailResponse> CreatePost([FromBody] PostCreateRequest request)
@@ -68,6 +72,10 @@ namespace SocialNetwork.Application.Services.PostServices
             if(request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
             {
                 throw new BadRequestException("Invalid privacy setting.");
+            }
+            if(request.Content == null && (request.MediaFiles == null || !request.MediaFiles.Any()))
+            {
+                throw new BadRequestException("Post must have content or media files.");
             }
             var post = _mapper.Map<Post>(request);
             await _postRepository.AddPost(post);
@@ -116,7 +124,7 @@ namespace SocialNetwork.Application.Services.PostServices
             return result;
         }
   
-        public async Task<PostDetailResponse> UpdatePost(Guid postId, [FromBody] PostUpdateRequest request)
+        public async Task<PostDetailResponse> UpdatePost(Guid postId, Guid? currentId, [FromBody] PostUpdateRequest request)
         {
             var post = await _postRepository.GetPostById(postId);
             if (post == null)
@@ -198,10 +206,11 @@ namespace SocialNetwork.Application.Services.PostServices
             var result = _mapper.Map<PostDetailResponse>(post); 
             result.Owner = _mapper.Map<AccountPostDetailResponse>(account);
             result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(post.Medias);
+            result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
 
         }
-        public async Task SoftDeletePost(Guid postId)
+        public async Task<Guid?> SoftDeletePost(Guid postId)
         {
             var post = await _postRepository.GetPostById(postId);
             if (post == null)
@@ -209,6 +218,21 @@ namespace SocialNetwork.Application.Services.PostServices
                 throw new NotFoundException($"Post with ID {postId} not found.");
             }
             await _postRepository.SoftDeletePostAsync(postId);
+            return post.AccountId;
+        }
+        public async Task<PagedResponse<PostPersonalListModel>> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)
+        {
+            if (!await _accountRepository.IsAccountIdExist(accountId))
+                throw new NotFoundException($"Account with ID {accountId} does not exist.");
+
+            var (items, total) = await _postRepository.GetPostsByAccountId(accountId, currentId, page, pageSize);
+            return new PagedResponse<PostPersonalListModel>
+            {
+                Items = items,
+                TotalItems = total,
+                Page = page,
+                PageSize = pageSize
+            };
         }
     }
 }

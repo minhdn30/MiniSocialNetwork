@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Data;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -44,5 +45,45 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 await _context.SaveChangesAsync();
             }
         }
+        public async Task<(IEnumerable<PostPersonalListModel> posts, int TotalItems)> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)
+        {
+            var query = _context.Posts
+                .Where(p => p.AccountId == accountId && !p.IsDeleted)
+                .OrderByDescending(p => p.CreatedAt);
+
+            var totalItems = await query.CountAsync();
+
+            var posts = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(p => new PostPersonalListModel
+                {
+                    PostId = p.PostId,
+                    Content = p.Content,
+                    CreatedAt = p.CreatedAt,
+                    Medias = p.Medias
+                        .Select(m => new MediaPostPersonalListModel
+                        {
+                            MediaId = m.MediaId,
+                            MediaUrl = m.MediaUrl,
+                            Type = m.Type
+                        })
+                        .ToList(), 
+                    MediaCount = p.Medias.Count(),
+                    ReactCount = p.Reacts.Count(),
+                    CommentCount = p.Comments.Count(),
+                    IsReactedByCurrentUser = currentId != null && p.Reacts.Any(r => r.AccountId == currentId)
+                })
+                .ToListAsync();
+
+            return (posts, totalItems);
+        }
+        public async Task<int> CountPostsByAccountIdAsync(Guid accountId)
+        {
+            return await _context.Posts
+                .Where(p => p.AccountId == accountId && !p.IsDeleted)
+                .CountAsync();
+        }
+
     }
 }

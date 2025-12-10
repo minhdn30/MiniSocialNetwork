@@ -39,6 +39,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         {
             return await _context.Accounts.FirstOrDefaultAsync(a => a.AccountId == accountId);
         }
+        public async Task<Account?> GetAccountProfileById(Guid accountId)
+        {
+            return await _context.Accounts.FirstOrDefaultAsync(a => a.AccountId == accountId && a.Status == true);
+        }
         public async Task<Account?> GetAccountByEmail(string email)
         {
             return await _context.Accounts.FirstOrDefaultAsync(a => a.Email.ToLower() == email.ToLower());

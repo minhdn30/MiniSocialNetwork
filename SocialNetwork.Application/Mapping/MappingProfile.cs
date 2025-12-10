@@ -33,6 +33,7 @@ namespace SocialNetwork.Application.Mapping
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
             CreateMap<ProfileUpdateRequest, Account>()
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+             CreateMap<Account, ProfileDetailResponse>();
             //Account -> Post mappings
             CreateMap<Account, AccountPostDetailResponse>();
             //Post mappings

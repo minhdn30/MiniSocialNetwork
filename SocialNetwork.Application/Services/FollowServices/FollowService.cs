@@ -1,5 +1,5 @@
 ﻿using AutoMapper;
-using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Domain.Entities;
@@ -25,7 +25,7 @@ namespace SocialNetwork.Application.Services.FollowServices
             _mapper = mapper;
             _accountRepository = accountRepository;
         }
-        public async Task<bool> FollowAsync(Guid followerId, Guid targetId)
+        public async Task<int> FollowAsync(Guid followerId, Guid targetId)
         {
             if (followerId == targetId)
                 throw new BadRequestException("You cannot follow yourself.");
@@ -41,16 +41,16 @@ namespace SocialNetwork.Application.Services.FollowServices
             };
 
             await _followRepository.AddFollowAsync(follow);
-            return true;
+            return await _followRepository.CountFollowersAsync(targetId);
         }
-        public async Task<bool> UnfollowAsync(Guid followerId, Guid targetId)
+        public async Task<int> UnfollowAsync(Guid followerId, Guid targetId)
         {
             var exists = await _followRepository.IsFollowingAsync(followerId, targetId);
             if (!exists)
                 throw new BadRequestException("You are not following this user.");
 
             await _followRepository.RemoveFollowAsync(followerId, targetId);
-            return true;
+            return await _followRepository.CountFollowersAsync(targetId);
         }
         public Task<bool> IsFollowingAsync(Guid followerId, Guid targetId)
         {
