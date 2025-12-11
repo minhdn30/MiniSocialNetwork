@@ -12,7 +12,7 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
     public class PostDetailResponse
     {
         public Guid PostId { get; set; }
-        public AccountPostDetailResponse Owner { get; set; } = null!;
+        public AccountBasicInfoResponse Owner { get; set; } = null!;
         public int Privacy { get; set; }
         public string? Content { get; set; }
         public List<PostMediaDetailResponse> Medias { get; set; } = new();

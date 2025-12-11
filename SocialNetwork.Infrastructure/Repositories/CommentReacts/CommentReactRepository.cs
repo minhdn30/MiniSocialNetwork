@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Infrastructure.Data;
+﻿using Microsoft.EntityFrameworkCore;
+using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,10 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
         public CommentReactRepository(AppDbContext context)
         {
             _context = context;
+        }
+        public async Task<int> CountCommentReactAsync (Guid commentId)
+        {
+            return await _context.CommentReacts.Where(cr => cr.CommentId == commentId).CountAsync();
         }
     }
 }

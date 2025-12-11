@@ -14,9 +14,9 @@ namespace SocialNetwork.Application.Services.PostServices
     public interface IPostService
     {
         Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId);
-        Task<PostDetailResponse> CreatePost([FromBody] PostCreateRequest request);
-        Task<PostDetailResponse> UpdatePost(Guid postId, Guid? currentId, [FromBody] PostUpdateRequest request);
-        Task<Guid?> SoftDeletePost(Guid postId);
+        Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request);
+        Task<PostDetailResponse> UpdatePost(Guid postId, Guid currentId, PostUpdateRequest request);
+        Task<Guid?> SoftDeletePost(Guid postId, Guid currentId, bool isAdmin);
         Task<PagedResponse<PostPersonalListModel>> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize);
 
     }

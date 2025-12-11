@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AuthDTOs;
+using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
 
@@ -82,16 +83,13 @@ namespace SocialNetwork.API.Controllers
                 result.AvatarUrl
             });
         }
-        [HttpPost("logout")]
         [Authorize]
+        [HttpPost("logout")]
         public async Task<IActionResult> Logout()
         {
-            var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (accountIdClaim == null || !Guid.TryParse(accountIdClaim, out var accountId))
-                return Unauthorized();
-
-            await _authService.LogoutAsync(accountId, Response);
-
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+            await _authService.LogoutAsync(accountId.Value, Response);
             return Ok(new { message = "Logged out successfully." });
         }
 

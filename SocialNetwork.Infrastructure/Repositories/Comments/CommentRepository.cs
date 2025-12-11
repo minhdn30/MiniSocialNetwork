@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Infrastructure.Data;
+﻿using SocialNetwork.Domain.Entities;
+using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,16 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         public CommentRepository(AppDbContext context)
         {
             _context = context;
+        }
+        public async Task AddComment(Comment comment)
+        {
+            await _context.Comments.AddAsync(comment);
+            await _context.SaveChangesAsync();
+        }
+        public async Task UpdateComment(Comment comment)
+        {
+            _context.Comments.Update(comment);
+            await _context.SaveChangesAsync();
         }
     }
 }

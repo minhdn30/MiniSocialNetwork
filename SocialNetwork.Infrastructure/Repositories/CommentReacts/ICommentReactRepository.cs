@@ -8,5 +8,6 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
 {
     public interface ICommentReactRepository
     {
+        Task<int> CountCommentReactAsync(Guid commentId);
     }
 }
