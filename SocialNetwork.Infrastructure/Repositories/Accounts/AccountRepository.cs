@@ -37,7 +37,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         }
         public async Task<Account?> GetAccountById(Guid accountId)
         {
-            return await _context.Accounts.FirstOrDefaultAsync(a => a.AccountId == accountId);
+            return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.AccountId == accountId);
         }
         public async Task<Account?> GetAccountProfileById(Guid accountId)
         {
@@ -45,7 +45,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         }
         public async Task<Account?> GetAccountByEmail(string email)
         {
-            return await _context.Accounts.FirstOrDefaultAsync(a => a.Email.ToLower() == email.ToLower());
+            return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.Email.ToLower() == email.ToLower());
         }
         public async Task UpdateAccount(Account account)
         {
@@ -54,7 +54,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         }
         public async Task<Account?> GetAccountByUsername(string username)
         {
-            return await _context.Accounts.FirstOrDefaultAsync(a => a.Username.ToLower() == username.ToLower());
+            return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.Username.ToLower() == username.ToLower());
         }
         public async Task<Account?> GetByRefreshToken(string refreshToken)
         {

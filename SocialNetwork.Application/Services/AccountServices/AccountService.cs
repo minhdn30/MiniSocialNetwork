@@ -35,7 +35,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             _followRepository = followRepository;
             _postRepository = postRepository;
         }
-        public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync([FromQuery] AccountPagingRequest request)
+        public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {
             var (accounts, totalItems) = await _accountRepository.GetAccountsAsync(request.Id, request.Username, request.Email, request.Fullname, request.Phone,
                 request.RoleId, request.Gender, request.Status, request.IsEmailVerified, request.Page, request.PageSize);
@@ -72,7 +72,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             };
             return result;
         }
-        public async Task<AccountDetailResponse> CreateAccount([FromBody] AccountCreateRequest request)
+        public async Task<AccountDetailResponse> CreateAccount(AccountCreateRequest request)
         {
             var usernameExists = await _accountRepository.IsUsernameExist(request.Username);
             if (usernameExists)
@@ -93,7 +93,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             await _accountRepository.AddAccount(account);
             return _mapper.Map<AccountDetailResponse>(account);
         }
-        public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, [FromBody] AccountUpdateRequest request)
+        public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request)
         {
             if (request.RoleId.HasValue && !Enum.IsDefined(typeof(RoleEnum), request.RoleId.Value))
             {
@@ -111,7 +111,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             await _accountRepository.UpdateAccount(account);
             return _mapper.Map<AccountDetailResponse>(account);
         }
-        public async Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, [FromBody] ProfileUpdateRequest request)
+        public async Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request)
         {
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)

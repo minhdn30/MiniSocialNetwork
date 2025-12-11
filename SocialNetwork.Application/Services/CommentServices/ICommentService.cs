@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocialNetwork.Application.DTOs.CommentDTOs;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,5 +9,6 @@ namespace SocialNetwork.Application.Services.CommentServices
 {
     public interface ICommentService
     {
+        Task<CommentResponse> AddCommentAsync(Guid postId, Guid accountId, CommentCreateRequest request);
     }
 }

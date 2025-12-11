@@ -84,6 +84,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Where(p => p.AccountId == accountId && !p.IsDeleted)
                 .CountAsync();
         }
-
+        public async Task<bool> IsPostExist(Guid postId)
+        {
+            return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted);
+        }
     }
 }

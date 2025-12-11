@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using SocialNetwork.API.Hubs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
+using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.FollowServices;
 using System.Security.Claims;
@@ -22,105 +24,55 @@ namespace SocialNetwork.API.Controllers
             _accountService = accountService;
             _hubContext = hubContext;
         }
-        //user
+        [Authorize]
         [HttpPost("{targetId}")]
         public async Task<IActionResult> Follow(Guid targetId)
         {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (userIdClaim == null)
-            {
-                return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            }
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            var followCountAfter = await _followService.FollowAsync(currentId.Value, targetId);
 
-            var followerId = Guid.Parse(userIdClaim);
-            var followCountAfter = await _followService.FollowAsync(followerId, targetId);
-            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { FollowerId = followerId,
+            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId,
                 Action = "follow" , FollowCount = followCountAfter, isFollowing = true});
-
 
             return Ok(new { message = "Followed successfully." });
         }
-        //user
+        [Authorize]
         [HttpDelete("{targetId}")]
         public async Task<IActionResult> Unfollow(Guid targetId)
         {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (userIdClaim == null)
-            {
-                return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            }
-            var followerId = Guid.Parse(userIdClaim);
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            var followCountAfter = await _followService.UnfollowAsync(followerId, targetId);
-            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { FollowerId = followerId,
+            var followCountAfter = await _followService.UnfollowAsync(currentId.Value, targetId);
+            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId,
                 Action = "unfollow" , FollowCount = followCountAfter, isFollowing = false });
 
             return Ok(new { message = "Unfollowed successfully." });
         }
 
         //check follow status when viewing another user's profile
-        //user
+        [Authorize]
         [HttpGet("status/{targetId}")]
         public async Task<IActionResult> FollowStatus(Guid targetId)
         {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (userIdClaim == null)
-            {
-                return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            }
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            var followerId = Guid.Parse(userIdClaim);
-
-            var result = await _followService.IsFollowingAsync(followerId, targetId);
+            var result = await _followService.IsFollowingAsync(currentId.Value, targetId);
 
             return Ok(new { isFollowing = result });
         }
         [HttpGet("followers")]
-        public async Task<IActionResult> GetFollowers([FromQuery] Guid? accountId, [FromQuery] FollowPagingRequest request)
+        public async Task<IActionResult> GetFollowers([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
-            Guid userToQuery;
-
-            if (accountId.HasValue && accountId.Value != Guid.Empty)
-            {
-                // View other people's following list
-                userToQuery = accountId.Value;
-            }
-            else
-            {
-                // Get from token
-                var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (userIdClaim == null)
-                    return Unauthorized(new { message = "Invalid token: no AccountId found." });
-
-                userToQuery = Guid.Parse(userIdClaim);
-            }
-
-            var result = await _followService.GetFollowersAsync(userToQuery, request);
-
+            var result = await _followService.GetFollowersAsync(accountId, request);
             return Ok(result);
         }
         [HttpGet("following")]
-        public async Task<IActionResult> GetFollowing([FromQuery] Guid? accountId, [FromQuery] FollowPagingRequest request)
+        public async Task<IActionResult> GetFollowing([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
-            Guid userToQuery;
-
-            if (accountId.HasValue && accountId.Value != Guid.Empty)
-            {
-                // View other people's following list
-                userToQuery = accountId.Value;
-            }
-            else
-            {
-                // Get from token
-                var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (userIdClaim == null)
-                    return Unauthorized(new { message = "Invalid token: no AccountId found." });
-
-                userToQuery = Guid.Parse(userIdClaim);
-            }
-
-            var result = await _followService.GetFollowingAsync(userToQuery, request);
-
+            var result = await _followService.GetFollowingAsync(accountId, request);
             return Ok(result);
         }
 
