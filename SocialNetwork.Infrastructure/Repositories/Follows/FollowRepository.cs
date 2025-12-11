@@ -57,7 +57,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .ToListAsync();
         }
         //get a list of your followers
-        public async Task<(List<AccountFollowListModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, string? keyword, int page, int pageSize)
+        public async Task<(List<AccountBasicInfoModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
                 .Where(f => f.FollowedId == accountId)
@@ -87,7 +87,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .OrderByDescending(x => x.FollowRecord.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(x => new AccountFollowListModel
+                .Select(x => new AccountBasicInfoModel
                 {
                     AccountId = x.FollowerAccount.AccountId,
                     Username = x.FollowerAccount.Username,
@@ -100,7 +100,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         }
 
         //get a list of people you follow
-        public async Task<(List<AccountFollowListModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, string? keyword, int page, int pageSize)
+        public async Task<(List<AccountBasicInfoModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
                 .Where(f => f.FollowerId == accountId)
@@ -129,7 +129,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .OrderByDescending(x => x.FollowRecord.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(x => new AccountFollowListModel
+                .Select(x => new AccountBasicInfoModel
                 {
                     AccountId = x.FollowedAccount.AccountId,
                     Username = x.FollowedAccount.Username,

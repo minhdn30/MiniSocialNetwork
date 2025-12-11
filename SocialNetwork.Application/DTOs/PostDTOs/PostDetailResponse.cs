@@ -19,6 +19,9 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public bool IsReactedByCurrentUser { get; set; }
+        public int TotalMedias { get; set; } = 0;
+        public int TotalReacts { get; set; } = 0;
+        public int TotalComments { get; set; } = 0;
 
     }
 }

@@ -56,13 +56,13 @@ namespace SocialNetwork.Application.Services.FollowServices
         {
             return _followRepository.IsFollowingAsync(followerId, targetId);
         }
-        public async Task<PagedResponse<AccountFollowListModel>> GetFollowersAsync(Guid accountId, FollowPagingRequest request)
+        public async Task<PagedResponse<AccountBasicInfoModel>> GetFollowersAsync(Guid accountId, FollowPagingRequest request)
         {
             if (!await _accountRepository.IsAccountIdExist(accountId))
                 throw new NotFoundException($"Account with ID {accountId} does not exist.");
             var (items, total) = await _followRepository.GetFollowersAsync(accountId, request.Keyword, request.Page, request.PageSize);
 
-            return new PagedResponse<AccountFollowListModel>
+            return new PagedResponse<AccountBasicInfoModel>
             {
                 Items = items,
                 TotalItems = total,
@@ -70,14 +70,14 @@ namespace SocialNetwork.Application.Services.FollowServices
                 PageSize = request.PageSize
             };
         }
-        public async Task<PagedResponse<AccountFollowListModel>> GetFollowingAsync(Guid accountId, FollowPagingRequest request)
+        public async Task<PagedResponse<AccountBasicInfoModel>> GetFollowingAsync(Guid accountId, FollowPagingRequest request)
         {
             if(!await _accountRepository.IsAccountIdExist(accountId))
                 throw new NotFoundException($"Account with ID {accountId} does not exist.");
 
             var (items, total) = await _followRepository.GetFollowingAsync(accountId, request.Keyword, request.Page, request.PageSize);
 
-            return new PagedResponse<AccountFollowListModel>
+            return new PagedResponse<AccountBasicInfoModel>
             {
                 Items = items,
                 TotalItems = total,

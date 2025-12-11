@@ -143,7 +143,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<ActionResult<ProfileInfoResponse?>> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
         {
-            var account = await _accountRepository.GetAccountById(accountId);
+            var account = await _accountRepository.GetAccountProfileById(accountId);
             if (account == null)
             {
                 throw new NotFoundException($"Account with ID {accountId} not found or inactive.");

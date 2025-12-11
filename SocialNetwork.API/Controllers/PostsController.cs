@@ -72,7 +72,7 @@ namespace SocialNetwork.API.Controllers
         }
         [Authorize]
         [HttpDelete("{postId}")]
-        public async Task<IActionResult> SoftDeletePost(Guid postId)
+        public async Task<IActionResult> SoftDeletePost([FromRoute] Guid postId)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
@@ -110,18 +110,6 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
 
-        //Comment
-        [Authorize]
-        [HttpPost("{postId}/comment")]
-        public async Task<ActionResult<CommentResponse>> AddComment([FromRoute] Guid postId, [FromBody] CommentCreateRequest request)
-        {
-            var currentId = User.GetAccountId();
-            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            var result = await _commentService.AddCommentAsync(postId, currentId.Value, request);
-
-            //send signalR notification to FE
-            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveNewComment", result);
-            return Ok(result);
-        }
+        
     }
 }
