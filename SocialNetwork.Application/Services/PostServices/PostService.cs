@@ -11,6 +11,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
+using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
@@ -29,6 +30,7 @@ namespace SocialNetwork.Application.Services.PostServices
         private readonly IPostRepository _postRepository;
         private readonly IPostMediaRepository _postMediaRepository;
         private readonly IPostReactRepository _postReactRepository;
+        private readonly ICommentRepository _commentRepository;
         private readonly IAccountRepository _accountRepository;
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
@@ -36,6 +38,7 @@ namespace SocialNetwork.Application.Services.PostServices
         public PostService(IPostReactRepository postReactRepository,
                            IPostMediaRepository postMediaRepository,
                            IPostRepository postRepository,
+                           ICommentRepository commentRepository,
                            IAccountRepository accountRepository,
                            ICloudinaryService cloudinaryService,
                            IFileTypeDetector fileTypeDetector,
@@ -44,6 +47,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
             _postReactRepository = postReactRepository;
+            _commentRepository = commentRepository;
             _accountRepository = accountRepository;
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
@@ -57,17 +61,15 @@ namespace SocialNetwork.Application.Services.PostServices
                 throw new NotFoundException($"Post with ID {postId} not found.");
             }
             var result = _mapper.Map<PostDetailResponse>(post);
-            result.Owner = _mapper.Map<AccountPostDetailResponse>(post.Account);
-            result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(post.Medias);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
         }
-        public async Task<PostDetailResponse> CreatePost([FromBody] PostCreateRequest request)
+        public async Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request)
         {
-            var account = await _accountRepository.GetAccountById(request.AccountId);
+            var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
             {
-                throw new BadRequestException($"Account with ID {request.AccountId} not found.");
+                throw new BadRequestException($"Account with ID {accountId} not found.");
             }
             if(request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
             {
@@ -78,9 +80,10 @@ namespace SocialNetwork.Application.Services.PostServices
                 throw new BadRequestException("Post must have content or media files.");
             }
             var post = _mapper.Map<Post>(request);
+            post.AccountId = accountId;
             await _postRepository.AddPost(post);
             var result = _mapper.Map<PostDetailResponse>(post);
-            result.Owner = _mapper.Map<AccountPostDetailResponse>(account);
+            result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
             if (request.MediaFiles != null && request.MediaFiles.Any())
             {
                 var postMedias = new List<PostMedia>();
@@ -124,7 +127,7 @@ namespace SocialNetwork.Application.Services.PostServices
             return result;
         }
   
-        public async Task<PostDetailResponse> UpdatePost(Guid postId, Guid? currentId, [FromBody] PostUpdateRequest request)
+        public async Task<PostDetailResponse> UpdatePost(Guid postId, Guid currentId, PostUpdateRequest request)
         {
             var post = await _postRepository.GetPostById(postId);
             if (post == null)
@@ -134,6 +137,10 @@ namespace SocialNetwork.Application.Services.PostServices
             if (request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
             {
                 throw new BadRequestException("Invalid privacy setting.");
+            }
+            if(post.AccountId != currentId)
+            {
+                throw new ForbiddenException("You are not authorized to update this post.");
             }
             _mapper.Map(request, post);
             post.UpdatedAt = DateTime.UtcNow;
@@ -203,19 +210,24 @@ namespace SocialNetwork.Application.Services.PostServices
 
             await _postRepository.UpdatePost(post);
             var account = await _accountRepository.GetAccountById(post.AccountId);
-            var result = _mapper.Map<PostDetailResponse>(post); 
-            result.Owner = _mapper.Map<AccountPostDetailResponse>(account);
-            result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(post.Medias);
+            var result = _mapper.Map<PostDetailResponse>(post);
+            //can use this for performance improvement
+            //result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
+            //result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
 
         }
-        public async Task<Guid?> SoftDeletePost(Guid postId)
+        public async Task<Guid?> SoftDeletePost(Guid postId, Guid currentId, bool isAdmin)
         {
             var post = await _postRepository.GetPostById(postId);
             if (post == null)
             {
                 throw new NotFoundException($"Post with ID {postId} not found.");
+            }
+            if(post.AccountId != currentId && !isAdmin)
+            {
+                throw new ForbiddenException("You are not authorized to delete this post.");
             }
             await _postRepository.SoftDeletePostAsync(postId);
             return post.AccountId;

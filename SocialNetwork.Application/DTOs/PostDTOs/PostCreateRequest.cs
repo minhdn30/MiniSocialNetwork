@@ -13,7 +13,6 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
 {
     public class PostCreateRequest
     {
-        public Guid AccountId { get; set; }
         public string? Content { get; set; }
         //use int? for optional enum, because FromForm cannot bind nullable enum directly
         public int? Privacy { get; set; }

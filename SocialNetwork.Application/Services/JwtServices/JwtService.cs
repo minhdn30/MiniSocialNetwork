@@ -29,10 +29,12 @@ namespace SocialNetwork.Application.Services.JwtServices
             {
                 new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()),     // account id
                 new Claim(ClaimTypes.Name, account.Username),                            // username
-                new Claim(ClaimTypes.Role, account.Role?.RoleName ?? ""),               // role
+                new Claim(ClaimTypes.Role, account.Role.RoleName),               // role
                 new Claim(JwtRegisteredClaimNames.Email, account.Email),                //email
                 new Claim("fullName", account.FullName ?? ""),                           //fullname
+                new Claim("avatarUrl", account.AvatarUrl ?? ""),
                 new Claim("isVerified", account.IsEmailVerified.ToString())
+
             };
 
             var token = new JwtSecurityToken(

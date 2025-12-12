@@ -72,7 +72,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     MediaCount = p.Medias.Count(),
                     ReactCount = p.Reacts.Count(),
                     CommentCount = p.Comments.Count(),
-                    IsReactedByCurrentUser = currentId != null && p.Reacts.Any(r => r.AccountId == currentId)
+                    IsReactedByCurrentUser = currentId != null && _context.PostReacts.Any(r => r.PostId == p.PostId && r.AccountId == currentId)
                 })
                 .ToListAsync();
 
@@ -84,6 +84,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Where(p => p.AccountId == accountId && !p.IsDeleted)
                 .CountAsync();
         }
-
+        public async Task<bool> IsPostExist(Guid postId)
+        {
+            return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted);
+        }
     }
 }

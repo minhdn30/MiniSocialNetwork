@@ -17,5 +17,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         Task SoftDeletePostAsync(Guid postId);
         Task<(IEnumerable<PostPersonalListModel> posts, int TotalItems)> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize);
         Task<int> CountPostsByAccountIdAsync(Guid accountId);
+        Task<bool> IsPostExist(Guid postId);
     }
 }

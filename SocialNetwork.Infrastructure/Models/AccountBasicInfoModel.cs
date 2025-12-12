@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace SocialNetwork.Infrastructure.Models
 {
-    public class AccountFollowListModel
+    public class AccountBasicInfoModel
     {
         public Guid AccountId { get; set; }
         public string Username { get; set; } = null!;

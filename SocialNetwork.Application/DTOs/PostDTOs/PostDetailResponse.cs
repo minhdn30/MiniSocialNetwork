@@ -12,13 +12,16 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
     public class PostDetailResponse
     {
         public Guid PostId { get; set; }
-        public AccountPostDetailResponse Owner { get; set; } = null!;
+        public AccountBasicInfoResponse Owner { get; set; } = null!;
         public int Privacy { get; set; }
         public string? Content { get; set; }
         public List<PostMediaDetailResponse> Medias { get; set; } = new();
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public bool IsReactedByCurrentUser { get; set; }
+        public int TotalMedias { get; set; } = 0;
+        public int TotalReacts { get; set; } = 0;
+        public int TotalComments { get; set; } = 0;
 
     }
 }

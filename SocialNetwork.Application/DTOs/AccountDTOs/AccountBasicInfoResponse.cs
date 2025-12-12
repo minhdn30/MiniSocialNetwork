@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace SocialNetwork.Application.DTOs.AccountDTOs
 {
-    public class AccountPostDetailResponse
+    public class AccountBasicInfoResponse
     {
         public Guid AccountId { get; set; }
         public string Username { get; set; } = null!;

@@ -1,11 +1,15 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using SocialNetwork.API.Hubs;
+using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
+using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AccountServices;
+using SocialNetwork.Application.Services.CommentServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Infrastructure.Models;
@@ -19,57 +23,62 @@ namespace SocialNetwork.API.Controllers
     {
         private readonly IPostService _postService;
         private readonly IPostReactService _postReactService;
+        private readonly ICommentService _commentService;
         private readonly IHubContext<PostHub> _hubContext;
-        public PostsController(IPostService postService, IPostReactService postReactService, IHubContext<PostHub> hubContext)
+        public PostsController(IPostService postService, IPostReactService postReactService, ICommentService commentService, IHubContext<PostHub> hubContext)
         {
             _postService = postService;
             _postReactService = postReactService;
+            _commentService = commentService;
             _hubContext = hubContext;
         }
         [HttpGet("{postId}")]
         public async Task<ActionResult<PostDetailResponse>> GetPostById([FromRoute] Guid postId)
         {
-            var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            Guid? currentId = null;
-            if (accountIdClaim != null && Guid.TryParse(accountIdClaim, out var parsedId))
-            {
-                currentId = parsedId;
-            }
+            var currentId = User.GetAccountId();
             var result = await _postService.GetPostById(postId, currentId);
             return Ok(result);
         }
+        [Authorize]
         [HttpPost]
         [Consumes("multipart/form-data")]
         public async Task<ActionResult<PostDetailResponse>> CreatePost([FromForm] PostCreateRequest request)
         {
-            var result = await _postService.CreatePost(request);
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _postService.CreatePost(currentId.Value, request);
             if (result.Owner?.AccountId != null)
                 //send signalR notification to FE
-                await _hubContext.Clients.Group($"PostList-{result.Owner.AccountId}").SendAsync("ReceiveNewPost", result);
+                await _hubContext.Clients.Group($"PostList-{currentId.Value}").SendAsync("ReceiveNewPost", result);
 
             return CreatedAtAction(nameof(GetPostById), new { postId = result.PostId }, result);
         }
+        [Authorize]
         [HttpPut("{postId}")]
         [Consumes("multipart/form-data")]
         public async Task<ActionResult<PostDetailResponse>> UpdatePost([FromForm] Guid postId, [FromForm] PostUpdateRequest request)
         {
-            var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            Guid? currentId = null;
-            if (accountIdClaim != null && Guid.TryParse(accountIdClaim, out var parsedId))
-            {
-                currentId = parsedId;
-            }
-            var result = await _postService.UpdatePost(postId, currentId, request);
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _postService.UpdatePost(postId, currentId.Value, request);
             //send signalR notification to FE
             await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveUpdatedPost", result);
-            await _hubContext.Clients.Group($"PostList-{result.Owner.AccountId}").SendAsync("ReceiveUpdatedPost", result);
+            await _hubContext.Clients.Group($"PostList-{currentId.Value}").SendAsync("ReceiveUpdatedPost", result);
 
             return Ok(result);
         }
+        [Authorize]
         [HttpDelete("{postId}")]
-        public async Task<IActionResult> SoftDeletePost(Guid postId)
+        public async Task<IActionResult> SoftDeletePost([FromRoute] Guid postId)
         {
-            var accountId = await _postService.SoftDeletePost(postId);
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var accountId = await _postService.SoftDeletePost(postId, currentId.Value, User.IsAdmin());
             //send signalR notification to FE
             await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveDeletedPost", postId);
             if (accountId != null)
@@ -79,26 +88,18 @@ namespace SocialNetwork.API.Controllers
         [HttpGet("personal/{accountId}")]
         public async Task<ActionResult<PagedResponse<PostPersonalListModel>>> GetPostsByAccountId([FromRoute] Guid accountId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
-            var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            Guid? currentId = null;
-
-            if (accountIdClaim != null && Guid.TryParse(accountIdClaim, out var parsedId))
-            {
-                currentId = parsedId;
-            }
+            var currentId = User.GetAccountId();
             var result = await _postService.GetPostsByAccountId(accountId, currentId, page, pageSize);
             return Ok(result);
         }
         //React
+        [Authorize]
         [HttpPost("{postId}/react")]
         public async Task<IActionResult> ToggleReact([FromRoute] Guid postId)
         {
-            var accountIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (accountIdClaim == null || !Guid.TryParse(accountIdClaim, out var accountId))
-            {
-                return Unauthorized();
-            }
-            var result = await _postReactService.ToggleReact(postId, accountId);
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            var result = await _postReactService.ToggleReactOnPost(postId, currentId.Value);
             await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveReactUpdate", postId, result.ReactCount);
             return Ok(result);
         }
@@ -108,5 +109,7 @@ namespace SocialNetwork.API.Controllers
             var result = await _postReactService.GetAccountsReactOnPostPaged(postId, page, pageSize);
             return Ok(result);
         }
+
+        
     }
 }

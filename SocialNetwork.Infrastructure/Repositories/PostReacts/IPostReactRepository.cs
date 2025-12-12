@@ -13,7 +13,7 @@ namespace SocialNetwork.Infrastructure.Repositories.PostReacts
         Task AddPostReact(PostReact postReact);
         Task RemovePostReact(PostReact postReact);
         Task<int> GetReactCountByPostId(Guid postId);
-        Task<PostReact?> GetUserReacteOnPostAsync(Guid postId, Guid accountId);
+        Task<PostReact?> GetUserReactOnPostAsync(Guid postId, Guid accountId);
         Task<bool> IsCurrentUserReactedOnPostAsync(Guid postId, Guid? currentId);
         Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, int page, int pageSize);
     }

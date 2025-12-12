@@ -13,6 +13,7 @@ using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Services.CommentReactServices;
 using SocialNetwork.Application.Services.CommentServices;
 using SocialNetwork.Application.Services.EmailServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
@@ -79,6 +80,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IPostService, PostService>();
             builder.Services.AddScoped<ICommentService, CommentService>();
             builder.Services.AddScoped<IPostReactService, PostReactService>();
+            builder.Services.AddScoped<ICommentReactService, CommentReactService>();
 
             // Helpers
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
