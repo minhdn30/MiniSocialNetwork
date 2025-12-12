@@ -23,9 +23,9 @@ namespace SocialNetwork.Application.Services.PostReactServices
             _postReactRepository = postReactRepository;
             _mapper = mapper;
         }
-        public async Task<ReactToggleResponse> ToggleReact(Guid postId, Guid accountId)
+        public async Task<ReactToggleResponse> ToggleReactOnPost(Guid postId, Guid accountId)
         {
-            var existingReact = await _postReactRepository.GetUserReacteOnPostAsync(postId, accountId);
+            var existingReact = await _postReactRepository.GetUserReactOnPostAsync(postId, accountId);
             var isReactedByCurrentUser = false;
             if (existingReact != null)
             {

@@ -31,7 +31,7 @@ namespace SocialNetwork.Infrastructure.Repositories.PostReacts
         {
             return await _context.PostReacts.CountAsync(pr => pr.PostId == postId);
         }
-        public async Task<PostReact?> GetUserReacteOnPostAsync(Guid postId, Guid accountId)
+        public async Task<PostReact?> GetUserReactOnPostAsync(Guid postId, Guid accountId)
         {
             return await _context.PostReacts
                 .FirstOrDefaultAsync(pr => pr.PostId == postId && pr.AccountId == accountId);

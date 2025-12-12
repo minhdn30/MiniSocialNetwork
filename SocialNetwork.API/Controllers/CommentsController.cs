@@ -7,6 +7,7 @@ using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
+using SocialNetwork.Application.Services.CommentReactServices;
 using SocialNetwork.Application.Services.CommentServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
@@ -20,11 +21,13 @@ namespace SocialNetwork.API.Controllers
     {
         private readonly IPostService _postService;
         private readonly ICommentService _commentService;
+        private readonly ICommentReactService _commentReactService;
         private readonly IHubContext<PostHub> _hubContext;
-        public CommentsController(IPostService postService, ICommentService commentService, IHubContext<PostHub> hubContext)
+        public CommentsController(IPostService postService, ICommentService commentService, ICommentReactService commentReactService, IHubContext<PostHub> hubContext)
         {
             _postService = postService;
             _commentService = commentService;
+            _commentReactService = commentReactService;
             _hubContext = hubContext;
         }
         //Comment
@@ -67,6 +70,22 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, page, pageSize);
+            return Ok(result);
+        }
+        //React
+        [Authorize]
+        [HttpPost("{commentId}/react")]
+        public async Task<IActionResult> ToggleReactOnComment([FromRoute] Guid commentId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            var result = await _commentReactService.ToggleReactOnComment(commentId, currentId.Value);
+            return Ok(result);
+        }
+        [HttpGet("{commentId}/reacts")]
+        public async Task<ActionResult<PagedResponse<AccountReactListModel>>> GetAccountsReactOnCommentPaged([FromRoute] Guid commentId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var result = await _commentReactService.GetAccountsReactOnCommentPaged(commentId, page, pageSize);
             return Ok(result);
         }
     }

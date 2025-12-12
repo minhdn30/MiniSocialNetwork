@@ -99,7 +99,7 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            var result = await _postReactService.ToggleReact(postId, currentId.Value);
+            var result = await _postReactService.ToggleReactOnPost(postId, currentId.Value);
             await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveReactUpdate", postId, result.ReactCount);
             return Ok(result);
         }

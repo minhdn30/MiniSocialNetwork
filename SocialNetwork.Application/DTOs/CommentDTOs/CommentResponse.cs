@@ -17,5 +17,7 @@ namespace SocialNetwork.Application.DTOs.CommentDTOs
         public Guid? ParentCommentId { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+        public int ReactCount { get; set; } = 0;
+        public int ReplyCount { get; set; } = 0;
     }
 }

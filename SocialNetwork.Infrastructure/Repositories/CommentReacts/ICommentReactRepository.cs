@@ -1,4 +1,6 @@
-﻿using System;
+﻿using SocialNetwork.Domain.Entities;
+using SocialNetwork.Infrastructure.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,5 +11,12 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
     public interface ICommentReactRepository
     {
         Task<int> CountCommentReactAsync(Guid commentId);
+        Task AddCommentReact(CommentReact commentReact);
+        Task RemoveCommentReact(CommentReact commentReact);
+        Task<int> GetReactCountByCommentId(Guid commentId);
+        Task<CommentReact?> GetUserReactOnCommentAsync(Guid commentId, Guid accountId);
+        Task<bool> IsCurrentUserReactedOnCommentAsync(Guid commentId, Guid? currentId);
+        Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnCommentPaged(Guid commentId, int page, int pageSize);
+
     }
 }
