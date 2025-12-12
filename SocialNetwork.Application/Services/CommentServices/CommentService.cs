@@ -46,11 +46,19 @@ namespace SocialNetwork.Application.Services.CommentServices
             }
             if (request.ParentCommentId.HasValue)
             {
-                if(!await _commentRepository.IsCommentCanReply(request.ParentCommentId.Value))
+                var parentId = request.ParentCommentId.Value;
+
+                if (!await _commentRepository.IsCommentExist(parentId) ||
+                    !await _commentRepository.IsCommentCanReply(parentId))
                 {
-                    throw new BadRequestException($"Cannot reply to a reply. Only one level of reply is allowed.");
+                    var message = !await _commentRepository.IsCommentExist(parentId)
+                        ? $"Parent comment with ID {parentId} not found."
+                        : "Cannot reply to a reply. Only one level of reply is allowed.";
+
+                    throw new BadRequestException(message);
                 }
             }
+
             var comment = _mapper.Map<Comment>(request);
             comment.PostId = postId;
             comment.AccountId = accountId;
@@ -76,6 +84,8 @@ namespace SocialNetwork.Application.Services.CommentServices
             _mapper.Map(request, comment);
             await _commentRepository.UpdateComment(comment);
             var result = _mapper.Map<CommentResponse>(comment);
+            result.ReactCount = await _commentReactRepository.CountCommentReactAsync(comment.CommentId);
+            result.ReplyCount = await _commentRepository.CountCommentRepliesAsync(comment.CommentId);
             return result;
         }
         public async Task<Guid?> DeleteCommentAsync(Guid commentId,  Guid accountId, bool isAdmin)
@@ -110,6 +120,7 @@ namespace SocialNetwork.Application.Services.CommentServices
                 PageSize = pageSize
             };
         }
+        //Reacts
 
 
     }

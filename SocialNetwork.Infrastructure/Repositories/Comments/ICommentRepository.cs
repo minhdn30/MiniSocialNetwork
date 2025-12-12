@@ -18,5 +18,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         Task<int> CountCommentsByPostId(Guid postId);
         Task DeleteCommentWithReplies(Guid commentId);
         Task<bool> IsCommentCanReply(Guid commentId);
+        Task<int> CountCommentRepliesAsync(Guid commentId);
     }
 }

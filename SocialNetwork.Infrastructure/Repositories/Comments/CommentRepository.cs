@@ -40,7 +40,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                         FullName = c.Account.FullName,
                         Username = c.Account.Username,
                         AvatarUrl = c.Account.AvatarUrl
-                    },               
+                    },
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,
                     ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId),
@@ -66,7 +66,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         {
             _context.Comments.Update(comment);
             await _context.SaveChangesAsync();
-        }       
+        }
         public async Task<bool> IsCommentExist(Guid commentId)
         {
             return await _context.Comments.AnyAsync(c => c.CommentId == commentId);
@@ -92,6 +92,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         {
             return await _context.Comments.AnyAsync(c => c.CommentId == commentId && c.ParentCommentId == null);
         }
-        
+        public async Task<int> CountCommentRepliesAsync(Guid commentId)
+        {
+            int count = 0;
+            count += await _context.Comments.Where(c => c.ParentCommentId == commentId).CountAsync();
+            return count;
+        }
     }
 }
