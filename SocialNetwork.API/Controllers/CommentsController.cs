@@ -19,13 +19,11 @@ namespace SocialNetwork.API.Controllers
     [ApiController]
     public class CommentsController : ControllerBase
     {
-        private readonly IPostService _postService;
         private readonly ICommentService _commentService;
         private readonly ICommentReactService _commentReactService;
         private readonly IHubContext<PostHub> _hubContext;
-        public CommentsController(IPostService postService, ICommentService commentService, ICommentReactService commentReactService, IHubContext<PostHub> hubContext)
+        public CommentsController(ICommentService commentService, ICommentReactService commentReactService, IHubContext<PostHub> hubContext)
         {
-            _postService = postService;
             _commentService = commentService;
             _commentReactService = commentReactService;
             _hubContext = hubContext;
