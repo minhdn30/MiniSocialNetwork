@@ -50,7 +50,10 @@ namespace SocialNetwork.Domain.Entities
         // Reacts
         public virtual ICollection<PostReact> PostReacts { get; set; } = new List<PostReact>();
         public virtual ICollection<CommentReact> CommentReacts { get; set; } = new List<CommentReact>();
-
+        //chat
+        public virtual ICollection<ConversationMember> Conversations { get; set; } = new List<ConversationMember>();
+        public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
+        public virtual ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();
 
 
     }
