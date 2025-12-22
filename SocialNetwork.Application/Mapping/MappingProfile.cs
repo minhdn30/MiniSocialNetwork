@@ -2,6 +2,8 @@
 using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
+using SocialNetwork.Application.DTOs.ConversationDTOs;
+using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
@@ -70,6 +72,12 @@ namespace SocialNetwork.Application.Mapping
             CreateMap<Comment, CommentResponse>()
                 .ForMember(dest => dest.Owner, opt => opt.MapFrom(src => src.Account))
                 .ForMember(dest => dest.Owner, opt => opt.Ignore());
+
+            //Conversation mappings
+            CreateMap<Conversation, ConversationResponse>();
+
+            //Conversation Member mappings
+            CreateMap<ConversationMember, ConversationMemberResponse>();
         }
     }
 }
