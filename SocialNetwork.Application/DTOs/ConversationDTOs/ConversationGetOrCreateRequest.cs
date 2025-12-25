@@ -10,8 +10,6 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
     public class ConversationGetOrCreateRequest
     {
         [Required]
-        public Guid SenderId { get; set; }
-        [Required]
         public Guid ReceiverId { get; set; }
     }
 }

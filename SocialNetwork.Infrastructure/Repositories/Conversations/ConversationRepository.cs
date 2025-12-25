@@ -24,6 +24,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                             && c.Members.Any(m => m.AccountId == accountId1) 
                             && c.Members.Any(m => m.AccountId == accountId2))
                 .Include(c => c.Members)
+                    .ThenInclude(m => m.Account)
                 .FirstOrDefaultAsync();
         }
         public async Task AddConversationAsync(Conversation conversation)
@@ -31,5 +32,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             _context.Conversations.Add(conversation);
             await _context.SaveChangesAsync();
         } 
+        
     }
 }

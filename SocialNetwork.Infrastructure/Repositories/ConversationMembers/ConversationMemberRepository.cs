@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Domain.Entities;
+﻿using Microsoft.EntityFrameworkCore;
+using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -24,6 +25,25 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
         {
             await _context.ConversationMembers.AddRangeAsync(members);
             await _context.SaveChangesAsync();
+        }
+        public async Task UpdateConversationMember(ConversationMember member)
+        {
+            _context.ConversationMembers.Update(member);
+            await _context.SaveChangesAsync();
+        }
+        public async Task<bool> IsMemberOfConversation(Guid conversationId, Guid accountId)
+        {
+            return await _context.ConversationMembers
+                .AnyAsync(cm => cm.ConversationId == conversationId
+                                && cm.AccountId == accountId
+                                && !cm.HasLeft);
+        }
+        public async Task<ConversationMember?> GetConversationMemberAsync(Guid conversationId, Guid accountId)
+        {
+            return await _context.ConversationMembers
+                .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId
+                                           && cm.AccountId == accountId 
+                                           && !cm.HasLeft);
         }
     }
 }
