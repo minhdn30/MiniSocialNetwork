@@ -58,6 +58,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         AccountId = senderId,
                         ClearedAt = null,
                         IsDeleted = false
+                        
                     },
                     new ConversationMember
                     {
@@ -69,7 +70,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     }
                 };
             await _conversationMemberRepository.AddConversationMembers(members);
-            return _mapper.Map<ConversationResponse>(conversation);
+            var result = _mapper.Map<ConversationResponse>(conversation);
+            return result;
 
         }
     }

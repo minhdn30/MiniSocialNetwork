@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Domain.Entities;
+﻿using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
@@ -11,7 +12,7 @@ namespace SocialNetwork.Application.DTOs.ConversationMemberDTOs
     public class ConversationMemberResponse
     {
         public Guid ConversationId { get; set; }
-        public Guid AccountId { get; set; }
+        public AccountBasicInfoResponse Account { get; set; } = null!;
         public string? Nickname { get; set; }
         public DateTime JoinedAt { get; set; }
         public bool IsAdmin { get; set; }
