@@ -32,6 +32,15 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             _context.Conversations.Add(conversation);
             await _context.SaveChangesAsync();
         } 
-        
+        public async Task<bool> IsPrivateConversationExistBetweenTwoAccounts(Guid accountId1, Guid accountId2)
+        {
+            return await _context.Conversations.AnyAsync(c =>
+    !           c.IsDeleted &&
+                !c.IsGroup &&
+                c.Members.Count == 2 &&
+                c.Members.Any(m => m.AccountId == accountId1) &&
+                c.Members.Any(m => m.AccountId == accountId2)
+            );
+        }
     }
 }

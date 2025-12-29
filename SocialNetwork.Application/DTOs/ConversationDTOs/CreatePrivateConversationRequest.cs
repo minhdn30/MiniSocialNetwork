@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace SocialNetwork.Application.DTOs.ConversationDTOs
 {
-    public class ConversationGetOrCreateRequest
+    public class CreatePrivateConversationRequest
     {
         [Required]
-        public Guid ReceiverId { get; set; }
+        public Guid OtherId { get; set; }
     }
 }

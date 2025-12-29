@@ -26,19 +26,25 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             _accountRepository = accountRepository;
             _mapper = mapper;
         }
-        public async Task UpdateConversationMember(Guid conversationId, Guid currentId, ConversationMemberUpdateRequest request)
+        public async Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request)
         {
             if(! await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
                 throw new ForbiddenException("You are not a member of this conversation.");
             var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, request.AccountId);
             if (member == null)
-            {
                 throw new BadRequestException($"Account with ID {request.AccountId} is not a member of this conversation.");
-            }
             if(request.Nickname != null)
                 member.Nickname = request.Nickname.Trim();
-            if (request.IsMuted.HasValue)
-                member.IsMuted = request.IsMuted.Value;
+            await _conversationMemberRepository.UpdateConversationMember(member);
+        }
+        public async Task SoftDeleteChatHistory(Guid conversationId, Guid currentId)
+        {
+            var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (member == null)
+                throw new ForbiddenException($"Account with ID {currentId} is not a member of this conversation.");
+            member.IsDeleted = true;
+            member.ClearedAt = DateTime.UtcNow;
+            await _conversationMemberRepository.UpdateConversationMember(member);
         }
     }
 }
