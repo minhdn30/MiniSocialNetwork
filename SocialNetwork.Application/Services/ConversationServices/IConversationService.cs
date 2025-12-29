@@ -9,6 +9,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
 {
     public interface IConversationService
     {
-        Task<ConversationResponse> GetOrCreateConversationAsync(Guid senderId, Guid receiverId);
+        Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId);
+        Task<ConversationResponse> CreatePrivateConversationAsync(Guid currentId, Guid otherId);
     }
 }

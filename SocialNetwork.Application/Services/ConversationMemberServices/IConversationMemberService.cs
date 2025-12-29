@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,5 +9,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 {
     public interface IConversationMemberService
     {
+        Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request);
+        Task SoftDeleteChatHistory(Guid conversationId, Guid currentId);
     }
 }
