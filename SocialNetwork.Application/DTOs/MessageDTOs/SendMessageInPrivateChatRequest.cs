@@ -12,7 +12,6 @@ namespace SocialNetwork.Application.DTOs.MessageDTOs
     {
         public Guid ReceiverId { get; set; }
         public string? Content { get; set; }
-        public MessageTypeEnum MessageType { get; set; }
         public List<IFormFile>? MediaFiles { get; set; }
     }
 }

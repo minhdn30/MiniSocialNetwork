@@ -211,6 +211,8 @@ namespace SocialNetwork.API
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapHub<PostHub>("/postHub");
+            app.MapHub<FollowHub>("/followHub");
+            app.MapHub<ChatHub>("/chatHub");
 
             app.MapControllers();
 

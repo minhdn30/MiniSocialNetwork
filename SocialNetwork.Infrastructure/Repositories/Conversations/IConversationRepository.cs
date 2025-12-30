@@ -12,5 +12,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         Task<Conversation?> GetConversationByTwoAccountIdsAsync(Guid accountId1, Guid accountId2);
         Task AddConversationAsync(Conversation conversation);
         Task<bool> IsPrivateConversationExistBetweenTwoAccounts(Guid accountId1, Guid accountId2);
+        Task<Conversation> CreatePrivateConversationAsync(Guid currentId, Guid otherId);
     }
 }

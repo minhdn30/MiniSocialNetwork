@@ -66,5 +66,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 .ToListAsync();
             return (messages, totalItems);
         }
+        public async Task AddMessageAsync(Message message)
+        {
+            _context.Messages.Add(message);
+            await _context.SaveChangesAsync();
+        }
     }
 }

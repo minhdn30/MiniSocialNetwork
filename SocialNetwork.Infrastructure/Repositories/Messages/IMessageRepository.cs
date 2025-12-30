@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Infrastructure.Models;
+﻿using SocialNetwork.Domain.Entities;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,5 +11,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
     public interface IMessageRepository
     {
         Task<(IEnumerable<MessageBasicModel> msg, int TotalItems)> GetMessagesByConversationId(Guid conversationId, Guid currentId, int page, int pageSize);
+        Task AddMessageAsync(Message message);
     }
 }

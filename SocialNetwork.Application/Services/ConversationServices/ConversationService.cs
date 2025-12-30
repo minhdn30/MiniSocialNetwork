@@ -44,31 +44,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 throw new NotFoundException("One or both accounts do not exist.");
             if(await _conversationRepository.IsPrivateConversationExistBetweenTwoAccounts(currentId, otherId))
                 throw new BadRequestException("A private conversation between these two accounts already exists.");
-            var conversation = new Conversation
-            {
-                ConversationId = Guid.NewGuid(),
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = currentId
-            };
-            await _conversationRepository.AddConversationAsync(conversation);
-            var members = new List<ConversationMember>
-                {
-                    new ConversationMember
-                    {
-                        ConversationId = conversation.ConversationId,
-                        AccountId = currentId,
-                        JoinedAt = DateTime.UtcNow,
-                        IsDeleted = false
-                    },
-                    new ConversationMember
-                    {
-                        ConversationId = conversation.ConversationId,
-                        AccountId = otherId,
-                        JoinedAt = DateTime.UtcNow,
-                        IsDeleted = false
-                    }
-                };
-            await _conversationMemberRepository.AddConversationMembers(members);
+            var conversation = await _conversationRepository.CreatePrivateConversationAsync(currentId, otherId);
             return _mapper.Map<ConversationResponse>(conversation);
         }
     }

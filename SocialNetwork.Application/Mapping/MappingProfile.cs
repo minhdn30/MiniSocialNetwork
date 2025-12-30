@@ -4,6 +4,8 @@ using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.ConversationDTOs;
 using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
+using SocialNetwork.Application.DTOs.MessageDTOs;
+using SocialNetwork.Application.DTOs.MessageMediaDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
@@ -78,6 +80,19 @@ namespace SocialNetwork.Application.Mapping
 
             //Conversation Member mappings
             CreateMap<ConversationMember, ConversationMemberResponse>();
+
+            //Message mappings
+            CreateMap<SendMessageInPrivateChatRequest, Message>()
+                .ForMember(dest => dest.MessageId, opt => opt.MapFrom(_ => Guid.NewGuid()))
+                .ForMember(dest => dest.ConversationId, opt => opt.Ignore())
+                .ForMember(dest => dest.AccountId, opt => opt.Ignore())
+                .ForMember(dest => dest.MessageType, opt => opt.Ignore());
+            CreateMap<Message, SendMessageResponse>()
+                .ForMember(dest => dest.Sender, opt => opt.MapFrom(src => src.Account))
+                .ForMember(dest => dest.Medias, opt => opt.MapFrom(src => src.Medias));
+
+            //Message Media mappings
+            CreateMap<MessageMedia, MessageMediaResponse>();
         }
     }
 }

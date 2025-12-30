@@ -42,5 +42,30 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 c.Members.Any(m => m.AccountId == accountId2)
             );
         }
+        public async Task<Conversation> CreatePrivateConversationAsync(Guid currentId, Guid otherId)
+        {
+            var conversation = new Conversation
+            {
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = currentId
+            };
+            _context.Conversations.Add(conversation);
+            var members = new List<ConversationMember>
+                {
+                    new ConversationMember
+                    {
+                        ConversationId = conversation.ConversationId,
+                        AccountId = currentId
+                    },
+                    new ConversationMember
+                    {
+                        ConversationId = conversation.ConversationId,
+                        AccountId = otherId
+                    }
+                };
+            _context.ConversationMembers.AddRange(members);
+            await _context.SaveChangesAsync();
+            return conversation;
+        }
     }
 }
