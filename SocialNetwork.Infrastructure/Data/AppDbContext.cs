@@ -22,6 +22,10 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<PostReact> PostReacts { get; set; }
         public virtual DbSet<Comment> Comments { get; set; }
         public virtual DbSet<CommentReact> CommentReacts { get; set; }
+        public virtual DbSet<Conversation> Conversations { get; set; }
+        public virtual DbSet<ConversationMember> ConversationMembers { get; set; }
+        public virtual DbSet<Message> Messages { get; set; }
+        public virtual DbSet<MessageMedia> MessageMedias { get; set; }
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -170,6 +174,122 @@ namespace SocialNetwork.Infrastructure.Data
                 .WithMany(a => a.CommentReacts)
                 .HasForeignKey(cr => cr.AccountId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // CONVERSATION
+            // =====================
+            modelBuilder.Entity<Conversation>()
+                .HasKey(c => c.ConversationId);
+
+            // Conversation → Creator (Account)
+            modelBuilder.Entity<Conversation>()
+                .HasOne(c => c.CreatedByAccount)
+                .WithMany(a => a.CreatedConversations)
+                .HasForeignKey(c => c.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Index: sort / filter conversations
+            modelBuilder.Entity<Conversation>()
+                .HasIndex(c => c.CreatedAt);
+
+            modelBuilder.Entity<Conversation>()
+                .HasIndex(c => c.CreatedBy);
+
+            // Conversation → Members
+            modelBuilder.Entity<Conversation>()
+                .HasMany(c => c.Members)
+                .WithOne(m => m.Conversation)
+                .HasForeignKey(m => m.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Conversation → Messages
+            modelBuilder.Entity<Conversation>()
+                .HasMany(c => c.Messages)
+                .WithOne(m => m.Conversation)
+                .HasForeignKey(m => m.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+
+
+            // =====================
+            // CONVERSATION MEMBER
+            // =====================
+            modelBuilder.Entity<ConversationMember>()
+                .HasKey(cm => new { cm.ConversationId, cm.AccountId });
+
+            // Index: get conversations by account
+            modelBuilder.Entity<ConversationMember>()
+                .HasIndex(cm => cm.AccountId);
+
+            // Index: get members by conversation
+            modelBuilder.Entity<ConversationMember>()
+                .HasIndex(cm => cm.ConversationId);
+
+            // ConversationMember → Account
+            modelBuilder.Entity<ConversationMember>()
+                .HasOne(cm => cm.Account)
+                .WithMany(a => a.Conversations)
+                .HasForeignKey(cm => cm.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ConversationMember → Conversation
+            modelBuilder.Entity<ConversationMember>()
+                .HasOne(cm => cm.Conversation)
+                .WithMany(c => c.Members)
+                .HasForeignKey(cm => cm.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+
+
+            // =====================
+            // MESSAGE
+            // =====================
+            modelBuilder.Entity<Message>()
+                .HasKey(m => m.MessageId);
+
+            // MOST IMPORTANT index for chat message loading
+            modelBuilder.Entity<Message>()
+                .HasIndex(m => new { m.ConversationId, m.SentAt });
+
+            // Index for sender-based filtering / audit
+            modelBuilder.Entity<Message>()
+                .HasIndex(m => m.AccountId);
+
+            // Message → Conversation
+            modelBuilder.Entity<Message>()
+                .HasOne(m => m.Conversation)
+                .WithMany(c => c.Messages)
+                .HasForeignKey(m => m.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Message → Account (Sender)
+            modelBuilder.Entity<Message>()
+                .HasOne(m => m.Account)
+                .WithMany(a => a.Messages)
+                .HasForeignKey(m => m.AccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+
+
+            // =====================
+            // MESSAGE MEDIA
+            // =====================
+            modelBuilder.Entity<MessageMedia>()
+                .HasKey(mm => mm.MessageMediaId);
+
+            // Index: load media by message
+            modelBuilder.Entity<MessageMedia>()
+                .HasIndex(mm => mm.MessageId);
+
+            modelBuilder.Entity<MessageMedia>()
+                .HasOne(mm => mm.Message)
+                .WithMany(m => m.Medias)
+                .HasForeignKey(mm => mm.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+
+
+
         }
 
     }

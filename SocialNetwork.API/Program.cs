@@ -15,18 +15,26 @@ using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Application.Services.CommentReactServices;
 using SocialNetwork.Application.Services.CommentServices;
+using SocialNetwork.Application.Services.ConversationMemberServices;
+using SocialNetwork.Application.Services.ConversationServices;
 using SocialNetwork.Application.Services.EmailServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
 using SocialNetwork.Application.Services.FollowServices;
 using SocialNetwork.Application.Services.JwtServices;
+using SocialNetwork.Application.Services.MessageMediaServices;
+using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
+using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
+using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Infrastructure.Repositories.MessageMedias;
+using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
@@ -66,6 +74,11 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IPostMediaRepository, PostMediaRepository>();
             builder.Services.AddScoped<IPostReactRepository, PostReactRepository>();
             builder.Services.AddScoped<ICommentReactRepository, CommentReactRepository>();
+            builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
+            builder.Services.AddScoped<IConversationMemberRepository, ConversationMemberRepository>();
+            builder.Services.AddScoped<IMessageRepository, MessageRepository>();
+            builder.Services.AddScoped<IMessageMediaRepository, MessageMediaRepository>();
+
 
 
             // Services
@@ -81,6 +94,11 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<ICommentService, CommentService>();
             builder.Services.AddScoped<IPostReactService, PostReactService>();
             builder.Services.AddScoped<ICommentReactService, CommentReactService>();
+
+            builder.Services.AddScoped<IConversationService, ConversationService>();
+            builder.Services.AddScoped<IConversationMemberService, ConversationMemberService>();
+            builder.Services.AddScoped<IMessageService, MessageService>();
+            builder.Services.AddScoped<IMessageMediaService, MessageMediaService>();
 
             // Helpers
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
@@ -193,6 +211,8 @@ namespace SocialNetwork.API
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapHub<PostHub>("/postHub");
+            app.MapHub<FollowHub>("/followHub");
+            app.MapHub<ChatHub>("/chatHub");
 
             app.MapControllers();
 
