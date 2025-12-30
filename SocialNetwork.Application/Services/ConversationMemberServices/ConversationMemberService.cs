@@ -44,7 +44,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
                 throw new ForbiddenException($"Account with ID {currentId} is not a member of this conversation.");
             member.IsDeleted = true;
             member.ClearedAt = DateTime.UtcNow;
-            await _conversationMemberRepository.UpdateConversationMember(member);
+              await _conversationMemberRepository.UpdateConversationMember(member);
         }
     }
 }
