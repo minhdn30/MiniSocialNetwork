@@ -12,5 +12,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
     {
         Task<(IEnumerable<MessageBasicModel> msg, int TotalItems)> GetMessagesByConversationId(Guid conversationId, Guid currentId, int page, int pageSize);
         Task AddMessageAsync(Message message);
+        Task<bool> IsMessageNewer(Guid newMessageId, Guid? lastSeenMessageId);
+        Task<int> CountUnreadMessagesAsync(Guid conversationId, Guid currentId, DateTime? lastSeenAt);
     }
 }

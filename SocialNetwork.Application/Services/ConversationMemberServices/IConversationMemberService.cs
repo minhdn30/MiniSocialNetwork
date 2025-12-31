@@ -11,5 +11,6 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
     {
         Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request);
         Task SoftDeleteChatHistory(Guid conversationId, Guid currentId);
+        Task MarkSeenAsync(Guid conversationId, Guid currentId, Guid newMessageId);
     }
 }

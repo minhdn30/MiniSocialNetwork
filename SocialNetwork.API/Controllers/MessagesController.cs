@@ -18,14 +18,14 @@ namespace SocialNetwork.API.Controllers
         private readonly IMessageService _messageService;
         private readonly IConversationService _conversationService;
         private readonly IConversationMemberService _conversationMemberService;
-        private readonly IHubContext<ChatHub> _hubContext;
+        private readonly IHubContext<ChatHub> _chatHubContext;
         public MessagesController(IMessageService messageService, IConversationService conversationService, 
-            IConversationMemberService conversationMemberService, IHubContext<ChatHub> hubContext)
+            IConversationMemberService conversationMemberService, IHubContext<ChatHub> chatHubContext)
         {
             _messageService = messageService;
             _conversationService = conversationService;
             _conversationMemberService = conversationMemberService;
-            _hubContext = hubContext;
+            _chatHubContext = chatHubContext;
         }
         [Authorize]
         [HttpGet("{conversationId}")]
@@ -47,7 +47,7 @@ namespace SocialNetwork.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
             var result = await _messageService.SendMessageInPrivateChatAsync(senderId.Value, request);
             //send signalR notification to FE
-            await _hubContext.Clients.User(request.ReceiverId.ToString()).SendAsync("ReceiveNewMessage", result);
+            await _chatHubContext.Clients.Group(result.ConversationId.ToString()).SendAsync("ReceiveNewMessage", result);
             return Ok(result);
         }
     }
