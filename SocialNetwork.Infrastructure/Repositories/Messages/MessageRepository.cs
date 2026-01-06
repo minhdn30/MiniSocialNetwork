@@ -71,5 +71,38 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
             _context.Messages.Add(message);
             await _context.SaveChangesAsync();
         }
+        public async Task<bool> IsMessageNewer(Guid newMessageId, Guid? lastSeenMessageId)
+        {
+            if (lastSeenMessageId == null)
+                return true;
+
+            var times = await _context.Messages
+                .Where(m => m.MessageId == newMessageId || m.MessageId == lastSeenMessageId)
+                .Select(m => new { m.MessageId, m.SentAt })
+                .ToListAsync();
+
+            if (times.Count < 2)
+                return false;
+
+            var newTime = times.First(m => m.MessageId == newMessageId).SentAt;
+            var oldTime = times.First(m => m.MessageId == lastSeenMessageId).SentAt;
+
+            return newTime > oldTime;
+        }
+        public async Task<int> CountUnreadMessagesAsync(Guid conversationId, Guid currentId, DateTime? lastSeenAt)
+        {
+            var query = _context.Messages
+                .AsNoTracking()
+                .Where(m =>
+                    m.ConversationId == conversationId &&
+                    m.AccountId != currentId);
+            if (lastSeenAt.HasValue)
+            {
+                query = query.Where(m => m.SentAt > lastSeenAt.Value);
+            }
+            return await query.CountAsync();
+        }
+
+
     }
 }

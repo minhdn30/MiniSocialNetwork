@@ -3,6 +3,7 @@ using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
+using SocialNetwork.Infrastructure.Repositories.Messages;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,13 +18,15 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
         private readonly IConversationRepository _conversationRepository;
         private readonly IConversationMemberRepository _conversationMemberRepository;
         private readonly IAccountRepository _accountRepository;
+        private readonly IMessageRepository _messageRepository;
         private readonly IMapper _mapper;
         public ConversationMemberService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
-            IAccountRepository accountRepository1, IMapper mapper, IAccountRepository accountRepository)
+            IAccountRepository accountRepository1, IMapper mapper, IAccountRepository accountRepository, IMessageRepository messageRepository)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
             _accountRepository = accountRepository;
+            _messageRepository = messageRepository;
             _mapper = mapper;
         }
         public async Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request)
@@ -42,9 +45,19 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
             if (member == null)
                 throw new ForbiddenException($"Account with ID {currentId} is not a member of this conversation.");
-            member.IsDeleted = true;
             member.ClearedAt = DateTime.UtcNow;
-              await _conversationMemberRepository.UpdateConversationMember(member);
+            await _conversationMemberRepository.UpdateConversationMember(member);
+        }
+        public async Task MarkSeenAsync(Guid conversationId, Guid currentId, Guid newMessageId)
+        {
+            var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (member == null)
+                throw new ForbiddenException($"Account with ID {currentId} is not a member of this conversation.");
+            if(member.LastSeenMessageId == null || await _messageRepository.IsMessageNewer(newMessageId, member.LastSeenMessageId.Value))
+            {
+                member.LastSeenMessageId = newMessageId;
+                await _conversationMemberRepository.UpdateConversationMember(member);
+            }        
         }
     }
 }
