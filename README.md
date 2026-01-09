@@ -9,16 +9,17 @@ A mini social network project built with **ASP.NET Core 8 (API)** and **ReactJS*
 - Realtime chat (private & group)
 - Posts with images & videos
 - Stories with privacy settings
+- Follow and unfollow users
 - Group management (admin, moderator, members)
 - Blocking and reporting system
 
 ---
 
 ## 🛠️ Tech Stack
-- **Backend:** ASP.NET Core Web API, Entity Framework Core, SQL Server
+- **Backend:** ASP.NET Core Web API, Entity Framework Core
 - **Frontend:** HTML, CSS, JS
 - **Authentication:** JWT + OAuth2 (Google/Facebook)
-- **Database:** Microsoft SQL Server
+- **Database:** PostgreSQL
 - **Realtime:** SignalR
 
 ---
