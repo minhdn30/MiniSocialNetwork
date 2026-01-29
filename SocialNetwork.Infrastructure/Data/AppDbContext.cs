@@ -74,6 +74,18 @@ namespace SocialNetwork.Infrastructure.Data
             // =====================
             modelBuilder.Entity<Post>()
                 .HasKey(p => p.PostId);
+            //for Post in Feed
+            modelBuilder.Entity<Post>()
+                .HasIndex(p => new { p.IsDeleted, p.Privacy, p.CreatedAt })
+                .HasDatabaseName("IX_Posts_Feed");
+            //for Post in Profile
+            modelBuilder.Entity<Post>()
+                .HasIndex(p => new { p.AccountId, p.CreatedAt })
+                .HasDatabaseName("IX_Posts_Account_CreatedAt");
+
+            modelBuilder.Entity<Post>()
+                .Property(p => p.Content)
+                .HasMaxLength(5000);
 
             // Post → Account
             modelBuilder.Entity<Post>()
@@ -115,6 +127,10 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<PostReact>()
                 .HasKey(r => new { r.PostId, r.AccountId });
 
+            modelBuilder.Entity<PostReact>()
+                .HasIndex(r => r.PostId)
+                .HasDatabaseName("IX_PostReact_PostId");
+
             // PostReact → Account
             modelBuilder.Entity<PostReact>()
                 .HasOne(r => r.Account)
@@ -135,6 +151,10 @@ namespace SocialNetwork.Infrastructure.Data
             // =====================
             modelBuilder.Entity<Comment>()
                 .HasKey(c => c.CommentId);
+
+            modelBuilder.Entity<Comment>()
+                .HasIndex(r => r.PostId)
+                .HasDatabaseName("IX_Comment_PostId");
 
             // Comment → Account
             modelBuilder.Entity<Comment>()
