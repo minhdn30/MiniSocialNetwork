@@ -92,6 +92,35 @@ namespace SocialNetwork.API.Controllers
             var result = await _postService.GetPostsByAccountId(accountId, currentId, page, pageSize);
             return Ok(result);
         }
+        [Authorize]
+        [HttpGet("feed")]
+        public async Task<IActionResult> GetFeedPostsByScore([FromQuery] int limit = 10, 
+            [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorPostId = null)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            var feed = await _postService.GetFeedByScoreAsync(currentId.Value, cursorCreatedAt, cursorPostId, limit);
+            DateTime? nextCursorCreatedAt = null;
+            Guid? nextCursorPostId = null;
+            if (feed.Any())
+            {
+                var lastItem = feed.Last();
+                nextCursorCreatedAt = lastItem.CreatedAt;
+                nextCursorPostId = lastItem.PostId;
+            }
+            return Ok(new
+            {
+                Items = feed,
+                NextCursor = feed.Any()
+                    ? new
+                    {
+                        CreatedAt = nextCursorCreatedAt,
+                        PostId = nextCursorPostId
+                    }
+                    : null
+            });
+        }
         //React
         [Authorize]
         [HttpPost("{postId}/react")]

@@ -13,6 +13,7 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
 {
     public class PostCreateRequest
     {
+        [MaxLength(5000)]
         public string? Content { get; set; }
         //use int? for optional enum, because FromForm cannot bind nullable enum directly
         public int? Privacy { get; set; }

@@ -246,5 +246,12 @@ namespace SocialNetwork.Application.Services.PostServices
                 PageSize = pageSize
             };
         }
+        public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
+        {
+            if(limit <= 0) limit = 10;
+            if(limit > 50) limit = 50;
+            var feed = await _postRepository.GetFeedByScoreAsync(currentId, cursorCreatedAt, cursorPostId, limit);
+            return feed;
+        }
     }
 }

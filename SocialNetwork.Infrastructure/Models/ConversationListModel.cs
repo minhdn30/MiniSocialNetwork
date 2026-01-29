@@ -10,7 +10,8 @@ namespace SocialNetwork.Infrastructure.Models
     {
         public Guid ConversationId { get; set; }
         public string? ConversationName { get; set; }
-
+        public MessageBasicModel? LastMessage { get; set; }
+        public int UnreadMessageCount { get; set; }
 
     }
 }

@@ -7,9 +7,10 @@ using System.Threading.Tasks;
 
 namespace SocialNetwork.Infrastructure.Models
 {
-    public class PostPersonalListModel
+    public class PostFeedModel
     {
         public Guid PostId { get; set; }
+        public AccountBasicInfoModel Author { get; set; } = null!;
         public string? Content { get; set; }
         public PostPrivacyEnum Privacy { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -18,5 +19,7 @@ namespace SocialNetwork.Infrastructure.Models
         public int ReactCount { get; set; }
         public int CommentCount { get; set; }
         public bool IsReactedByCurrentUser { get; set; }
+        public bool IsOwner { get; set; }
+
     }
 }
