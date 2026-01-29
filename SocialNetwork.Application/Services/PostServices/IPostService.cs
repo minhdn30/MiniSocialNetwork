@@ -18,6 +18,7 @@ namespace SocialNetwork.Application.Services.PostServices
         Task<PostDetailResponse> UpdatePost(Guid postId, Guid currentId, PostUpdateRequest request);
         Task<Guid?> SoftDeletePost(Guid postId, Guid currentId, bool isAdmin);
         Task<PagedResponse<PostPersonalListModel>> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize);
+        Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
 
     }
 }
