@@ -48,8 +48,26 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         }
         public async Task<(IEnumerable<PostPersonalListModel> posts, int TotalItems)> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)
         {
+            bool isOwner = currentId == accountId;
+            bool isFollower = false;
+
+            if (currentId.HasValue && !isOwner)
+            {
+                isFollower = await _context.Follows.AnyAsync(f =>
+                    f.FollowerId == currentId &&
+                    f.FollowedId == accountId);
+            }
+
             var query = _context.Posts
-                .Where(p => p.AccountId == accountId && !p.IsDeleted)
+                .Where(p =>
+                    p.AccountId == accountId &&
+                    !p.IsDeleted &&
+                    (
+                        isOwner ||
+                        p.Privacy == PostPrivacyEnum.Public ||
+                        (p.Privacy == PostPrivacyEnum.FollowOnly && isFollower)
+                    )
+                )
                 .OrderByDescending(p => p.CreatedAt);
 
             var totalItems = await query.CountAsync();
@@ -69,16 +87,19 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                             MediaUrl = m.MediaUrl,
                             Type = m.Type
                         })
-                        .ToList(), 
+                        .ToList(),
                     MediaCount = p.Medias.Count(),
                     ReactCount = p.Reacts.Count(),
                     CommentCount = p.Comments.Count(),
-                    IsReactedByCurrentUser = currentId != null && _context.PostReacts.Any(r => r.PostId == p.PostId && r.AccountId == currentId)
+                    IsReactedByCurrentUser =
+                        currentId.HasValue &&
+                        p.Reacts.Any(r => r.AccountId == currentId)
                 })
                 .ToListAsync();
 
             return (posts, totalItems);
         }
+
         public async Task<int> CountPostsByAccountIdAsync(Guid accountId)
         {
             return await _context.Posts
@@ -136,21 +157,67 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         }
         public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {
-            var followedIds =  _context.Follows
+            var now = DateTime.UtcNow;
+
+            var followedIds = _context.Follows
                 .Where(f => f.FollowerId == currentId)
                 .Select(f => f.FollowedId);
+
+            // Base query (Privacy)
             var baseQuery = _context.Posts.AsNoTracking()
-                .Where(p => !p.IsDeleted && 
-                (p.Privacy == PostPrivacyEnum.Public
-                || (p.Privacy == PostPrivacyEnum.FollowOnly && followedIds.Contains(p.AccountId))
-                || p.AccountId == currentId));
-            //cursor-based pagination
+                .Where(p =>
+                    !p.IsDeleted &&
+                    (
+                        p.Privacy == PostPrivacyEnum.Public ||
+                        (p.Privacy == PostPrivacyEnum.FollowOnly && followedIds.Contains(p.AccountId)) ||
+                        p.AccountId == currentId
+                    )
+                );
+
+            // 2Cursor pagination
             if (cursorCreatedAt.HasValue && cursorPostId.HasValue)
             {
-                baseQuery = baseQuery.Where(p => p.CreatedAt < cursorCreatedAt.Value
-                    || (p.CreatedAt == cursorCreatedAt.Value && p.PostId.CompareTo(cursorPostId.Value) < 0));
+                baseQuery = baseQuery.Where(p =>
+                    p.CreatedAt < cursorCreatedAt.Value ||
+                    (p.CreatedAt == cursorCreatedAt.Value && p.PostId.CompareTo(cursorPostId.Value) < 0));
             }
-            var now = DateTime.UtcNow;
+
+            // Get author affinity (interaction decay)
+            var authorAffinity = await (
+                from p in _context.Posts
+                where
+                    p.AccountId != currentId &&
+                    (
+                        p.Reacts.Any(r => r.AccountId == currentId) ||
+                        p.Comments.Any(c => c.AccountId == currentId)
+                    )
+                select new
+                {
+                    AuthorId = p.AccountId,
+                    LastInteractionAt =
+                        p.Reacts
+                            .Where(r => r.AccountId == currentId)
+                            .Select(r => r.CreatedAt)
+                            .Concat(
+                                p.Comments
+                                    .Where(c => c.AccountId == currentId)
+                                    .Select(c => c.CreatedAt)
+                            )
+                            .Max()
+                }
+            )
+            .GroupBy(x => x.AuthorId)
+            .Select(g => new
+            {
+                AuthorId = g.Key,
+                LastInteractionAt = g.Max(x => x.LastInteractionAt)
+            })
+            .ToDictionaryAsync(
+                x => x.AuthorId,
+                x => (now - x.LastInteractionAt).TotalDays
+            );
+
+            //Query + score
             var queryWithScore = baseQuery
                 .Select(p => new
                 {
@@ -158,17 +225,32 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     ReactCount = p.Reacts.Count(),
                     CommentCount = p.Comments.Count(),
                     IsFollowedAuthor = followedIds.Contains(p.AccountId),
-                    FreshnessHours = (int)((DateTime.UtcNow - p.CreatedAt).TotalHours)
+                    FreshnessHours = (now - p.CreatedAt).TotalHours,
+                    HasInteractedAuthor = authorAffinity.ContainsKey(p.AccountId),
+                    InteractionDays =
+                        authorAffinity.ContainsKey(p.AccountId)
+                            ? authorAffinity[p.AccountId]
+                            : (double?)null
                 })
+                .AsEnumerable() // Switch to memory for complex score calculations
                 .Select(x => new
                 {
                     x.Post,
                     x.ReactCount,
                     x.CommentCount,
-                    Score = 
-                    (x.IsFollowedAuthor ? 100 : 0) + x.ReactCount * 2 + x.CommentCount * 3 + (x.FreshnessHours == 0 ? 50 : 50 /x.FreshnessHours)
+                    Score =
+                        (x.IsFollowedAuthor ? 100 : 0)
+                      + (x.HasInteractedAuthor
+                            ? 40 / (1 + x.InteractionDays!.Value)
+                            : 0)
+                      + x.ReactCount * 2
+                      + x.CommentCount * 3
+                      + (x.FreshnessHours < 1 ? 50 : 50 / x.FreshnessHours)
                 });
-            return await queryWithScore.OrderByDescending(x => x.Score)
+
+            // Order + map result
+            return queryWithScore
+                .OrderByDescending(x => x.Score)
                 .ThenByDescending(x => x.Post.CreatedAt)
                 .ThenByDescending(x => x.Post.PostId)
                 .Take(limit)
@@ -185,20 +267,24 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         FullName = x.Post.Account.FullName,
                         AvatarUrl = x.Post.Account.AvatarUrl
                     },
-                    Medias = x.Post.Medias.OrderBy(m => m.CreatedAt)
-                   .Take(3) //preview media
-                   .Select(m => new MediaPostPersonalListModel
-                   {
-                       MediaId = m.MediaId,
-                       MediaUrl = m.MediaUrl,
-                       Type = m.Type
-                   }).ToList(),
+                    Medias = x.Post.Medias
+                        .OrderBy(m => m.CreatedAt)
+                        .Take(3)
+                        .Select(m => new MediaPostPersonalListModel
+                        {
+                            MediaId = m.MediaId,
+                            MediaUrl = m.MediaUrl,
+                            Type = m.Type
+                        })
+                        .ToList(),
                     MediaCount = x.Post.Medias.Count(),
                     ReactCount = x.ReactCount,
                     CommentCount = x.CommentCount,
                     IsReactedByCurrentUser = x.Post.Reacts.Any(r => r.AccountId == currentId),
                     IsOwner = x.Post.AccountId == currentId
-                }).ToListAsync();
+                })
+                .ToList();
         }
+
     }
 }
