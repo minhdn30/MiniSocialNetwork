@@ -132,7 +132,9 @@ namespace SocialNetwork.API
                         var path = context.HttpContext.Request.Path;
 
                         if (!string.IsNullOrEmpty(accessToken) &&
-                            path.StartsWithSegments("/chatHub"))
+                            path.StartsWithSegments("/chatHub") ||
+                            path.StartsWithSegments("/postHub") ||
+                            path.StartsWithSegments("/followHub"))
                         {
                             context.Token = accessToken;
                         }
