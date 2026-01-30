@@ -1,5 +1,6 @@
 ﻿using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,5 +23,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task<Account?> GetByRefreshToken(string refreshToken);
         Task<(List<Account> Items, int TotalItems)> GetAccountsAsync(Guid? id, string? username, string? email,
             string? fullname, string? phone, int? roleId, bool? gender, bool? status, bool? isEmailVerified, int page, int pageSize);
+        Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId);
     }
 }

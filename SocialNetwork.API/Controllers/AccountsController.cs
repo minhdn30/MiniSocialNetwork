@@ -63,6 +63,14 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
 
+        [HttpGet("profile-preview/{accountId}")]
+        public async Task<IActionResult> GetAccountProfilePreview([FromRoute] Guid accountId)
+        {
+            var currentId = User.GetAccountId();
+            var result = await _accountService.GetAccountProfilePreview(accountId, currentId);
+            if(result == null) return NotFound(new {message = "Account not found."});
+            return Ok(result);
+        }
         //test get profile from token
         [Authorize]
         [HttpGet("profile-test")]
@@ -78,5 +86,6 @@ namespace SocialNetwork.API.Controllers
 
             return Ok(new { accountId, username, fullName, avatar, email, role, isVerified });
         }
+
     }
 }
