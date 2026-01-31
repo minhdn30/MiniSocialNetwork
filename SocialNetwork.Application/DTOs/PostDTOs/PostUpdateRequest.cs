@@ -10,7 +10,7 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
 {
     public class PostUpdateRequest
     {
-        [MaxLength(5000)]
+        [MaxLength(2200)]
         public string? Content { get; set; }
         public int? Privacy { get; set; }
         public List<IFormFile>? NewMediaFiles { get; set; }

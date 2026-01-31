@@ -15,6 +15,10 @@ namespace SocialNetwork.Domain.Entities
         [Required]
         public string MediaUrl { get; set; } = null!;
         public MediaTypeEnum Type { get; set; }
+        public float? CropX { get; set; }     // 0 → 1
+        public float? CropY { get; set; }     // 0 → 1
+        public float? CropWidth { get; set; } // 0 → 1
+        public float? CropHeight { get; set; } // 0 → 1
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public virtual Post Post { get; set; } = null!;

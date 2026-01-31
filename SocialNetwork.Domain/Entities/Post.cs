@@ -15,6 +15,7 @@ namespace SocialNetwork.Domain.Entities
         public Guid AccountId { get; set; }
         public string? Content { get; set; }
         public PostPrivacyEnum Privacy { get; set; } = PostPrivacyEnum.Public; // 0=Public, 1=FollowOnly, 2=Private
+        public AspectRatioEnum FeedAspectRatio { get; set; } = AspectRatioEnum.Original; // 0=Original, 1=Square, 2=Portrait, 3=Landscape
         public bool IsDeleted { get; set; } = false;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }

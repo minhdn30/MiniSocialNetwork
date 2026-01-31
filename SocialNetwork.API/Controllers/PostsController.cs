@@ -48,10 +48,6 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
             var result = await _postService.CreatePost(currentId.Value, request);
-            if (result.Owner?.AccountId != null)
-                //send signalR notification to FE
-                await _hubContext.Clients.Group($"PostList-{currentId.Value}").SendAsync("ReceiveNewPost", result);
-
             return CreatedAtAction(nameof(GetPostById), new { postId = result.PostId }, result);
         }
         [Authorize]
