@@ -12,6 +12,7 @@ using SocialNetwork.Infrastructure.Repositories.Accounts;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
@@ -122,34 +123,37 @@ namespace SocialNetwork.Application.Services.AuthServices
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value
             };
         }
-        public async Task<LoginResponse?> RefreshTokenAsync(string refreshToken)
+        public async Task<LoginResponse> RefreshTokenAsync(string refreshToken)
         {
             if (string.IsNullOrEmpty(refreshToken))
                 throw new UnauthorizedException("No refresh token provided.");
 
             var account = await _accountRepository.GetByRefreshToken(refreshToken);
-            if (account == null || account.RefreshTokenExpiryTime < DateTime.UtcNow)
+            if (account == null || account.RefreshTokenExpiryTime <= DateTime.UtcNow)
                 throw new UnauthorizedException("Invalid or expired refresh token.");
 
-            // Tạo access token mới
-            var accessToken = _jwtService.GenerateToken(account);
+            var newAccessToken = _jwtService.GenerateToken(account);
 
-            // Optional: tạo refresh token mới (rotating)
-            var newRefreshToken = Guid.NewGuid().ToString();
+            var newRefreshToken = Convert.ToBase64String(
+                RandomNumberGenerator.GetBytes(64)
+            );
+
             account.RefreshToken = newRefreshToken;
             account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            account.UpdatedAt = DateTime.UtcNow;
 
             await _accountRepository.UpdateAccount(account);
 
             return new LoginResponse
             {
-                AccessToken = accessToken,
+                AccessToken = newAccessToken,
                 RefreshToken = newRefreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
                 Fullname = account.FullName,
                 AvatarUrl = account.AvatarUrl
             };
         }
+
         public async Task LogoutAsync(Guid accountId, HttpResponse response)
         {
             var account = await _accountRepository.GetAccountById(accountId);

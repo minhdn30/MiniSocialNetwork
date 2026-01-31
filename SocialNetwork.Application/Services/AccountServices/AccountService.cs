@@ -8,6 +8,7 @@ using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
+using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Posts;
@@ -167,6 +168,10 @@ namespace SocialNetwork.Application.Services.AccountServices
                 TotalPosts = totalPosts
             };
             return result;
+        }
+        public async Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId)
+        {
+            return await _accountRepository.GetProfilePreviewAsync(targetId, currentId);
         }
     }
 }

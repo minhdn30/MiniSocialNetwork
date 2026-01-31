@@ -132,7 +132,11 @@ namespace SocialNetwork.API
                         var path = context.HttpContext.Request.Path;
 
                         if (!string.IsNullOrEmpty(accessToken) &&
-                            path.StartsWithSegments("/chatHub"))
+                            (
+                                path.StartsWithSegments("/chatHub") ||
+                                path.StartsWithSegments("/postHub") ||
+                                path.StartsWithSegments("/followHub")
+                            ))
                         {
                             context.Token = accessToken;
                         }
@@ -142,16 +146,10 @@ namespace SocialNetwork.API
 
                     OnAuthenticationFailed = context =>
                     {
-                        if (context.Exception is SecurityTokenExpiredException)
-                        {
-                            context.Response.StatusCode = 401;
-                            context.Response.ContentType = "application/json";
-                            var result = JsonSerializer.Serialize(new { message = "Token expired" });
-                            return context.Response.WriteAsync(result);
-                        }
                         return Task.CompletedTask;
                     }
                 };
+
             });
 
 

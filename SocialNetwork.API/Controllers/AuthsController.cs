@@ -60,29 +60,30 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
         [HttpPost("refresh-token")]
-        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        public async Task<IActionResult> RefreshToken()
         {
-            // Lấy refresh token từ cookie nếu FE không gửi body
-            var token = request.RefreshToken ?? Request.Cookies["refreshToken"];
-            var result = await _authService.RefreshTokenAsync(token);
+            var refreshToken = Request.Cookies["refreshToken"];
+            if (string.IsNullOrEmpty(refreshToken))
+                return Unauthorized("No refresh token");
 
-            // Gửi refresh token mới qua cookie
+            var result = await _authService.RefreshTokenAsync(refreshToken);
+
             Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
             {
                 HttpOnly = true,
-                Secure = false,
-                SameSite = SameSiteMode.None,
+                Secure = false,                 // local
+                SameSite = SameSiteMode.Lax,    
                 Expires = result.RefreshTokenExpiryTime
             });
 
             return Ok(new
             {
                 result.AccessToken,
-                result.RefreshToken,
                 result.Fullname,
                 result.AvatarUrl
             });
         }
+
         [Authorize]
         [HttpPost("logout")]
         public async Task<IActionResult> Logout()

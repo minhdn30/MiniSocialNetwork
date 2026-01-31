@@ -1,7 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Data;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -119,6 +121,67 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
 
             return (items, totalItems);
         }
-    
+
+        public async Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId)
+        {
+            var data = await _context.Accounts
+                .AsNoTracking()
+                .Where(a => a.AccountId == targetId)
+                .Select(a => new
+                {
+                    Account = new AccountBasicInfoModel
+                    {
+                        AccountId = a.AccountId,
+                        Username = a.Username,
+                        FullName = a.FullName,
+                        AvatarUrl = a.AvatarUrl
+                    },
+
+                    PostCount = a.Posts.Count(p => !p.IsDeleted),
+                    FollowerCount = a.Followers.Count(),
+                    FollowingCount = a.Followings.Count(),
+
+                    IsCurrentUser = currentId.HasValue && a.AccountId == currentId.Value,
+                    IsFollowedByCurrentUser =
+                        currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
+
+                    RecentMedias = a.Posts
+                        .Where(p =>
+                            !p.IsDeleted &&
+                            p.Privacy == PostPrivacyEnum.Public &&
+                            p.Medias.Any() 
+                        )
+                        .OrderByDescending(p => p.CreatedAt)
+                        .Take(3)
+                        .Select(p => p.Medias
+                            .OrderBy(m => m.CreatedAt)
+                            .Select(m => new PostMediaProfilePreviewModel
+                            {
+                                MediaId = m.MediaId,
+                                PostId = p.PostId,
+                                MediaUrl = m.MediaUrl,
+                                MediaType = m.Type
+                            })
+                            .First()
+                        )
+                        .ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            if (data == null) return null;
+
+            return new AccountProfilePreviewModel
+            {
+                Account = data.Account,
+                PostCount = data.PostCount,
+                FollowerCount = data.FollowerCount,
+                FollowingCount = data.FollowingCount,
+                IsCurrentUser = data.IsCurrentUser,
+                IsFollowedByCurrentUser = data.IsFollowedByCurrentUser || data.IsCurrentUser,
+                RecentPosts = data.RecentMedias
+            };
+        }
+
+
     }
 }

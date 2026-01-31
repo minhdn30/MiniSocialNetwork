@@ -7,6 +7,7 @@ using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Validators;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -20,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
@@ -68,65 +70,107 @@ namespace SocialNetwork.Application.Services.PostServices
         {
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
-            {
                 throw new BadRequestException($"Account with ID {accountId} not found.");
-            }
-            if(request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
-            {
+
+            if (request.Privacy.HasValue &&
+                !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
                 throw new BadRequestException("Invalid privacy setting.");
-            }
-            if(request.Content == null && (request.MediaFiles == null || !request.MediaFiles.Any()))
-            {
+
+            if (request.FeedAspectRatio.HasValue &&
+                !Enum.IsDefined(typeof(AspectRatioEnum), request.FeedAspectRatio.Value))
+                throw new BadRequestException("Invalid feed aspect ratio.");
+
+            if (request.Content == null &&
+                (request.MediaFiles == null || !request.MediaFiles.Any()))
                 throw new BadRequestException("Post must have content or media files.");
+
+            // ---------- Parse MediaCrops ----------
+            List<PostMediaCropInfoRequest> cropInfos = new();
+            if (!string.IsNullOrWhiteSpace(request.MediaCrops))
+            {
+                try
+                {
+                    cropInfos = JsonSerializer.Deserialize<List<PostMediaCropInfoRequest>>(
+                        request.MediaCrops,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        }
+                    ) ?? new();
+                }
+                catch (JsonException ex)
+                {
+                    throw new BadRequestException(
+                        $"Invalid MediaCrops format. Raw value: {request.MediaCrops}"
+                    );
+                }
             }
+
+            // ---------- Create Post ----------
             var post = _mapper.Map<Post>(request);
             post.AccountId = accountId;
+
+            // Default FeedAspectRatio = Square (1:1)
+            post.FeedAspectRatio = request.FeedAspectRatio.HasValue
+                ? (AspectRatioEnum)request.FeedAspectRatio.Value
+                : AspectRatioEnum.Square;
+
             await _postRepository.AddPost(post);
+
             var result = _mapper.Map<PostDetailResponse>(post);
             result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+
+            // ---------- Handle Media ----------
             if (request.MediaFiles != null && request.MediaFiles.Any())
             {
                 var postMedias = new List<PostMedia>();
-                foreach (var media in request.MediaFiles)
+
+                for (int i = 0; i < request.MediaFiles.Count; i++)
                 {
+                    var media = request.MediaFiles[i];
+
                     var detectedType = await _fileTypeDetector.GetMediaTypeAsync(media);
-                    if (detectedType == null) continue; // Skip unsupported media types
-                    string? url = null;
-                    switch(detectedType.Value)
-                    {
-                        case MediaTypeEnum.Image:
-                            url = await _cloudinaryService.UploadImageAsync(media);
-                            break;
-                        case MediaTypeEnum.Video:
-                            url = await _cloudinaryService.UploadVideoAsync(media);
-                            break;
+                    if (detectedType == null) continue;
 
-                        //Audio and Document upload later
-                        default:
-                            continue;
-                    }
-                    ;
-
-                    if (!string.IsNullOrEmpty(url))
+                    string? url = detectedType.Value switch
                     {
-                        postMedias.Add(new PostMedia
-                        {
-                            PostId = post.PostId,
-                            MediaUrl = url,
-                            Type = detectedType.Value
-                        });
+                        MediaTypeEnum.Image => await _cloudinaryService.UploadImageAsync(media),
+                        MediaTypeEnum.Video => await _cloudinaryService.UploadVideoAsync(media),
+                        _ => null
+                    };
+
+                    if (string.IsNullOrEmpty(url)) continue;
+
+                    // Map crop by index
+                    var crop = cropInfos.FirstOrDefault(c => c.Index == i);
+                    if (crop != null)
+                    {
+                        MediaCropValidator.Validate(crop, post.FeedAspectRatio);
                     }
+                    postMedias.Add(new PostMedia
+                    {
+                        PostId = post.PostId,
+                        MediaUrl = url,
+                        Type = detectedType.Value,
+
+                        CropX = crop?.CropX,
+                        CropY = crop?.CropY,
+                        CropWidth = crop?.CropWidth,
+                        CropHeight = crop?.CropHeight
+                    });
                 }
-                if(postMedias.Any())
+
+                if (postMedias.Any())
                 {
                     await _postMediaRepository.AddPostMedias(postMedias);
                     result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(postMedias);
+                    result.TotalMedias = result.Medias.Count;
                 }
             }
-
             return result;
         }
-  
+
+
         public async Task<PostDetailResponse> UpdatePost(Guid postId, Guid currentId, PostUpdateRequest request)
         {
             var post = await _postRepository.GetPostById(postId);

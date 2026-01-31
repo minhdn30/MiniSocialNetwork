@@ -14,6 +14,7 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
         public Guid PostId { get; set; }
         public AccountBasicInfoResponse Owner { get; set; } = null!;
         public int Privacy { get; set; }
+        public int FeedAspectRatio { get; set; }
         public string? Content { get; set; }
         public List<PostMediaDetailResponse> Medias { get; set; } = new();
         public DateTime CreatedAt { get; set; }

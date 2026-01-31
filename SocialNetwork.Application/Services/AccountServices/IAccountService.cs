@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,5 +18,6 @@ namespace SocialNetwork.Application.Services.AccountServices
         Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request);
         Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request);
         Task<ActionResult<ProfileInfoResponse?>> GetAccountProfileByGuid(Guid accountId, Guid? currentId);
+        Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId);
     }
 }
