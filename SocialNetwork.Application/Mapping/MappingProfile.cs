@@ -9,6 +9,7 @@ using SocialNetwork.Application.DTOs.MessageMediaDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,7 +56,6 @@ namespace SocialNetwork.Application.Mapping
                 .ForMember(dest => dest.TotalComments, opt => opt.MapFrom(src => src.Comments.Count(c => c.ParentCommentId == null)))
                 .ForMember(dest => dest.TotalReacts, opt => opt.MapFrom(src => src.Reacts.Count))
                 .ForMember(dest => dest.TotalMedias, opt => opt.MapFrom(src => src.Medias.Count));
-
 
             //Post Media mappings
             CreateMap<PostMediaCreateRequest, PostMedia>();

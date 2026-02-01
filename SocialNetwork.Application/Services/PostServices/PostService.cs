@@ -70,6 +70,16 @@ namespace SocialNetwork.Application.Services.PostServices
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
         }
+        //main get by id for frontend
+        public async Task<PostDetailModel> GetPostDetailByPostId(Guid postId, Guid currentId)
+        {
+            var post = await _postRepository.GetPostDetailByPostId(postId, currentId);
+            if (post == null)
+            {
+                throw new NotFoundException($"Post with ID {postId} not found or has been deleted.");
+            }
+            return post;
+        }
         public async Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request)
         {
             var account = await _accountRepository.GetAccountById(accountId);
@@ -171,6 +181,7 @@ namespace SocialNetwork.Application.Services.PostServices
                     result.TotalMedias = result.Medias.Count;
                 }
             }
+            result.IsOwner = true;
             await _unitOfWork.CommitAsync();
             return result;
         }

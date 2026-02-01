@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Data;
@@ -27,6 +28,64 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Include(p => p.Comments)
                 .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
         }
+        public async Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId)
+        {
+            var isFollower = await _context.Follows.AnyAsync(f =>
+                f.FollowerId == currentId &&
+                _context.Posts.Any(p => p.PostId == postId && p.AccountId == f.FollowedId)
+            );
+
+            var post = await _context.Posts
+                .AsNoTracking()
+                .Where(p =>
+                    p.PostId == postId &&
+                    !p.IsDeleted &&
+                    (
+                        p.AccountId == currentId || // owner
+                        p.Privacy == PostPrivacyEnum.Public ||
+                        (p.Privacy == PostPrivacyEnum.FollowOnly && isFollower)
+                    )
+                )
+                .Select(p => new PostDetailModel
+                {
+                    PostId = p.PostId,
+                    Privacy = (int)p.Privacy,
+                    FeedAspectRatio = (int)p.FeedAspectRatio,
+                    Content = p.Content,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+
+                    Owner = new AccountBasicInfoModel
+                    {
+                        AccountId = p.Account.AccountId,
+                        Username = p.Account.Username,
+                        FullName = p.Account.FullName,
+                        AvatarUrl = p.Account.AvatarUrl
+                    },
+
+                    Medias = p.Medias
+                        .OrderBy(m => m.CreatedAt)
+                        .Select(m => new PostMediaProfilePreviewModel
+                        {
+                            MediaId = m.MediaId,
+                            PostId = m.PostId,
+                            MediaUrl = m.MediaUrl,
+                            MediaType = m.Type
+                        })
+                        .ToList(),
+
+                    TotalMedias = p.Medias.Count(),
+                    TotalReacts = p.Reacts.Count(),
+                    TotalComments = p.Comments.Count(),
+
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
+                    IsOwner = p.AccountId == currentId
+                })
+                .FirstOrDefaultAsync();
+
+            return post;
+        }
+
         public async Task AddPost(Post post)
         {
             await _context.Posts.AddAsync(post);
