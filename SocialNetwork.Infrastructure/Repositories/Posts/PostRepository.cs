@@ -30,7 +30,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         public async Task AddPost(Post post)
         {
             await _context.Posts.AddAsync(post);
-            await _context.SaveChangesAsync();
         }
         public async Task UpdatePost(Post post)
         {
@@ -132,7 +131,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                    PostId = p.PostId,
                    Content = p.Content,
                    Privacy = p.Privacy,
-                   CreatedAt = p.CreatedAt,
+                   FeedAspectRatio = p.FeedAspectRatio,
+                    CreatedAt = p.CreatedAt,
                    Author = new AccountOnFeedModel
                    {
                        AccountId = p.Account.AccountId,
@@ -227,6 +227,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     p.AccountId,
                     p.Content,
                     p.Privacy,
+                    p.FeedAspectRatio,
                     p.CreatedAt,
                     Author = new
                     {
@@ -254,6 +255,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     x.AccountId,
                     x.Content,
                     x.Privacy,
+                    x.FeedAspectRatio,
                     x.CreatedAt,
                     x.Author,
                     Medias = x.Medias.Select(m => new MediaPostPersonalListModel
@@ -288,6 +290,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     PostId = x.PostId,
                     Content = x.Content,
                     Privacy = x.Privacy,
+                    FeedAspectRatio = x.FeedAspectRatio,
                     CreatedAt = x.CreatedAt,
                     Author = new AccountOnFeedModel
                     {

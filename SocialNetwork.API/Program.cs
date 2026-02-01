@@ -38,6 +38,7 @@ using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Text;
 using System.Text.Json;
@@ -78,6 +79,8 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IConversationMemberRepository, ConversationMemberRepository>();
             builder.Services.AddScoped<IMessageRepository, MessageRepository>();
             builder.Services.AddScoped<IMessageMediaRepository, MessageMediaRepository>();
+            builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
 
 
 

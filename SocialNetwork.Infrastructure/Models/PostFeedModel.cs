@@ -13,6 +13,7 @@ namespace SocialNetwork.Infrastructure.Models
         public AccountOnFeedModel Author { get; set; } = null!;
         public string? Content { get; set; }
         public PostPrivacyEnum Privacy { get; set; }
+        public AspectRatioEnum FeedAspectRatio { get; set; }
         public DateTime CreatedAt { get; set; }
         public List<MediaPostPersonalListModel>? Medias { get; set; } = new();
         public int MediaCount { get; set; }
