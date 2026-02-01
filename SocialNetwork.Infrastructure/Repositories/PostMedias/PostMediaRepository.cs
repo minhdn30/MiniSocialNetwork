@@ -34,8 +34,8 @@ namespace SocialNetwork.Infrastructure.Repositories.PostMedias
         public async Task AddPostMedias(IEnumerable<PostMedia> medias)
         {
             await _context.PostMedias.AddRangeAsync(medias);
-            await _context.SaveChangesAsync();
         }
+
         public async Task DeletePostMediasById(Guid postMediaId)
         {
             var media = await _context.PostMedias.FindAsync(postMediaId);

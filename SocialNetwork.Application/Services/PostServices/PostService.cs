@@ -17,6 +17,7 @@ using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,6 +38,7 @@ namespace SocialNetwork.Application.Services.PostServices
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
         private readonly IMapper _mapper;
+        private readonly IUnitOfWork _unitOfWork;
         public PostService(IPostReactRepository postReactRepository,
                            IPostMediaRepository postMediaRepository,
                            IPostRepository postRepository,
@@ -44,7 +46,8 @@ namespace SocialNetwork.Application.Services.PostServices
                            IAccountRepository accountRepository,
                            ICloudinaryService cloudinaryService,
                            IFileTypeDetector fileTypeDetector,
-                           IMapper mapper)
+                           IMapper mapper,
+                           IUnitOfWork unitOfWork)
         {
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
@@ -54,6 +57,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
             _mapper = mapper;
+            _unitOfWork = unitOfWork;
         }
         public async Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId)
         {
@@ -167,6 +171,7 @@ namespace SocialNetwork.Application.Services.PostServices
                     result.TotalMedias = result.Medias.Count;
                 }
             }
+            await _unitOfWork.CommitAsync();
             return result;
         }
 

@@ -90,8 +90,11 @@ namespace SocialNetwork.Application.Validators
 
             if (Math.Abs(actualRatio - expectedRatio) > RATIO_TOLERANCE)
             {
-                throw new BadRequestException(
-                    $"Crop ratio ({actualRatio:F2}) is not compatible with feed aspect ratio {feedAspectRatio}."
+                //throw new BadRequestException(
+                //    $"Crop ratio ({actualRatio:F2}) is not compatible with feed aspect ratio {feedAspectRatio}."
+                //);
+                Console.WriteLine(
+                      $"[Crop Warning] Crop ratio {actualRatio:F2} does not match feed ratio {expectedRatio:F2} ({feedAspectRatio})"
                 );
             }
         }
