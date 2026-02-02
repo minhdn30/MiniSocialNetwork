@@ -15,6 +15,6 @@ namespace SocialNetwork.Infrastructure.Repositories.PostReacts
         Task<int> GetReactCountByPostId(Guid postId);
         Task<PostReact?> GetUserReactOnPostAsync(Guid postId, Guid accountId);
         Task<bool> IsCurrentUserReactedOnPostAsync(Guid postId, Guid? currentId);
-        Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, int page, int pageSize);
+        Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, Guid? currentId, int page, int pageSize);
     }
 }

@@ -15,5 +15,8 @@ namespace SocialNetwork.Application.Services.CommentServices
         Task<CommentResponse> UpdateCommentAsync(Guid commentId, Guid accountId, CommentUpdateRequest request);
         Task<Guid?> DeleteCommentAsync(Guid commentId, Guid accountId, bool isAdmin);
         Task<PagedResponse<CommentWithReplyCountModel>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize);
+        Task<PagedResponse<ReplyCommentModel>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize);
+        Task<CommentResponse?> GetCommentByIdAsync(Guid commentId);
+        Task<int> GetReplyCountAsync(Guid commentId);
     }
 }

@@ -27,7 +27,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
 
             var items = await _context.Comments
                 .Where(c => c.PostId == postId && c.ParentCommentId == null)
-                .OrderBy(c => c.CreatedAt)
+                .OrderByDescending(c => c.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(c => new CommentWithReplyCountModel
@@ -73,7 +73,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         }
         public async Task<int> CountCommentsByPostId(Guid postId)
         {
-            return await _context.Comments.CountAsync(c => c.PostId == postId);
+            //comment (not reply)
+            return await _context.Comments.CountAsync(c => c.PostId == postId && c.ParentCommentId == null);
         }
         public async Task DeleteCommentWithReplies(Guid commentId)
         {
@@ -98,5 +99,41 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
             count += await _context.Comments.Where(c => c.ParentCommentId == commentId).CountAsync();
             return count;
         }
+        public async Task<(IEnumerable<ReplyCommentModel> items, int totalItems)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, int page, int pageSize)
+        {
+            if (page <= 0) page = 1;
+
+            var query = _context.Comments
+                .Where(c => c.ParentCommentId == parentCommentId);
+
+            var totalItems = await query.CountAsync();
+
+            var items = await query
+                .OrderBy(c => c.CreatedAt) // Replies usually ordered ascending
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(c => new ReplyCommentModel
+                {
+                    CommentId = c.CommentId,
+                    PostId = c.PostId,
+                    ParentCommentId = c.ParentCommentId!.Value,
+                    Owner = new AccountBasicInfoModel
+                    {
+                        AccountId = c.Account.AccountId,
+                        FullName = c.Account.FullName,
+                        Username = c.Account.Username,
+                        AvatarUrl = c.Account.AvatarUrl
+                    },
+                    Content = c.Content,
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt,
+                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId),
+                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId)
+                })
+                .ToListAsync();
+
+            return (items, totalItems);
+        }
     }
 }
+

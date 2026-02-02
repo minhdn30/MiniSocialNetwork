@@ -43,25 +43,40 @@ namespace SocialNetwork.Infrastructure.Repositories.PostReacts
             return await _context.PostReacts
                 .AnyAsync(pr => pr.PostId == postId && pr.AccountId == currentId);
         }
-        public async Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, int page, int pageSize)
+        public async Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, Guid? currentId, int page, int pageSize)
         {
-            var query = _context.PostReacts
+            // First: Calculate flags once using projection
+            var baseQuery = _context.PostReacts
                 .Where(r => r.PostId == postId)
-                .Include(r => r.Account);
+                .Select(r => new
+                {
+                    r.AccountId,
+                    r.Account.Username,
+                    r.Account.FullName,
+                    r.Account.AvatarUrl,
+                    r.ReactType,
+                    r.CreatedAt,
+                    IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == r.AccountId),
+                    IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == r.AccountId && f.FollowedId == currentId.Value)
+                });
 
-            var totalItems = await query.CountAsync();
+            var totalItems = await baseQuery.CountAsync();
 
-            var reacts = await query
-                .OrderBy(r => r.CreatedAt)
+            var reacts = await baseQuery
+                .OrderByDescending(x => x.IsFollowing)
+                .ThenByDescending(x => x.IsFollower)
+                .ThenBy(x => x.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(r => new AccountReactListModel
+                .Select(x => new AccountReactListModel
                 {
-                    AccountId = r.AccountId,
-                    Username = r.Account.Username,
-                    FullName = r.Account.FullName,
-                    AvatarUrl = r.Account.AvatarUrl,
-                    ReactType = r.ReactType
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl,
+                    ReactType = x.ReactType,
+                    IsFollowing = x.IsFollowing,
+                    IsFollower = x.IsFollower
                 })
                 .ToListAsync();
 

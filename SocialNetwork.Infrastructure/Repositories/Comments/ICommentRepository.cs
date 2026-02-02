@@ -19,5 +19,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         Task DeleteCommentWithReplies(Guid commentId);
         Task<bool> IsCommentCanReply(Guid commentId);
         Task<int> CountCommentRepliesAsync(Guid commentId);
+        Task<(IEnumerable<ReplyCommentModel> items, int totalItems)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, int page, int pageSize);
+
     }
 }

@@ -19,5 +19,6 @@ namespace SocialNetwork.Application.DTOs.CommentDTOs
         public DateTime? UpdatedAt { get; set; }
         public int ReactCount { get; set; } = 0;
         public int ReplyCount { get; set; } = 0;
+        public int TotalCommentCount { get; set; } = 0;
     }
 }

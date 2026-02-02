@@ -63,7 +63,17 @@ namespace SocialNetwork.Application.Services.CommentServices
             comment.PostId = postId;
             comment.AccountId = accountId;
             await _commentRepository.AddComment(comment);
+            
             var result = _mapper.Map<CommentResponse>(comment);
+            
+            // Populate Owner info for realtime rendering
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account != null)
+            {
+                result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+            }
+
+            result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(postId);
             return result;
         }
         public async Task<CommentResponse> UpdateCommentAsync(Guid commentId, Guid accountId, CommentUpdateRequest request)
@@ -120,8 +130,29 @@ namespace SocialNetwork.Application.Services.CommentServices
                 PageSize = pageSize
             };
         }
-        //Reacts
+        public async Task<PagedResponse<ReplyCommentModel>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize)
+        {
+            if (!await _commentRepository.IsCommentExist(commentId))
+                throw new BadRequestException($"Comment with ID {commentId} not found.");
+            var (items, totalItems) = await _commentRepository.GetRepliesByCommentIdAsync(commentId, currentId, page, pageSize);
 
+            return new PagedResponse<ReplyCommentModel>
+            {
+                Items = items,
+                TotalItems = totalItems,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+        public async Task<CommentResponse?> GetCommentByIdAsync(Guid commentId)
+        {
+            var comment = await _commentRepository.GetCommentById(commentId);
+            return comment != null ? _mapper.Map<CommentResponse>(comment) : null;
+        }
 
+        public async Task<int> GetReplyCountAsync(Guid commentId)
+        {
+            return await _commentRepository.CountCommentRepliesAsync(commentId);
+        }
     }
 }

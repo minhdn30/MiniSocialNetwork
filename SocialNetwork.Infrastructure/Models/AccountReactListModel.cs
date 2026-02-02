@@ -14,5 +14,7 @@ namespace SocialNetwork.Infrastructure.Models
         public string? FullName { get; set; }
         public string? AvatarUrl { get; set; }
         public ReactEnum ReactType { get; set; }
+        public bool IsFollowing { get; set; }
+        public bool IsFollower { get; set; }
     }
 }

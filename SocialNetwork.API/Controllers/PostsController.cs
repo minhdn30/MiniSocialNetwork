@@ -142,7 +142,8 @@ namespace SocialNetwork.API.Controllers
         [HttpGet("{postId}/reacts")]
         public async Task<ActionResult<PagedResponse<AccountReactListModel>>> GetPostReacts(Guid postId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var result = await _postReactService.GetAccountsReactOnPostPaged(postId, page, pageSize);
+            var currentId = User.GetAccountId();
+            var result = await _postReactService.GetAccountsReactOnPostPaged(postId, currentId, page, pageSize);
             return Ok(result);
         }
 

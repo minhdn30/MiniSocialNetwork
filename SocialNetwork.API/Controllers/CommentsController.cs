@@ -37,8 +37,15 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
             var result = await _commentService.AddCommentAsync(postId, currentId.Value, request);
 
-            //send signalR notification to FE
-            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveNewComment", result);
+            int? parentReplyCount = null;
+            if (result.ParentCommentId.HasValue)
+            {
+                parentReplyCount = await _commentService.GetReplyCountAsync(result.ParentCommentId.Value);
+            }
+
+            // Notify post group: new comment object & parent reply count
+            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveNewComment", result, parentReplyCount);
+
             return Ok(result);
         }
         [Authorize]
@@ -63,11 +70,20 @@ namespace SocialNetwork.API.Controllers
             await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveDeletedComment", commentId);
             return NoContent();
         }
+        [Authorize]
         [HttpGet("post/{postId}")]
         public async Task<ActionResult<PagedResponse<CommentWithReplyCountModel>>> GetCommentsByPostId([FromRoute] Guid postId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             var currentId = User.GetAccountId();
             var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, page, pageSize);
+            return Ok(result);
+        }
+        [Authorize]
+        [HttpGet("replies/{commentId}")]
+        public async Task<ActionResult<PagedResponse<CommentWithReplyCountModel>>> GetRepliesByCommentId([FromRoute] Guid commentId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        {
+            var currentId = User.GetAccountId();
+            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, page, pageSize);
             return Ok(result);
         }
         //React
@@ -78,6 +94,14 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
             var result = await _commentReactService.ToggleReactOnComment(commentId, currentId.Value);
+
+            // Notify group about comment/reply react count update
+            var comment = await _commentService.GetCommentByIdAsync(commentId);
+            if (comment != null)
+            {
+                await _hubContext.Clients.Group($"Post-{comment.PostId}").SendAsync("ReceiveCommentReactUpdate", commentId, result.ReactCount);
+            }
+
             return Ok(result);
         }
         [HttpGet("{commentId}/reacts")]
