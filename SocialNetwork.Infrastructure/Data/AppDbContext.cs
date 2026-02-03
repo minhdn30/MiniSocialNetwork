@@ -57,6 +57,10 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Follow>()
                 .HasKey(f => new { f.FollowerId, f.FollowedId });
 
+            // Index for FollowedId to optimize "Who follows me" queries
+            modelBuilder.Entity<Follow>()
+                .HasIndex(f => f.FollowedId);
+
             modelBuilder.Entity<Follow>()
                 .HasOne(f => f.Follower)
                 .WithMany(a => a.Followings)

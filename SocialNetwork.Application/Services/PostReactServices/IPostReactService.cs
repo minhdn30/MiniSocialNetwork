@@ -12,6 +12,6 @@ namespace SocialNetwork.Application.Services.PostReactServices
     public interface IPostReactService
     {
         Task<ReactToggleResponse> ToggleReactOnPost(Guid postId, Guid accountId);
-        Task<PagedResponse<AccountReactListModel>> GetAccountsReactOnPostPaged(Guid postId, int page, int pageSize);
+        Task<PagedResponse<AccountReactListModel>> GetAccountsReactOnPostPaged(Guid postId, Guid? currentId, int page, int pageSize);
     }
 }

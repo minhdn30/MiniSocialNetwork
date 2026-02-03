@@ -5,6 +5,7 @@ using SocialNetwork.Application.DTOs.PostReactDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
+using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using System;
 using System.Collections.Generic;
@@ -17,10 +18,12 @@ namespace SocialNetwork.Application.Services.PostReactServices
     public class PostReactService : IPostReactService
     {
         private readonly IPostReactRepository _postReactRepository;
+        private readonly ICommentRepository _commentRepository;
         private readonly IMapper _mapper;
-        public PostReactService(IPostReactRepository postReactRepository, IMapper mapper)
+        public PostReactService(IPostReactRepository postReactRepository, ICommentRepository commentRepository, IMapper mapper)
         {
             _postReactRepository = postReactRepository;
+            _commentRepository = commentRepository;
             _mapper = mapper;
         }
         public async Task<ReactToggleResponse> ToggleReactOnPost(Guid postId, Guid accountId)
@@ -51,9 +54,9 @@ namespace SocialNetwork.Application.Services.PostReactServices
                 IsReactedByCurrentUser = isReactedByCurrentUser
             };
         }
-        public async Task<PagedResponse<AccountReactListModel>> GetAccountsReactOnPostPaged(Guid postId, int page, int pageSize)
+        public async Task<PagedResponse<AccountReactListModel>> GetAccountsReactOnPostPaged(Guid postId, Guid? currentId, int page, int pageSize)
         {
-            var (reacts, totalItems) = await _postReactRepository.GetAccountsReactOnPostPaged(postId, page, pageSize);
+            var (reacts, totalItems) = await _postReactRepository.GetAccountsReactOnPostPaged(postId, currentId, page, pageSize);
             return new PagedResponse<AccountReactListModel>
             {
                 Items = reacts,

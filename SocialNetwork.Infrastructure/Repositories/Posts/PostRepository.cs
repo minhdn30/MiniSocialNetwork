@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Data;
@@ -27,10 +28,67 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Include(p => p.Comments)
                 .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
         }
+        public async Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId)
+        {
+            var isFollower = await _context.Follows.AnyAsync(f =>
+                f.FollowerId == currentId &&
+                _context.Posts.Any(p => p.PostId == postId && p.AccountId == f.FollowedId)
+            );
+
+            var post = await _context.Posts
+                .AsNoTracking()
+                .Where(p =>
+                    p.PostId == postId &&
+                    !p.IsDeleted &&
+                    (
+                        p.AccountId == currentId || // owner
+                        p.Privacy == PostPrivacyEnum.Public ||
+                        (p.Privacy == PostPrivacyEnum.FollowOnly && isFollower)
+                    )
+                )
+                .Select(p => new PostDetailModel
+                {
+                    PostId = p.PostId,
+                    Privacy = (int)p.Privacy,
+                    FeedAspectRatio = (int)p.FeedAspectRatio,
+                    Content = p.Content,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+
+                    Owner = new AccountBasicInfoModel
+                    {
+                        AccountId = p.Account.AccountId,
+                        Username = p.Account.Username,
+                        FullName = p.Account.FullName,
+                        AvatarUrl = p.Account.AvatarUrl
+                    },
+
+                    Medias = p.Medias
+                        .OrderBy(m => m.CreatedAt)
+                        .Select(m => new PostMediaProfilePreviewModel
+                        {
+                            MediaId = m.MediaId,
+                            PostId = m.PostId,
+                            MediaUrl = m.MediaUrl,
+                            MediaType = m.Type
+                        })
+                        .ToList(),
+
+                    TotalMedias = p.Medias.Count(),
+                    TotalReacts = p.Reacts.Count(),
+                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null),
+
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
+                    IsOwner = p.AccountId == currentId
+                })
+                .FirstOrDefaultAsync();
+
+            return post;
+        }
+
         public async Task AddPost(Post post)
         {
             await _context.Posts.AddAsync(post);
-            await _context.SaveChangesAsync();
         }
         public async Task UpdatePost(Post post)
         {
@@ -110,6 +168,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         {
             return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted);
         }
+        //no use
         public async Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {
             var query = _context.Posts.AsNoTracking()
@@ -132,7 +191,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                    PostId = p.PostId,
                    Content = p.Content,
                    Privacy = p.Privacy,
-                   CreatedAt = p.CreatedAt,
+                   FeedAspectRatio = p.FeedAspectRatio,
+                    CreatedAt = p.CreatedAt,
                    Author = new AccountOnFeedModel
                    {
                        AccountId = p.Account.AccountId,
@@ -157,7 +217,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                    IsOwner = p.AccountId == currentId
                 }).ToListAsync();
         }
-        public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
+        public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt,
+            Guid? cursorPostId, int limit)
         {
             var now = DateTime.UtcNow;
 
@@ -165,7 +226,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Where(f => f.FollowerId == currentId)
                 .Select(f => f.FollowedId);
 
-            // Base query (Privacy)
+            // Base query (privacy)
             var baseQuery = _context.Posts.AsNoTracking()
                 .Where(p =>
                     !p.IsDeleted &&
@@ -181,10 +242,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
             {
                 baseQuery = baseQuery.Where(p =>
                     p.CreatedAt < cursorCreatedAt.Value ||
-                    (p.CreatedAt == cursorCreatedAt.Value && p.PostId.CompareTo(cursorPostId.Value) < 0));
+                    (p.CreatedAt == cursorCreatedAt.Value &&
+                     p.PostId.CompareTo(cursorPostId.Value) < 0));
             }
 
-            // Get author affinity (interaction decay)
+            // Author affinity (interaction decay)
             var authorAffinity = await (
                 from p in _context.Posts
                 where
@@ -219,7 +281,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 x => (now - x.LastInteractionAt).TotalDays
             );
 
-            // Project required fields in SQL (no entity navigation required later)
+            // Projection (SQL)
             var projected = baseQuery
                 .Select(p => new
                 {
@@ -227,7 +289,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     p.AccountId,
                     p.Content,
                     p.Privacy,
+                    p.FeedAspectRatio,
                     p.CreatedAt,
+
                     Author = new
                     {
                         p.Account.AccountId,
@@ -235,45 +299,67 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         p.Account.FullName,
                         p.Account.AvatarUrl
                     },
+
                     Medias = p.Medias
                         .OrderBy(m => m.CreatedAt)
                         .Take(3)
-                        .Select(m => new { m.MediaId, m.MediaUrl, m.Type }),
+                        .Select(m => new
+                        {
+                            m.MediaId,
+                            m.MediaUrl,
+                            m.Type
+                        }),
+
                     MediaCount = p.Medias.Count(),
                     ReactCount = p.Reacts.Count(),
-                    CommentCount = p.Comments.Count(),
+
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null),
+                    ReplyCount = p.Comments.Count(c => c.ParentCommentId != null),
+
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsFollowedAuthor = followedIds.Contains(p.AccountId),
+
                     FreshnessHours = (now - p.CreatedAt).TotalHours
                 })
-                .AsEnumerable() // now safe: everything needed has been selected
+                .AsEnumerable() // safe: everything needed is already selected
                 .Select(x => new
                 {
                     x.PostId,
-                    x.AccountId,
                     x.Content,
                     x.Privacy,
+                    x.FeedAspectRatio,
                     x.CreatedAt,
                     x.Author,
+
                     Medias = x.Medias.Select(m => new MediaPostPersonalListModel
                     {
                         MediaId = m.MediaId,
                         MediaUrl = m.MediaUrl,
                         Type = m.Type
                     }).ToList(),
+
                     x.MediaCount,
                     x.ReactCount,
                     x.CommentCount,
+                    x.ReplyCount,
                     x.IsReactedByCurrentUser,
                     x.IsOwner,
                     x.IsFollowedAuthor,
-                    InteractionDays = authorAffinity.ContainsKey(x.AccountId) ? (double?)authorAffinity[x.AccountId] : null,
+
+                    InteractionDays = authorAffinity.ContainsKey(x.Author.AccountId)
+                        ? (double?)authorAffinity[x.Author.AccountId]
+                        : null,
+
+                    // SCORE
                     Score =
                         (x.IsFollowedAuthor ? 100 : 0)
-                      + (authorAffinity.ContainsKey(x.AccountId) ? 40 / (1 + authorAffinity[x.AccountId]) : 0)
+                      + (authorAffinity.ContainsKey(x.Author.AccountId)
+                            ? 40 / (1 + authorAffinity[x.Author.AccountId])
+                            : 0)
                       + x.ReactCount * 2
-                      + x.CommentCount * 3
+                      + x.CommentCount * 3   // comment
+                      + x.ReplyCount * 1     // reply
                       + (x.FreshnessHours < 1 ? 50 : 50 / x.FreshnessHours)
                 });
 
@@ -288,7 +374,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     PostId = x.PostId,
                     Content = x.Content,
                     Privacy = x.Privacy,
+                    FeedAspectRatio = x.FeedAspectRatio,
                     CreatedAt = x.CreatedAt,
+
                     Author = new AccountOnFeedModel
                     {
                         AccountId = x.Author.AccountId,
@@ -297,6 +385,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         AvatarUrl = x.Author.AvatarUrl,
                         IsFollowedByCurrentUser = x.IsOwner || x.IsFollowedAuthor
                     },
+
                     Medias = x.Medias,
                     MediaCount = x.MediaCount,
                     ReactCount = x.ReactCount,
@@ -306,6 +395,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 })
                 .ToList();
         }
+
 
     }
 }

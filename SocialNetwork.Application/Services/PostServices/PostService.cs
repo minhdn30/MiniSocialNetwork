@@ -17,6 +17,7 @@ using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,6 +38,7 @@ namespace SocialNetwork.Application.Services.PostServices
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
         private readonly IMapper _mapper;
+        private readonly IUnitOfWork _unitOfWork;
         public PostService(IPostReactRepository postReactRepository,
                            IPostMediaRepository postMediaRepository,
                            IPostRepository postRepository,
@@ -44,7 +46,8 @@ namespace SocialNetwork.Application.Services.PostServices
                            IAccountRepository accountRepository,
                            ICloudinaryService cloudinaryService,
                            IFileTypeDetector fileTypeDetector,
-                           IMapper mapper)
+                           IMapper mapper,
+                           IUnitOfWork unitOfWork)
         {
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
@@ -54,6 +57,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
             _mapper = mapper;
+            _unitOfWork = unitOfWork;
         }
         public async Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId)
         {
@@ -65,6 +69,16 @@ namespace SocialNetwork.Application.Services.PostServices
             var result = _mapper.Map<PostDetailResponse>(post);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
+        }
+        //main get by id for frontend
+        public async Task<PostDetailModel> GetPostDetailByPostId(Guid postId, Guid currentId)
+        {
+            var post = await _postRepository.GetPostDetailByPostId(postId, currentId);
+            if (post == null)
+            {
+                throw new NotFoundException($"Post with ID {postId} not found or has been deleted.");
+            }
+            return post;
         }
         public async Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request)
         {
@@ -167,6 +181,8 @@ namespace SocialNetwork.Application.Services.PostServices
                     result.TotalMedias = result.Medias.Count;
                 }
             }
+            result.IsOwner = true;
+            await _unitOfWork.CommitAsync();
             return result;
         }
 
