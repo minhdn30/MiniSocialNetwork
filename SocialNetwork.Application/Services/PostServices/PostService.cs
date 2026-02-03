@@ -278,6 +278,46 @@ namespace SocialNetwork.Application.Services.PostServices
             return result;
 
         }
+        public async Task<PostUpdateContentResponse> UpdatePostContent(Guid postId, Guid currentId, PostUpdateContentRequest request)
+        {
+            var post = await _postRepository.GetPostForUpdateContent(postId);
+            if (post == null)
+            {
+                throw new NotFoundException($"Post with ID {postId} not found.");
+            }
+            if (request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
+            {
+                throw new BadRequestException("Invalid privacy setting.");
+            }
+            if (post.AccountId != currentId)
+            {
+                throw new ForbiddenException("You are not authorized to update this post.");
+            }
+
+            if (request.Content != null) post.Content = request.Content;
+            if (request.Privacy.HasValue)
+            {
+                post.Privacy = (PostPrivacyEnum)request.Privacy.Value;
+            }
+
+            // Check if Post becomes empty
+            if (string.IsNullOrWhiteSpace(post.Content) && (post.Medias == null || !post.Medias.Any()))
+            {
+                 throw new BadRequestException("Post must have content or media files.");
+            }
+
+            post.UpdatedAt = DateTime.UtcNow;
+
+            await _postRepository.UpdatePost(post);
+            
+            return new PostUpdateContentResponse
+            {
+                PostId = post.PostId,
+                Content = post.Content,
+                Privacy = post.Privacy,
+                UpdatedAt = post.UpdatedAt ?? DateTime.UtcNow
+            };
+        }
         public async Task<Guid?> SoftDeletePost(Guid postId, Guid currentId, bool isAdmin)
         {
             var post = await _postRepository.GetPostById(postId);

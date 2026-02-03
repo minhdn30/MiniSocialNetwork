@@ -28,6 +28,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Include(p => p.Comments)
                 .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
         }
+        public async Task<Post?> GetPostForUpdateContent(Guid postId)
+        {
+             return await _context.Posts
+                .Include(p => p.Medias) // Only needed for validation "not empty"
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
+        }
         public async Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId)
         {
             var isFollower = await _context.Follows.AnyAsync(f =>

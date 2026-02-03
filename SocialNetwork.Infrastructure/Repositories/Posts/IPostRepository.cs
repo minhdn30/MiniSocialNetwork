@@ -12,6 +12,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
     public interface IPostRepository
     {
         Task<Post?> GetPostById(Guid postId);
+        Task<Post?> GetPostForUpdateContent(Guid postId);
         //main detail
         Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId);
         Task AddPost(Post post);
