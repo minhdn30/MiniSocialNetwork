@@ -74,6 +74,11 @@ namespace SocialNetwork.Application.Services.CommentServices
             }
 
             result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(postId);
+
+            // Calculate business rules
+            result.CanEdit = true; // Newly created comment by the user
+            result.CanDelete = true; // Owner of the comment can always delete it
+
             return result;
         }
         public async Task<CommentResponse> UpdateCommentAsync(Guid commentId, Guid accountId, CommentUpdateRequest request)
@@ -83,22 +88,38 @@ namespace SocialNetwork.Application.Services.CommentServices
             {
                 throw new BadRequestException($"Comment with ID {commentId} not found.");
             }
-            if(!await _postRepository.IsPostExist(comment.PostId))
-            {
-                throw new BadRequestException($"Post with ID {comment.PostId} not found.");
-            }
+
             if (comment.AccountId != accountId)
             {
                 throw new ForbiddenException("You are not authorized to update this comment.");
             }
-            _mapper.Map(request, comment);
+
+            // Only update content as requested
+            comment.Content = request.Content;
+            comment.UpdatedAt = DateTime.UtcNow;
+
             await _commentRepository.UpdateComment(comment);
+            
             var result = _mapper.Map<CommentResponse>(comment);
+            
+            // Populate essential info for realtime rendering (consistent with AddCommentAsync)
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account != null)
+            {
+                result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+            }
+
             result.ReactCount = await _commentReactRepository.CountCommentReactAsync(comment.CommentId);
             result.ReplyCount = await _commentRepository.CountCommentRepliesAsync(comment.CommentId);
+            result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(comment.PostId);
+            
+            // Calculate business rules
+            result.CanEdit = true;
+            result.CanDelete = true;
+
             return result;
         }
-        public async Task<Guid?> DeleteCommentAsync(Guid commentId,  Guid accountId, bool isAdmin)
+        public async Task<CommentDeleteResult> DeleteCommentAsync(Guid commentId,  Guid accountId, bool isAdmin)
         {
             var comment = await _commentRepository.GetCommentById(commentId);
             if (comment == null)
@@ -113,32 +134,76 @@ namespace SocialNetwork.Application.Services.CommentServices
             {
                 throw new ForbiddenException("You are not authorized to delete this comment.");
             }
+
+            var postId = comment.PostId;
+            var parentId = comment.ParentCommentId;
+
             await _commentRepository.DeleteCommentWithReplies(commentId);
-            return comment.PostId;
+            
+            // Get updated counts logic
+            // User requirement: "totalpostcomment will update when deleting a comment, not a reply"
+            
+            int? totalComments = null;
+            int? parentReplyCount = null;
+
+            if (parentId.HasValue)
+            {
+                // Deleting a reply: Update parent's reply count, but NOT total post count
+                parentReplyCount = await _commentRepository.CountCommentRepliesAsync(parentId.Value);
+            }
+            else
+            {
+                // Deleting a main comment: Update total post count
+                totalComments = await _commentRepository.CountCommentsByPostId(postId);
+            }
+
+            return new CommentDeleteResult
+            {
+                PostId = postId,
+                ParentCommentId = parentId,
+                TotalPostComments = totalComments,
+                ParentReplyCount = parentReplyCount
+            };
         }
-        public async Task<PagedResponse<CommentWithReplyCountModel>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize)
+        public async Task<PagedResponse<CommentResponse>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize)
         {
             if(!await _postRepository.IsPostExist(postId))
                 throw new BadRequestException($"Post with ID {postId} not found.");
             var (items, totalItems) = await _commentRepository.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, page, pageSize);
 
-            return new PagedResponse<CommentWithReplyCountModel>
+            var responseItems = items.Select(item =>
             {
-                Items = items,
+                var response = _mapper.Map<CommentResponse>(item);
+                response.CanEdit = currentId != null && item.Owner.AccountId == currentId;
+                response.CanDelete = currentId != null && (item.Owner.AccountId == currentId || item.PostOwnerId == currentId);
+                return response;
+            }).ToList();
+
+            return new PagedResponse<CommentResponse>
+            {
+                Items = responseItems,
                 TotalItems = totalItems,
                 Page = page,
                 PageSize = pageSize
             };
         }
-        public async Task<PagedResponse<ReplyCommentModel>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize)
+        public async Task<PagedResponse<CommentResponse>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize)
         {
             if (!await _commentRepository.IsCommentExist(commentId))
                 throw new BadRequestException($"Comment with ID {commentId} not found.");
             var (items, totalItems) = await _commentRepository.GetRepliesByCommentIdAsync(commentId, currentId, page, pageSize);
 
-            return new PagedResponse<ReplyCommentModel>
+            var responseItems = items.Select(item =>
             {
-                Items = items,
+                var response = _mapper.Map<CommentResponse>(item);
+                response.CanEdit = currentId != null && item.Owner.AccountId == currentId;
+                response.CanDelete = currentId != null && (item.Owner.AccountId == currentId || item.PostOwnerId == currentId);
+                return response;
+            }).ToList();
+
+            return new PagedResponse<CommentResponse>
+            {
+                Items = responseItems,
                 TotalItems = totalItems,
                 Page = page,
                 PageSize = pageSize

@@ -54,9 +54,12 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
             var result = await _commentService.UpdateCommentAsync(commentId, currentId.Value, request);
-            //send signalR notification to FE
+
+            // Notify post group about the updated comment
             await _hubContext.Clients.Group($"Post-{result.PostId}").SendAsync("ReceiveUpdatedComment", result);
+
             return Ok(result);
         }
         [Authorize]
@@ -65,14 +68,23 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            var postId = await _commentService.DeleteCommentAsync(commentId, currentId.Value, User.IsAdmin());
-            //send signalR notification to FE
-            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveDeletedComment", commentId);
+            var result = await _commentService.DeleteCommentAsync(commentId, currentId.Value, User.IsAdmin());
+            
+            // Send signalR notification to FE with updated counts
+            await _hubContext.Clients.Group($"Post-{result.PostId}").SendAsync(
+                "ReceiveDeletedComment", 
+                commentId, 
+                result.ParentCommentId, 
+                result.TotalPostComments, 
+                result.ParentReplyCount,
+                result.PostId
+            );
+            
             return NoContent();
         }
         [Authorize]
         [HttpGet("post/{postId}")]
-        public async Task<ActionResult<PagedResponse<CommentWithReplyCountModel>>> GetCommentsByPostId([FromRoute] Guid postId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<ActionResult<PagedResponse<CommentResponse>>> GetCommentsByPostId([FromRoute] Guid postId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             var currentId = User.GetAccountId();
             var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, page, pageSize);
@@ -80,7 +92,7 @@ namespace SocialNetwork.API.Controllers
         }
         [Authorize]
         [HttpGet("replies/{commentId}")]
-        public async Task<ActionResult<PagedResponse<CommentWithReplyCountModel>>> GetRepliesByCommentId([FromRoute] Guid commentId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<ActionResult<PagedResponse<CommentResponse>>> GetRepliesByCommentId([FromRoute] Guid commentId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             var currentId = User.GetAccountId();
             var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, page, pageSize);
@@ -104,10 +116,12 @@ namespace SocialNetwork.API.Controllers
 
             return Ok(result);
         }
+        [Authorize]
         [HttpGet("{commentId}/reacts")]
         public async Task<ActionResult<PagedResponse<AccountReactListModel>>> GetAccountsReactOnCommentPaged([FromRoute] Guid commentId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var result = await _commentReactService.GetAccountsReactOnCommentPaged(commentId, page, pageSize);
+            var currentId = User.GetAccountId();
+            var result = await _commentReactService.GetAccountsReactOnCommentPaged(commentId, currentId, page, pageSize);
             return Ok(result);
         }
     }

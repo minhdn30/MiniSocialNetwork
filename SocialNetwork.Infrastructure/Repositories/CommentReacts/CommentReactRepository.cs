@@ -47,25 +47,43 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
             return await _context.CommentReacts
                 .AnyAsync(cr => cr.CommentId == commentId && cr.AccountId == currentId);
         }
-        public async Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnCommentPaged(Guid commentId, int page, int pageSize)
+        public async Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnCommentPaged(Guid commentId, Guid? currentId, int page, int pageSize)
         {
-            var query = _context.CommentReacts
+            var baseQuery = _context.CommentReacts
                 .Where(r => r.CommentId == commentId)
-                .Include(r => r.Account);
-            var totalItems = await query.CountAsync();
-            var reacts = await query
-                .OrderBy(r => r.CreatedAt)
+                .Select(r => new
+                {
+                    r.AccountId,
+                    r.Account.Username,
+                    r.Account.FullName,
+                    r.Account.AvatarUrl,
+                    r.ReactType,
+                    r.CreatedAt,
+                    IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == r.AccountId),
+                    IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == r.AccountId && f.FollowedId == currentId.Value)
+                });
+
+            var totalItems = await baseQuery.CountAsync();
+
+            var reacts = await baseQuery
+                .OrderByDescending(x => currentId.HasValue && x.AccountId == currentId.Value)
+                .ThenByDescending(x => x.IsFollowing)
+                .ThenByDescending(x => x.IsFollower)
+                .ThenBy(x => x.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(r => new AccountReactListModel
+                .Select(x => new AccountReactListModel
                 {
-                    AccountId = r.AccountId,
-                    FullName = r.Account.FullName,
-                    Username = r.Account.Username,
-                    AvatarUrl = r.Account.AvatarUrl,
-                    ReactType = r.ReactType
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl,
+                    ReactType = x.ReactType,
+                    IsFollowing = x.IsFollowing,
+                    IsFollower = x.IsFollower
                 })
                 .ToListAsync();
+
             return (reacts, totalItems);
         }
     }

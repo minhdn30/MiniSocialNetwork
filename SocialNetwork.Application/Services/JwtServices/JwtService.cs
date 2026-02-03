@@ -47,7 +47,7 @@ namespace SocialNetwork.Application.Services.JwtServices
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
-
+        //no use
         public string? ValidateToken(string token)
         {
             if (token == null) return null;
