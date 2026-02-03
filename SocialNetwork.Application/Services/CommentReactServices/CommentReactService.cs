@@ -60,9 +60,9 @@ namespace SocialNetwork.Application.Services.CommentReactServices
                 IsReactedByCurrentUser = isReactedByCurrentUser
             };
         }
-        public async Task<PagedResponse<AccountReactListModel>> GetAccountsReactOnCommentPaged(Guid commentId, int page, int pageSize)
+        public async Task<PagedResponse<AccountReactListModel>> GetAccountsReactOnCommentPaged(Guid commentId, Guid? currentId, int page, int pageSize)
         {
-            var (reacts, totalItems) = await _commentReactRepository.GetAccountsReactOnCommentPaged(commentId, page, pageSize);
+            var (reacts, totalItems) = await _commentReactRepository.GetAccountsReactOnCommentPaged(commentId, currentId, page, pageSize);
             return new PagedResponse<AccountReactListModel>
             {
                 Items = reacts,

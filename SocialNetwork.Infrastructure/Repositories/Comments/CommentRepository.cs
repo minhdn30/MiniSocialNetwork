@@ -25,6 +25,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                 .Where(c => c.PostId == postId && c.ParentCommentId == null)
                 .CountAsync();
 
+            var postOwnerId = await _context.Posts
+                .Where(p => p.PostId == postId)
+                .Select(p => p.AccountId)
+                .FirstOrDefaultAsync();
+
             var items = await _context.Comments
                 .Where(c => c.PostId == postId && c.ParentCommentId == null)
                 .OrderByDescending(c => c.CreatedAt)
@@ -45,7 +50,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                     CreatedAt = c.CreatedAt,
                     ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId),
                     ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId),
-                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId)
+                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId),
+                    PostOwnerId = postOwnerId
                 })
                 .ToListAsync();
 
@@ -108,6 +114,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
 
             var totalItems = await query.CountAsync();
 
+            var postOwnerId = await _context.Comments
+                .Where(c => c.CommentId == parentCommentId)
+                .Select(c => c.Post.AccountId)
+                .FirstOrDefaultAsync();
+
             var items = await query
                 .OrderBy(c => c.CreatedAt) // Replies usually ordered ascending
                 .Skip((page - 1) * pageSize)
@@ -128,7 +139,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt,
                     ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId),
-                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId)
+                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId),
+                    PostOwnerId = postOwnerId
                 })
                 .ToListAsync();
 

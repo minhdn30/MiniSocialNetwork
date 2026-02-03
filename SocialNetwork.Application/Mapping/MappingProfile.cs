@@ -93,6 +93,11 @@ namespace SocialNetwork.Application.Mapping
 
             //Message Media mappings
             CreateMap<MessageMedia, MessageMediaResponse>();
+
+            // Infrastructure model mappings
+            CreateMap<AccountBasicInfoModel, AccountBasicInfoResponse>();
+            CreateMap<CommentWithReplyCountModel, CommentResponse>();
+            CreateMap<ReplyCommentModel, CommentResponse>();
         }
     }
 }

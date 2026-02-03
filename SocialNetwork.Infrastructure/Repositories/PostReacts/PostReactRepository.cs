@@ -63,7 +63,8 @@ namespace SocialNetwork.Infrastructure.Repositories.PostReacts
             var totalItems = await baseQuery.CountAsync();
 
             var reacts = await baseQuery
-                .OrderByDescending(x => x.IsFollowing)
+                .OrderByDescending(x => currentId.HasValue && x.AccountId == currentId.Value)
+                .ThenByDescending(x => x.IsFollowing)
                 .ThenByDescending(x => x.IsFollower)
                 .ThenBy(x => x.CreatedAt)
                 .Skip((page - 1) * pageSize)

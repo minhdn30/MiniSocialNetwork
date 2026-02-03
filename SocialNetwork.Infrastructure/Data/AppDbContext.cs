@@ -132,8 +132,9 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasKey(r => new { r.PostId, r.AccountId });
 
             modelBuilder.Entity<PostReact>()
-                .HasIndex(r => r.PostId)
-                .HasDatabaseName("IX_PostReact_PostId");
+                .HasKey(r => new { r.PostId, r.AccountId });
+
+            // IX_PostReact_PostId is redundant because PostId is the leading column of the PK
 
             // PostReact → Account
             modelBuilder.Entity<PostReact>()
@@ -157,8 +158,12 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasKey(c => c.CommentId);
 
             modelBuilder.Entity<Comment>()
-                .HasIndex(r => r.PostId)
-                .HasDatabaseName("IX_Comment_PostId");
+                .HasIndex(c => new { c.PostId, c.ParentCommentId, c.CreatedAt })
+                .HasDatabaseName("IX_Comment_Post_Parent_Created");
+
+            modelBuilder.Entity<Comment>()
+                .HasIndex(c => new { c.ParentCommentId, c.CreatedAt })
+                .HasDatabaseName("IX_Comment_Parent_Created");
 
             // Comment → Account
             modelBuilder.Entity<Comment>()
