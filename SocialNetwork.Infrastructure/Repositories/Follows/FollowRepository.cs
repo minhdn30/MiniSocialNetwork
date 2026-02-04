@@ -31,14 +31,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
 
         public async Task RemoveFollowAsync(Guid followerId, Guid followedId)
         {
-            var follow = await _context.Follows
-                .FirstOrDefaultAsync(f => f.FollowerId == followerId && f.FollowedId == followedId);
-
-            if (follow != null)
-            {
-                _context.Follows.Remove(follow);
-                await _context.SaveChangesAsync();
-            }
+            await _context.Follows
+                .Where(f => f.FollowerId == followerId && f.FollowedId == followedId)
+                .ExecuteDeleteAsync();
         }
 
         public async Task<List<Guid>> GetFollowingIdsAsync(Guid followerId)
@@ -57,7 +52,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .ToListAsync();
         }
         //get a list of your followers
-        public async Task<(List<AccountBasicInfoModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, string? keyword, int page, int pageSize)
+        public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
                 .Where(f => f.FollowedId == accountId)
@@ -68,17 +63,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 })
                 .AsQueryable();
 
-            //search by FullName or Username
+            //search by FullName using Trigram search (ILike)
             if (!string.IsNullOrWhiteSpace(keyword))
             {
-                var lower = keyword.Trim().ToLower();
-                query = query.Where(x =>
-                    (x.FollowerAccount.FullName != null &&
-                     x.FollowerAccount.FullName.ToLower().Contains(lower))
-                    ||
-                    (x.FollowerAccount.Username != null &&
-                     x.FollowerAccount.Username.ToLower().Contains(lower))
-                );
+                var searchKeyword = $"%{keyword.Trim()}%";
+                query = query.Where(x => EF.Functions.ILike(x.FollowerAccount.FullName, searchKeyword));
             }
 
             int totalItems = await query.CountAsync();
@@ -87,12 +76,14 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .OrderByDescending(x => x.FollowRecord.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(x => new AccountBasicInfoModel
+                .Select(x => new AccountWithFollowStatusModel
                 {
                     AccountId = x.FollowerAccount.AccountId,
                     Username = x.FollowerAccount.Username,
                     AvatarUrl = x.FollowerAccount.AvatarUrl,
                     FullName = x.FollowerAccount.FullName,
+                    IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == x.FollowerAccount.AccountId),
+                    IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == x.FollowerAccount.AccountId && f.FollowedId == currentId.Value)
                 })
                 .ToListAsync();
 
@@ -100,7 +91,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         }
 
         //get a list of people you follow
-        public async Task<(List<AccountBasicInfoModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, string? keyword, int page, int pageSize)
+        public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
                 .Where(f => f.FollowerId == accountId)
@@ -110,17 +101,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                     FollowedAccount = f.Followed
                 })
                 .AsQueryable();
-            //search by FullName or Username
+
+            //search by FullName using Trigram search (ILike)
             if (!string.IsNullOrWhiteSpace(keyword))
             {
-                var lower = keyword.Trim().ToLower();
-                query = query.Where(x =>
-                    (x.FollowedAccount.FullName != null &&
-                     x.FollowedAccount.FullName.ToLower().Contains(lower))
-                    ||
-                    (x.FollowedAccount.Username != null &&
-                     x.FollowedAccount.Username.ToLower().Contains(lower))
-                );
+                var searchKeyword = $"%{keyword.Trim()}%";
+                query = query.Where(x => EF.Functions.ILike(x.FollowedAccount.FullName, searchKeyword));
             }
 
             int totalItems = await query.CountAsync();
@@ -129,12 +115,14 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .OrderByDescending(x => x.FollowRecord.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(x => new AccountBasicInfoModel
+                .Select(x => new AccountWithFollowStatusModel
                 {
                     AccountId = x.FollowedAccount.AccountId,
                     Username = x.FollowedAccount.Username,
                     AvatarUrl = x.FollowedAccount.AvatarUrl,
-                    FullName = x.FollowedAccount.FullName
+                    FullName = x.FollowedAccount.FullName,
+                    IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == x.FollowedAccount.AccountId),
+                    IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == x.FollowedAccount.AccountId && f.FollowedId == currentId.Value)
                 })
                 .ToListAsync();
 
