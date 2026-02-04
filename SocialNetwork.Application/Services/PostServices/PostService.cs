@@ -98,9 +98,7 @@ namespace SocialNetwork.Application.Services.PostServices
                 !Enum.IsDefined(typeof(AspectRatioEnum), request.FeedAspectRatio.Value))
                 throw new BadRequestException("Invalid feed aspect ratio.");
 
-            if (request.Content == null &&
-                (request.MediaFiles == null || !request.MediaFiles.Any()))
-                throw new BadRequestException("Post must have content or media files.");
+
 
             // ---------- Parse MediaCrops ----------
             List<PostMediaCropInfoRequest> cropInfos = new();
@@ -141,31 +139,28 @@ namespace SocialNetwork.Application.Services.PostServices
             // ---------- Handle Media ----------
             if (request.MediaFiles != null && request.MediaFiles.Any())
             {
-                var postMedias = new List<PostMedia>();
-
-                for (int i = 0; i < request.MediaFiles.Count; i++)
+                var uploadTasks = request.MediaFiles.Select(async (media, index) =>
                 {
-                    var media = request.MediaFiles[i];
-
                     var detectedType = await _fileTypeDetector.GetMediaTypeAsync(media);
-                    if (detectedType == null) continue;
+                    // Optimized: Remove Video support and parallelize uploads
+                    if (detectedType == null || detectedType == MediaTypeEnum.Video) return null;
 
                     string? url = detectedType.Value switch
                     {
                         MediaTypeEnum.Image => await _cloudinaryService.UploadImageAsync(media),
-                        MediaTypeEnum.Video => await _cloudinaryService.UploadVideoAsync(media),
                         _ => null
                     };
 
-                    if (string.IsNullOrEmpty(url)) continue;
+                    if (string.IsNullOrEmpty(url)) return null;
 
                     // Map crop by index
-                    var crop = cropInfos.FirstOrDefault(c => c.Index == i);
+                    var crop = cropInfos.FirstOrDefault(c => c.Index == index);
                     if (crop != null)
                     {
                         MediaCropValidator.Validate(crop, post.FeedAspectRatio);
                     }
-                    postMedias.Add(new PostMedia
+
+                    return new PostMedia
                     {
                         PostId = post.PostId,
                         MediaUrl = url,
@@ -175,16 +170,32 @@ namespace SocialNetwork.Application.Services.PostServices
                         CropY = crop?.CropY,
                         CropWidth = crop?.CropWidth,
                         CropHeight = crop?.CropHeight
-                    });
-                }
+                    };
+                });
 
-                if (postMedias.Any())
+                var uploadedMedias = await Task.WhenAll(uploadTasks);
+                var validMedias = uploadedMedias.Where(m => m != null).Cast<PostMedia>().ToList();
+
+                if (validMedias.Any())
                 {
-                    await _postMediaRepository.AddPostMedias(postMedias);
-                    result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(postMedias);
+                    // Ensure CreatedAt reflects the original selection order, not upload finish time
+                    var now = DateTime.UtcNow;
+                    for (int i = 0; i < validMedias.Count; i++)
+                    {
+                        validMedias[i].CreatedAt = now.AddMilliseconds(i * 100);
+                    }
+
+                    await _postMediaRepository.AddPostMedias(validMedias);
+                    result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(validMedias);
                     result.TotalMedias = result.Medias.Count;
                 }
             }
+
+            if (result.Medias == null || !result.Medias.Any())
+            {
+                throw new BadRequestException("Post must contain at least one valid image. Video files are not supported.");
+            }
+
             result.IsOwner = true;
             await _unitOfWork.CommitAsync();
             return result;

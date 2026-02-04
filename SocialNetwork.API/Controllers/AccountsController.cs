@@ -56,7 +56,7 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
         [HttpGet("profile/{accountId}")]
-        public async Task<ActionResult<AccountDetailResponse>> GetAccountProfileByGuid([FromRoute] Guid accountId)
+        public async Task<ActionResult<ProfileInfoResponse>> GetAccountProfileByGuid([FromRoute] Guid accountId)
         {
             var currentId = User.GetAccountId();
             var result = await _accountService.GetAccountProfileByGuid(accountId, currentId);
@@ -70,6 +70,17 @@ namespace SocialNetwork.API.Controllers
             var result = await _accountService.GetAccountProfilePreview(accountId, currentId);
             if(result == null) return NotFound(new {message = "Account not found."});
             return Ok(result);
+        }
+        
+
+        [Authorize]
+        [HttpPost("reactivate")]
+        public async Task<IActionResult> Reactivate()
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+            await _accountService.ReactivateAccountAsync(accountId.Value);
+            return Ok(new { message = "Account reactivated successfully." });
         }
         //test get profile from token
         [Authorize]
@@ -85,16 +96,6 @@ namespace SocialNetwork.API.Controllers
             var isVerified = User.IsVerified();
 
             return Ok(new { accountId, username, fullName, avatar, email, role, isVerified });
-        }
-
-        [Authorize]
-        [HttpPost("reactivate")]
-        public async Task<IActionResult> Reactivate()
-        {
-            var accountId = User.GetAccountId();
-            if (accountId == null) return Unauthorized();
-            await _accountService.ReactivateAccountAsync(accountId.Value);
-            return Ok(new { message = "Account reactivated successfully." });
         }
     }
 }

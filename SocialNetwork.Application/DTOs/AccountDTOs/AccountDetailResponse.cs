@@ -20,6 +20,8 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public string? Phone { get; set; }
         public bool? Gender { get; set; }
         public string? Address { get; set; }
+        public string? Bio { get; set; }
+        public string? CoverUrl { get; set; }
         public int RoleId { get; set; }
         public string RoleName { get; set; } = null!;
         public AccountStatusEnum Status { get; set; }

@@ -23,6 +23,10 @@ namespace SocialNetwork.Domain.Entities
         public string FullName { get; set; } = null!;
         [MaxLength(255)]
         public string? AvatarUrl { get; set; }
+        [MaxLength(500)]
+        public string? CoverUrl { get; set; }
+        [MaxLength(500)]
+        public string? Bio { get; set; }
         [MaxLength(15)]
         public string? Phone { get; set; }
         public bool? Gender { get; set; }

@@ -137,36 +137,63 @@ namespace SocialNetwork.Application.Services.AccountServices
                 account.AvatarUrl = imageURL;
                 
             }
+            if (request.CoverImage != null)
+            {
+                if (!string.IsNullOrEmpty(account.CoverUrl))
+                {
+                    var publicId = _cloudinary.GetPublicIdFromUrl(account.CoverUrl);
+                    if (!string.IsNullOrEmpty(publicId))
+                    {
+                        await _cloudinary.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
+                    }
+                }
+                var coverURL = await _cloudinary.UploadImageAsync(request.CoverImage);
+                if (string.IsNullOrEmpty(coverURL))
+                {
+                    throw new InternalServerException("Cover image upload failed.");
+                }
+                account.CoverUrl = coverURL;
+            }
             _mapper.Map(request, account);
             account.UpdatedAt = DateTime.UtcNow;
             await _accountRepository.UpdateAccount(account);
             return _mapper.Map<AccountDetailResponse>(account);
         }
-        public async Task<ActionResult<ProfileInfoResponse?>> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
+        public async Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
         {
-            var account = await _accountRepository.GetAccountProfileById(accountId, currentId);
-            if (account == null)
+            var profileModel = await _accountRepository.GetProfileInfoAsync(accountId, currentId);
+            
+            if (profileModel == null)
             {
                 throw new NotFoundException($"Account with ID {accountId} not found or inactive.");
             }
-            var followers = await _followRepository.CountFollowersAsync(accountId);
-            var following = await _followRepository.CountFollowingAsync(accountId);
-            bool isFollowedByCurrentUser = false;
 
-            if (currentId.HasValue)         
-                isFollowedByCurrentUser = await _followRepository.IsFollowingAsync(currentId.Value, accountId);
-            var totalPosts = await _postRepository.CountPostsByAccountIdAsync(accountId);
             var result = new ProfileInfoResponse
             {
-                AccountInfo = _mapper.Map<ProfileDetailResponse>(account),
+                AccountInfo = new ProfileDetailResponse
+                {
+                    AccountId = profileModel.AccountId,
+                    Username = profileModel.Username,
+                    Email = profileModel.Email,
+                    FullName = profileModel.FullName,
+                    AvatarUrl = profileModel.AvatarUrl,
+                    Phone = profileModel.Phone,
+                    Bio = profileModel.Bio,
+                    CoverUrl = profileModel.CoverUrl,
+                    Gender = profileModel.Gender,
+                    Address = profileModel.Address,
+                    CreatedAt = profileModel.CreatedAt
+                },
                 FollowInfo = new FollowCountResponse
                 {
-                    Followers = followers,
-                    Following = following,
-                    IsFollowedByCurrentUser = isFollowedByCurrentUser
+                    Followers = profileModel.FollowerCount,
+                    Following = profileModel.FollowingCount,
+                    IsFollowedByCurrentUser = profileModel.IsFollowedByCurrentUser
                 },
-                TotalPosts = totalPosts
+                TotalPosts = profileModel.PostCount,
+                IsCurrentUser = profileModel.IsCurrentUser
             };
+
             return result;
         }
         public async Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId)
