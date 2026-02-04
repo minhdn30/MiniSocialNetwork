@@ -30,7 +30,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         }
         public async Task<bool> IsAccountIdExist(Guid accountId)
         {
-            return await _context.Accounts.AnyAsync(a => a.AccountId == accountId);
+            return await _context.Accounts.AnyAsync(a => a.AccountId == accountId && a.Status == AccountStatusEnum.Active);
         }
         public async Task AddAccount(Account account)
         {
@@ -41,9 +41,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         {
             return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.AccountId == accountId);
         }
-        public async Task<Account?> GetAccountProfileById(Guid accountId)
+        public async Task<Account?> GetAccountProfileById(Guid accountId, Guid? currentId)
         {
-            return await _context.Accounts.FirstOrDefaultAsync(a => a.AccountId == accountId && a.Status == true);
+            return await _context.Accounts.FirstOrDefaultAsync(a => a.AccountId == accountId && (a.Status == AccountStatusEnum.Active || a.AccountId == currentId));
         }
         public async Task<Account?> GetAccountByEmail(string email)
         {
@@ -68,7 +68,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         }
         //search and filter accounts (admin)
         public async Task<(List<Account> Items, int TotalItems)> GetAccountsAsync(Guid? id, string? username, string? email,
-            string? fullname, string? phone, int? roleId, bool? gender, bool? status, bool? isEmailVerified, int page, int pageSize)
+            string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, bool? isEmailVerified, int page, int pageSize)
         {
             var query = _context.Accounts.Include(a => a.Role).OrderBy(a => a.CreatedAt).AsQueryable();
             if (id.HasValue && id.Value != Guid.Empty)
@@ -126,7 +126,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         {
             var data = await _context.Accounts
                 .AsNoTracking()
-                .Where(a => a.AccountId == targetId)
+                .Where(a => a.AccountId == targetId && (a.Status == AccountStatusEnum.Active || (currentId.HasValue && a.AccountId == currentId.Value)))
                 .Select(a => new
                 {
                     Account = new AccountBasicInfoModel
@@ -134,7 +134,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                         AccountId = a.AccountId,
                         Username = a.Username,
                         FullName = a.FullName,
-                        AvatarUrl = a.AvatarUrl
+                        AvatarUrl = a.AvatarUrl,
+                        Status = a.Status
                     },
 
                     PostCount = a.Posts.Count(p => !p.IsDeleted),

@@ -65,9 +65,9 @@ namespace SocialNetwork.Application.Services.AuthServices
                 throw new UnauthorizedException("Invalid username or password.");
             }
             
-            if(!account.Status)
+            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
             {
-                throw new UnauthorizedException("Account is inactive. Please contact support.");
+                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
             }
             if(!account.IsEmailVerified)
             {
@@ -89,7 +89,8 @@ namespace SocialNetwork.Application.Services.AuthServices
                 AvatarUrl = account.AvatarUrl,
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
-                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value
+                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
+                Status = account.Status
             };
         }
         public async Task<LoginResponse> LoginWithGoogleAsync(string idToken)
@@ -103,6 +104,11 @@ namespace SocialNetwork.Application.Services.AuthServices
             if (account == null)
             {
                 throw new UnauthorizedException("Account not registered. Please sign up first.");
+            }
+
+            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
+            {
+                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
             }
 
             // Sinh access token
@@ -120,7 +126,8 @@ namespace SocialNetwork.Application.Services.AuthServices
             {
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
-                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value
+                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
+                Status = account.Status
             };
         }
         public async Task<LoginResponse> RefreshTokenAsync(string refreshToken)
@@ -131,6 +138,9 @@ namespace SocialNetwork.Application.Services.AuthServices
             var account = await _accountRepository.GetByRefreshToken(refreshToken);
             if (account == null || account.RefreshTokenExpiryTime <= DateTime.UtcNow)
                 throw new UnauthorizedException("Invalid or expired refresh token.");
+
+            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
+                throw new UnauthorizedException("Your account has been restricted.");
 
             var newAccessToken = _jwtService.GenerateToken(account);
 

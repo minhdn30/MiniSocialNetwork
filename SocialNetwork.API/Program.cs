@@ -229,6 +229,7 @@ namespace SocialNetwork.API
 
             app.UseAuthentication();
             app.UseAuthorization();
+            app.UseMiddleware<AccountStatusMiddleware>();
             app.MapHub<PostHub>("/postHub");
             app.MapHub<FollowHub>("/followHub");
             app.MapHub<ChatHub>("/chatHub");

@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Application.DTOs.FollowDTOs;
+﻿using SocialNetwork.Domain.Enums;
+using SocialNetwork.Application.DTOs.FollowDTOs;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -21,7 +22,7 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public string? Address { get; set; }
         public int RoleId { get; set; }
         public string RoleName { get; set; } = null!;
-        public bool Status { get; set; }
+        public AccountStatusEnum Status { get; set; }
         public DateTime CreatedAt { get; set; } 
         public DateTime? UpdatedAt { get; set; }
         public bool IsEmailVerified { get; set; } 

@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Models;
 using System;
@@ -22,7 +23,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
             if (page <= 0) page = 1;
 
             var totalItems = await _context.Comments
-                .Where(c => c.PostId == postId && c.ParentCommentId == null)
+                .Where(c => c.PostId == postId && c.ParentCommentId == null && (c.Account.Status == AccountStatusEnum.Active || c.AccountId == currentId))
                 .CountAsync();
 
             var postOwnerId = await _context.Posts
@@ -31,7 +32,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                 .FirstOrDefaultAsync();
 
             var items = await _context.Comments
-                .Where(c => c.PostId == postId && c.ParentCommentId == null)
+                .Where(c => c.PostId == postId && c.ParentCommentId == null && (c.Account.Status == AccountStatusEnum.Active || c.AccountId == currentId))
                 .OrderByDescending(c => c.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -44,7 +45,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                         AccountId = c.Account.AccountId,
                         FullName = c.Account.FullName,
                         Username = c.Account.Username,
-                        AvatarUrl = c.Account.AvatarUrl
+                        AvatarUrl = c.Account.AvatarUrl,
+                        Status = c.Account.Status
                     },
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,
@@ -60,7 +62,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
 
         public async Task<Comment?> GetCommentById(Guid commentId)
         {
-            return await _context.Comments.Include(c => c.Account).FirstOrDefaultAsync(c => c.CommentId == commentId);
+            return await _context.Comments.Include(c => c.Account).FirstOrDefaultAsync(c => c.CommentId == commentId && c.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<Comment?> AddComment(Comment comment)
         {
@@ -75,12 +77,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         }
         public async Task<bool> IsCommentExist(Guid commentId)
         {
-            return await _context.Comments.AnyAsync(c => c.CommentId == commentId);
+            return await _context.Comments.AnyAsync(c => c.CommentId == commentId && c.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<int> CountCommentsByPostId(Guid postId)
         {
             //comment (not reply)
-            return await _context.Comments.CountAsync(c => c.PostId == postId && c.ParentCommentId == null);
+            return await _context.Comments.CountAsync(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);
         }
         public async Task DeleteCommentWithReplies(Guid commentId)
         {
@@ -97,12 +99,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         }
         public async Task<bool> IsCommentCanReply(Guid commentId)
         {
-            return await _context.Comments.AnyAsync(c => c.CommentId == commentId && c.ParentCommentId == null);
+            return await _context.Comments.AnyAsync(c => c.CommentId == commentId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<int> CountCommentRepliesAsync(Guid commentId)
         {
             int count = 0;
-            count += await _context.Comments.Where(c => c.ParentCommentId == commentId).CountAsync();
+            count += await _context.Comments.Where(c => c.ParentCommentId == commentId && c.Account.Status == AccountStatusEnum.Active).CountAsync();
             return count;
         }
         public async Task<(IEnumerable<ReplyCommentModel> items, int totalItems)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, int page, int pageSize)
@@ -110,7 +112,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
             if (page <= 0) page = 1;
 
             var query = _context.Comments
-                .Where(c => c.ParentCommentId == parentCommentId);
+                .Where(c => c.ParentCommentId == parentCommentId && (c.Account.Status == AccountStatusEnum.Active || c.AccountId == currentId));
 
             var totalItems = await query.CountAsync();
 
@@ -133,7 +135,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                         AccountId = c.Account.AccountId,
                         FullName = c.Account.FullName,
                         Username = c.Account.Username,
-                        AvatarUrl = c.Account.AvatarUrl
+                        AvatarUrl = c.Account.AvatarUrl,
+                        Status = c.Account.Status
                     },
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,

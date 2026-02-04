@@ -3,6 +3,7 @@ using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using System;
@@ -30,9 +31,20 @@ namespace SocialNetwork.Application.Services.FollowServices
             if (followerId == targetId)
                 throw new BadRequestException("You cannot follow yourself.");
 
-            if (!await _accountRepository.IsAccountIdExist(targetId))
+            var target = await _accountRepository.GetAccountById(targetId);
+            if (target == null)
                 throw new NotFoundException($"User with ID {targetId} does not exist.");
 
+            if (target.Status != AccountStatusEnum.Active)
+                throw new BadRequestException("This user is currently unavailable.");
+
+            var follower = await _accountRepository.GetAccountById(followerId);
+            if (follower == null)
+                throw new BadRequestException($"Follower account with ID {followerId} not found.");
+
+            if (follower.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to follow users.");
+            
             var exists = await _followRepository.IsFollowingAsync(followerId, targetId);
             if (exists)
                 throw new BadRequestException("You already follow this user.");

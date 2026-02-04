@@ -31,7 +31,7 @@ namespace SocialNetwork.Domain.Entities
         [MaxLength(255)]
         public string? Address { get; set; }
         public int RoleId { get; set; }
-        public bool Status { get; set; } = true;
+        public AccountStatusEnum Status { get; set; } = 0;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         public bool IsEmailVerified { get; set; } = false;

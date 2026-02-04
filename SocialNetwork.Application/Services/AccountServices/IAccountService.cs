@@ -19,5 +19,6 @@ namespace SocialNetwork.Application.Services.AccountServices
         Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request);
         Task<ActionResult<ProfileInfoResponse?>> GetAccountProfileByGuid(Guid accountId, Guid? currentId);
         Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId);
+        Task ReactivateAccountAsync(Guid accountId);
     }
 }

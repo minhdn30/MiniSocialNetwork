@@ -144,7 +144,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<ActionResult<ProfileInfoResponse?>> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
         {
-            var account = await _accountRepository.GetAccountProfileById(accountId);
+            var account = await _accountRepository.GetAccountProfileById(accountId, currentId);
             if (account == null)
             {
                 throw new NotFoundException($"Account with ID {accountId} not found or inactive.");
@@ -172,6 +172,22 @@ namespace SocialNetwork.Application.Services.AccountServices
         public async Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId)
         {
             return await _accountRepository.GetProfilePreviewAsync(targetId, currentId);
+        }
+
+        public async Task ReactivateAccountAsync(Guid accountId)
+        {
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account == null)
+            {
+                throw new NotFoundException($"Account with ID {accountId} not found.");
+            }
+
+            if (account.Status == AccountStatusEnum.Inactive)
+            {
+                account.Status = AccountStatusEnum.Active;
+                account.UpdatedAt = DateTime.UtcNow;
+                await _accountRepository.UpdateAccount(account);
+            }
         }
     }
 }
