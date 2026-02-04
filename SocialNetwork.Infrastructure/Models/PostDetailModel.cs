@@ -22,5 +22,6 @@ namespace SocialNetwork.Infrastructure.Models
         public int TotalMedias { get; set; } = 0;
         public int TotalReacts { get; set; } = 0;
         public int TotalComments { get; set; } = 0;
+        public bool IsFollowedByCurrentUser { get; set; }
     }
 }

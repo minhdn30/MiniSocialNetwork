@@ -78,7 +78,7 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
         [Authorize]
-        [HttpPut("{postId}/content")]
+        [HttpPatch("{postId}/content")]
         public async Task<ActionResult<PostUpdateContentResponse>> UpdatePostContent([FromRoute] Guid postId, [FromBody] PostUpdateContentRequest request)
         {
             var currentId = User.GetAccountId();

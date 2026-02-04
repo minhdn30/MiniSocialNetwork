@@ -28,6 +28,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Include(p => p.Comments)
                 .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
         }
+        public async Task<Post?> GetPostBasicInfoById(Guid postId)
+        {
+            return await _context.Posts
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
+        }
         public async Task<Post?> GetPostForUpdateContent(Guid postId)
         {
              return await _context.Posts
@@ -85,7 +91,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     TotalComments = p.Comments.Count(c => c.ParentCommentId == null),
 
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
-                    IsOwner = p.AccountId == currentId
+                    IsOwner = p.AccountId == currentId,
+                    IsFollowedByCurrentUser = isFollower
                 })
                 .FirstOrDefaultAsync();
 
