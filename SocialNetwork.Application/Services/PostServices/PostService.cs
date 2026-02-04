@@ -5,6 +5,7 @@ using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
+using SocialNetwork.Application.Exceptions;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Application.Validators;
