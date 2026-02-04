@@ -47,10 +47,14 @@ namespace SocialNetwork.Application.Services.CommentServices
 
             await ValidatePostPrivacyAsync(post, accountId, "comment on");
  
-            if(!await _accountRepository.IsAccountIdExist(accountId))
+            var account = await _accountRepository.GetAccountById(accountId);
+            if(account == null)
             {
                 throw new BadRequestException($"Account with ID {accountId} not found.");
             }
+
+            if (account.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to comment.");
             if (request.ParentCommentId.HasValue)
             {
                 var parentId = request.ParentCommentId.Value;
@@ -74,7 +78,6 @@ namespace SocialNetwork.Application.Services.CommentServices
             var result = _mapper.Map<CommentResponse>(comment);
             
             // Populate Owner info for realtime rendering
-            var account = await _accountRepository.GetAccountById(accountId);
             if (account != null)
             {
                 result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
@@ -100,6 +103,9 @@ namespace SocialNetwork.Application.Services.CommentServices
             {
                 throw new ForbiddenException("You are not authorized to update this comment.");
             }
+
+            if (comment.Account.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to update comments.");
 
             var post = await _postRepository.GetPostBasicInfoById(comment.PostId);
             if (post == null)
@@ -153,6 +159,9 @@ namespace SocialNetwork.Application.Services.CommentServices
             {
                 throw new ForbiddenException("You are not authorized to delete this comment.");
             }
+
+            if (!isAdmin && comment.Account.Status != AccountStatusEnum.Active && !isPostOwner)
+                throw new ForbiddenException("You must reactivate your account to delete comments.");
 
             if (!isAdmin && !isPostOwner)
             {

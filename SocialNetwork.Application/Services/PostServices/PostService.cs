@@ -87,6 +87,9 @@ namespace SocialNetwork.Application.Services.PostServices
             if (account == null)
                 throw new BadRequestException($"Account with ID {accountId} not found.");
 
+            if (account.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to create posts.");
+
             if (request.Privacy.HasValue &&
                 !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
                 throw new BadRequestException("Invalid privacy setting.");
@@ -203,6 +206,9 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new ForbiddenException("You are not authorized to update this post.");
             }
+
+            if (post.Account.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to update posts.");
             _mapper.Map(request, post);
             post.UpdatedAt = DateTime.UtcNow;
             //remove medias if any
@@ -330,6 +336,9 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new ForbiddenException("You are not authorized to delete this post.");
             }
+
+            if (!isAdmin && post.Account.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to delete posts.");
             await _postRepository.SoftDeletePostAsync(postId);
             return post.AccountId;
         }

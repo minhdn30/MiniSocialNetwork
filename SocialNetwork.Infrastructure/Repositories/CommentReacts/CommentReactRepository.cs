@@ -2,6 +2,7 @@
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Models;
+using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,7 +20,7 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
         }
         public async Task<int> CountCommentReactAsync (Guid commentId)
         {
-            return await _context.CommentReacts.Where(cr => cr.CommentId == commentId).CountAsync();
+            return await _context.CommentReacts.Where(cr => cr.CommentId == commentId && cr.Account.Status == AccountStatusEnum.Active).CountAsync();
         }
         public async Task AddCommentReact(CommentReact commentReact)
         {
@@ -33,24 +34,24 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
         }
         public async Task<int> GetReactCountByCommentId(Guid commentId)
         {
-            return await _context.CommentReacts.CountAsync(cr => cr.CommentId == commentId);
+            return await _context.CommentReacts.CountAsync(cr => cr.CommentId == commentId && cr.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<CommentReact?> GetUserReactOnCommentAsync(Guid commentId, Guid accountId)
         {
             return await _context.CommentReacts
-                .FirstOrDefaultAsync(cr => cr.CommentId == commentId && cr.AccountId == accountId);
+                .FirstOrDefaultAsync(cr => cr.CommentId == commentId && cr.AccountId == accountId && cr.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<bool> IsCurrentUserReactedOnCommentAsync(Guid commentId, Guid? currentId)
         {
             if (currentId == null)
                 return false;
             return await _context.CommentReacts
-                .AnyAsync(cr => cr.CommentId == commentId && cr.AccountId == currentId);
+                .AnyAsync(cr => cr.CommentId == commentId && cr.AccountId == currentId && cr.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnCommentPaged(Guid commentId, Guid? currentId, int page, int pageSize)
         {
             var baseQuery = _context.CommentReacts
-                .Where(r => r.CommentId == commentId)
+                .Where(r => r.CommentId == commentId && (r.Account.Status == AccountStatusEnum.Active || (currentId.HasValue && r.AccountId == currentId.Value)))
                 .Select(r => new
                 {
                     r.AccountId,

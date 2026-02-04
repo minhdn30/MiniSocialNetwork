@@ -67,11 +67,19 @@ namespace SocialNetwork.Application.Services.MessageServices
                 throw new BadRequestException("You cannot send a message to yourself.");
             if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
                 throw new BadRequestException("Message content and media files cannot both be empty.");
-            if (!await _accountRepository.IsAccountIdExist(request.ReceiverId))
+            var receiver = await _accountRepository.GetAccountById(request.ReceiverId);
+            if (receiver == null)
                 throw new BadRequestException($"Receiver account with ID {request.ReceiverId} does not exist.");
+            
+            if (receiver.Status != AccountStatusEnum.Active)
+                throw new BadRequestException("This user is currently unavailable.");
+
             var sender = await _accountRepository.GetAccountById(senderId);
             if(sender == null) 
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
+
+            if (sender.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to send messages.");
             var conversation = await _conversationRepository.GetConversationByTwoAccountIdsAsync(senderId, request.ReceiverId);
             if (conversation == null)
             {

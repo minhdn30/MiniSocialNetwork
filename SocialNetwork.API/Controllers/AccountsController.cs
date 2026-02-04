@@ -87,5 +87,14 @@ namespace SocialNetwork.API.Controllers
             return Ok(new { accountId, username, fullName, avatar, email, role, isVerified });
         }
 
+        [Authorize]
+        [HttpPost("reactivate")]
+        public async Task<IActionResult> Reactivate()
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+            await _accountService.ReactivateAccountAsync(accountId.Value);
+            return Ok(new { message = "Account reactivated successfully." });
+        }
     }
 }

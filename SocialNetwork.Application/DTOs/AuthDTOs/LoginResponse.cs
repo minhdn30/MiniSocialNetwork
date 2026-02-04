@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocialNetwork.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,5 +15,6 @@ namespace SocialNetwork.Application.DTOs.AuthDTOs
         public string? AccessToken { get; set; }
         public string? RefreshToken { get; set; }
         public DateTime RefreshTokenExpiryTime { get; set; }
+        public AccountStatusEnum Status { get; set; }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -20,7 +21,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         public async Task<bool> IsFollowingAsync(Guid followerId, Guid followedId)
         {
             return await _context.Follows
-                .AnyAsync(f => f.FollowerId == followerId && f.FollowedId == followedId);
+                .AnyAsync(f => f.FollowerId == followerId && f.FollowedId == followedId && f.Followed.Status == AccountStatusEnum.Active);
         }
 
         public async Task AddFollowAsync(Follow follow)
@@ -55,7 +56,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
-                .Where(f => f.FollowedId == accountId)
+                .Where(f => f.FollowedId == accountId && (f.Follower.Status == AccountStatusEnum.Active || f.FollowerId == currentId))
                 .Select(f => new
                 {
                     FollowRecord = f,
@@ -94,7 +95,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
-                .Where(f => f.FollowerId == accountId)
+                .Where(f => f.FollowerId == accountId && (f.Followed.Status == AccountStatusEnum.Active || f.FollowedId == currentId))
                 .Select(f => new
                 {
                     FollowRecord = f,
@@ -131,13 +132,13 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         public async Task<int> CountFollowersAsync(Guid accountId)
         {
             return await _context.Follows
-                .Where(f => f.FollowedId == accountId)
+                .Where(f => f.FollowedId == accountId && f.Follower.Status == AccountStatusEnum.Active)
                 .CountAsync();
         }
         public async Task<int> CountFollowingAsync(Guid accountId)
         {
             return await _context.Follows
-                .Where(f => f.FollowerId == accountId)
+                .Where(f => f.FollowerId == accountId && f.Followed.Status == AccountStatusEnum.Active)
                 .CountAsync();
         }
 

@@ -26,19 +26,19 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Include(p => p.Medias)
                 .Include(p => p.Reacts)
                 .Include(p => p.Comments)
-                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<Post?> GetPostBasicInfoById(Guid postId)
         {
             return await _context.Posts
                 .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<Post?> GetPostForUpdateContent(Guid postId)
         {
              return await _context.Posts
-                .Include(p => p.Medias) // Only needed for validation "not empty"
-                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted);
+                .Include(p => p.Medias)
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
         }
         public async Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId)
         {
@@ -52,6 +52,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Where(p =>
                     p.PostId == postId &&
                     !p.IsDeleted &&
+                    (p.Account.Status == AccountStatusEnum.Active || p.AccountId == currentId) &&
                     (
                         p.AccountId == currentId || // owner
                         p.Privacy == PostPrivacyEnum.Public ||
@@ -72,7 +73,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         AccountId = p.Account.AccountId,
                         Username = p.Account.Username,
                         FullName = p.Account.FullName,
-                        AvatarUrl = p.Account.AvatarUrl
+                        AvatarUrl = p.Account.AvatarUrl,
+                        Status = p.Account.Status
                     },
 
                     Medias = p.Medias
@@ -133,6 +135,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Where(p =>
                     p.AccountId == accountId &&
                     !p.IsDeleted &&
+                    (p.Account.Status == AccountStatusEnum.Active || isOwner) &&
                     (
                         isOwner ||
                         p.Privacy == PostPrivacyEnum.Public ||
@@ -174,21 +177,23 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         public async Task<int> CountPostsByAccountIdAsync(Guid accountId)
         {
             return await _context.Posts
-                .Where(p => p.AccountId == accountId && !p.IsDeleted)
+                .Where(p => p.AccountId == accountId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active)
                 .CountAsync();
         }
         public async Task<bool> IsPostExist(Guid postId)
         {
-            return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted);
+            return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
         }
         //no use
         public async Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {
             var query = _context.Posts.AsNoTracking()
-                        .Where(p => !p.IsDeleted && ( p.Privacy == PostPrivacyEnum.Public
-                        || (p.Privacy == PostPrivacyEnum.FollowOnly && _context.Follows.Any(f =>
-                            f.FollowerId == currentId && f.FollowedId == p.AccountId))
-                        || p.AccountId == currentId));
+                        .Where(p => !p.IsDeleted && 
+                               (p.Account.Status == AccountStatusEnum.Active || p.AccountId == currentId) &&
+                               ( p.Privacy == PostPrivacyEnum.Public
+                               || (p.Privacy == PostPrivacyEnum.FollowOnly && _context.Follows.Any(f =>
+                                   f.FollowerId == currentId && f.FollowedId == p.AccountId))
+                               || p.AccountId == currentId));
 
             // Cursor-based pagination
             if (cursorCreatedAt.HasValue && cursorPostId.HasValue)
@@ -212,6 +217,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                        Username = p.Account.Username,
                        FullName = p.Account.FullName,
                        AvatarUrl = p.Account.AvatarUrl,
+                       Status = p.Account.Status,
                        IsFollowedByCurrentUser = p.AccountId == currentId || _context.Follows.Any(f =>
                            f.FollowerId == currentId && f.FollowedId == p.AccountId)
                    },
@@ -243,6 +249,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
             var baseQuery = _context.Posts.AsNoTracking()
                 .Where(p =>
                     !p.IsDeleted &&
+                    (p.Account.Status == AccountStatusEnum.Active || p.AccountId == currentId) &&
                     (
                         p.Privacy == PostPrivacyEnum.Public ||
                         (p.Privacy == PostPrivacyEnum.FollowOnly && followedIds.Contains(p.AccountId)) ||
@@ -310,7 +317,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         p.Account.AccountId,
                         p.Account.Username,
                         p.Account.FullName,
-                        p.Account.AvatarUrl
+                        p.Account.AvatarUrl,
+                        p.Account.Status
                     },
 
                     Medias = p.Medias
@@ -396,6 +404,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         Username = x.Author.Username,
                         FullName = x.Author.FullName,
                         AvatarUrl = x.Author.AvatarUrl,
+                        Status = x.Author.Status,
                         IsFollowedByCurrentUser = x.IsOwner || x.IsFollowedAuthor
                     },
 
