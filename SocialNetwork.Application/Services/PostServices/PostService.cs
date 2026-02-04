@@ -321,7 +321,7 @@ namespace SocialNetwork.Application.Services.PostServices
         }
         public async Task<Guid?> SoftDeletePost(Guid postId, Guid currentId, bool isAdmin)
         {
-            var post = await _postRepository.GetPostById(postId);
+            var post = await _postRepository.GetPostBasicInfoById(postId);
             if (post == null)
             {
                 throw new NotFoundException($"Post with ID {postId} not found.");

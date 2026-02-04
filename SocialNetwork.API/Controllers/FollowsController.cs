@@ -66,13 +66,15 @@ namespace SocialNetwork.API.Controllers
         [HttpGet("followers")]
         public async Task<IActionResult> GetFollowers([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
-            var result = await _followService.GetFollowersAsync(accountId, request);
+            var currentId = User.GetAccountId();
+            var result = await _followService.GetFollowersAsync(accountId, currentId, request);
             return Ok(result);
         }
         [HttpGet("following")]
         public async Task<IActionResult> GetFollowing([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
-            var result = await _followService.GetFollowingAsync(accountId, request);
+            var currentId = User.GetAccountId();
+            var result = await _followService.GetFollowingAsync(accountId, currentId, request);
             return Ok(result);
         }
 

@@ -40,11 +40,19 @@ namespace SocialNetwork.Infrastructure.Data
                 entity.HasIndex(e => e.Email).IsUnique();
                 entity.HasIndex(e => e.Username).IsUnique();
 
+                // Trigram index for fast partial search on FullName
+                entity.HasIndex(e => e.FullName)
+                      .HasMethod("GIN")
+                      .HasOperators("gin_trgm_ops");
+
                 entity.HasOne(a => a.Role)
                       .WithMany(r => r.Accounts)
                       .HasForeignKey(a => a.RoleId)
                       .OnDelete(DeleteBehavior.Restrict);
             });
+
+            // Enable pg_trgm extension
+            modelBuilder.HasPostgresExtension("pg_trgm");
 
             modelBuilder.Entity<Role>(entity =>
             {
@@ -58,8 +66,14 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasKey(f => new { f.FollowerId, f.FollowedId });
 
             // Index for FollowedId to optimize "Who follows me" queries
+            // Index for FollowedId to optimize "Who follows me" queries
+            // Also include CreatedAt for efficient sorting
             modelBuilder.Entity<Follow>()
-                .HasIndex(f => f.FollowedId);
+                .HasIndex(f => new { f.FollowedId, f.CreatedAt });
+
+            // Index for FollowerId + CreatedAt for efficient sorting of "Following" list
+            modelBuilder.Entity<Follow>()
+                .HasIndex(f => new { f.FollowerId, f.CreatedAt });
 
             modelBuilder.Entity<Follow>()
                 .HasOne(f => f.Follower)

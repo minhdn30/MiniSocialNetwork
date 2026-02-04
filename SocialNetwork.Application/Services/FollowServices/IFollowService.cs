@@ -14,7 +14,7 @@ namespace SocialNetwork.Application.Services.FollowServices
         Task<int> FollowAsync(Guid followerId, Guid targetId);
         Task<int> UnfollowAsync(Guid followerId, Guid targetId);
         Task<bool> IsFollowingAsync(Guid followerId, Guid targetId);
-        Task<PagedResponse<AccountBasicInfoModel>> GetFollowersAsync(Guid userId, FollowPagingRequest request);
-        Task<PagedResponse<AccountBasicInfoModel>> GetFollowingAsync(Guid userId, FollowPagingRequest request);
+        Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowersAsync(Guid userId, Guid? currentId, FollowPagingRequest request);
+        Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowingAsync(Guid userId, Guid? currentId, FollowPagingRequest request);
     }
 }
