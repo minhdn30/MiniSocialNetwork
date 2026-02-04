@@ -107,7 +107,7 @@ namespace SocialNetwork.API.Controllers
                 await _hubContext.Clients.Group($"PostList-{accountId}").SendAsync("ReceiveDeletedPost", postId);
             return NoContent();
         }
-        [HttpGet("personal/{accountId}")]
+        [HttpGet("profile/{accountId}")]
         public async Task<ActionResult<PagedResponse<PostPersonalListModel>>> GetPostsByAccountId([FromRoute] Guid accountId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             var currentId = User.GetAccountId();

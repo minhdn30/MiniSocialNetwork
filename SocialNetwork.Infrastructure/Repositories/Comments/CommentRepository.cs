@@ -23,7 +23,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
             if (page <= 0) page = 1;
 
             var totalItems = await _context.Comments
-                .Where(c => c.PostId == postId && c.ParentCommentId == null && (c.Account.Status == AccountStatusEnum.Active || c.AccountId == currentId))
+                .Where(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active)
                 .CountAsync();
 
             var postOwnerId = await _context.Posts
@@ -32,7 +32,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                 .FirstOrDefaultAsync();
 
             var items = await _context.Comments
-                .Where(c => c.PostId == postId && c.ParentCommentId == null && (c.Account.Status == AccountStatusEnum.Active || c.AccountId == currentId))
+                .Where(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active)
                 .OrderByDescending(c => c.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -112,7 +112,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
             if (page <= 0) page = 1;
 
             var query = _context.Comments
-                .Where(c => c.ParentCommentId == parentCommentId && (c.Account.Status == AccountStatusEnum.Active || c.AccountId == currentId));
+                .Where(c => c.ParentCommentId == parentCommentId && c.Account.Status == AccountStatusEnum.Active);
 
             var totalItems = await query.CountAsync();
 

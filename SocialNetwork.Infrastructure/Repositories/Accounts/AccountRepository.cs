@@ -41,10 +41,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         {
             return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.AccountId == accountId);
         }
-        public async Task<Account?> GetAccountProfileById(Guid accountId, Guid? currentId)
-        {
-            return await _context.Accounts.FirstOrDefaultAsync(a => a.AccountId == accountId && (a.Status == AccountStatusEnum.Active || a.AccountId == currentId));
-        }
         public async Task<Account?> GetAccountByEmail(string email)
         {
             return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.Email.ToLower() == email.ToLower());
@@ -126,7 +122,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         {
             var data = await _context.Accounts
                 .AsNoTracking()
-                .Where(a => a.AccountId == targetId && (a.Status == AccountStatusEnum.Active || (currentId.HasValue && a.AccountId == currentId.Value)))
+                .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active)
                 .Select(a => new
                 {
                     Account = new AccountBasicInfoModel
@@ -181,6 +177,34 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 IsFollowedByCurrentUser = data.IsFollowedByCurrentUser || data.IsCurrentUser,
                 RecentPosts = data.RecentMedias
             };
+        }
+
+
+        public async Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId)
+        {
+            return await _context.Accounts
+                .AsNoTracking()
+                .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active)
+                .Select(a => new ProfileInfoModel
+                {
+                    AccountId = a.AccountId,
+                    Username = a.Username,
+                    Email = a.Email,
+                    FullName = a.FullName,
+                    AvatarUrl = a.AvatarUrl,
+                    Phone = a.Phone,
+                    Bio = a.Bio,
+                    CoverUrl = a.CoverUrl,
+                    Gender = a.Gender,
+                    Address = a.Address,
+                    CreatedAt = a.CreatedAt,
+                    PostCount = a.Posts.Count(p => !p.IsDeleted),
+                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
+                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
+                    IsCurrentUser = currentId.HasValue && a.AccountId == currentId.Value,
+                    IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value)
+                })
+                .FirstOrDefaultAsync();
         }
 
 

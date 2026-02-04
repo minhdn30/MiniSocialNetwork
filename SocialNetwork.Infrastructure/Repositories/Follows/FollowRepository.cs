@@ -56,7 +56,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
-                .Where(f => f.FollowedId == accountId && (f.Follower.Status == AccountStatusEnum.Active || f.FollowerId == currentId))
+                .Where(f => f.FollowedId == accountId && f.Follower.Status == AccountStatusEnum.Active)
                 .Select(f => new
                 {
                     FollowRecord = f,
@@ -95,7 +95,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
         {
             var query = _context.Follows
-                .Where(f => f.FollowerId == accountId && (f.Followed.Status == AccountStatusEnum.Active || f.FollowedId == currentId))
+                .Where(f => f.FollowerId == accountId && f.Followed.Status == AccountStatusEnum.Active)
                 .Select(f => new
                 {
                     FollowRecord = f,

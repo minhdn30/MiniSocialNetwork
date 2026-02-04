@@ -16,7 +16,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task<bool> IsAccountIdExist(Guid accountId);
         Task AddAccount(Account account);
         Task<Account?> GetAccountById(Guid accountId);
-        Task<Account?> GetAccountProfileById(Guid accountId, Guid? currentId);
         Task<Account?> GetAccountByEmail(string email);
         Task UpdateAccount(Account account);
         Task<Account?> GetAccountByUsername(string username);
@@ -24,5 +23,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task<(List<Account> Items, int TotalItems)> GetAccountsAsync(Guid? id, string? username, string? email,
             string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, bool? isEmailVerified, int page, int pageSize);
         Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId);
+        Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId);
     }
 }

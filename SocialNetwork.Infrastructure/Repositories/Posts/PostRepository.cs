@@ -52,7 +52,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Where(p =>
                     p.PostId == postId &&
                     !p.IsDeleted &&
-                    (p.Account.Status == AccountStatusEnum.Active || p.AccountId == currentId) &&
+                    p.Account.Status == AccountStatusEnum.Active &&
                     (
                         p.AccountId == currentId || // owner
                         p.Privacy == PostPrivacyEnum.Public ||
@@ -135,7 +135,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Where(p =>
                     p.AccountId == accountId &&
                     !p.IsDeleted &&
-                    (p.Account.Status == AccountStatusEnum.Active || isOwner) &&
+                    p.Account.Status == AccountStatusEnum.Active &&
+                    p.Medias.Any() &&
                     (
                         isOwner ||
                         p.Privacy == PostPrivacyEnum.Public ||
@@ -189,7 +190,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         {
             var query = _context.Posts.AsNoTracking()
                         .Where(p => !p.IsDeleted && 
-                               (p.Account.Status == AccountStatusEnum.Active || p.AccountId == currentId) &&
+                               p.Account.Status == AccountStatusEnum.Active &&
+                               p.Medias.Any() &&
                                ( p.Privacy == PostPrivacyEnum.Public
                                || (p.Privacy == PostPrivacyEnum.FollowOnly && _context.Follows.Any(f =>
                                    f.FollowerId == currentId && f.FollowedId == p.AccountId))
@@ -249,7 +251,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
             var baseQuery = _context.Posts.AsNoTracking()
                 .Where(p =>
                     !p.IsDeleted &&
-                    (p.Account.Status == AccountStatusEnum.Active || p.AccountId == currentId) &&
+                    p.Account.Status == AccountStatusEnum.Active &&
+                    p.Medias.Any() &&
                     (
                         p.Privacy == PostPrivacyEnum.Public ||
                         (p.Privacy == PostPrivacyEnum.FollowOnly && followedIds.Contains(p.AccountId)) ||

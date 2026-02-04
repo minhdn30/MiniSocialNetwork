@@ -17,7 +17,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         Task<AccountDetailResponse> CreateAccount(AccountCreateRequest request);
         Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request);
         Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request);
-        Task<ActionResult<ProfileInfoResponse?>> GetAccountProfileByGuid(Guid accountId, Guid? currentId);
+        Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId);
         Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId);
         Task ReactivateAccountAsync(Guid accountId);
     }
