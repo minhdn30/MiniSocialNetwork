@@ -131,6 +131,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                         Username = a.Username,
                         FullName = a.FullName,
                         AvatarUrl = a.AvatarUrl,
+                        Bio = a.Bio,
+                        CoverUrl = a.CoverUrl,
                         Status = a.Status
                     },
 
