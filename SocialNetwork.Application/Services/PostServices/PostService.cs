@@ -348,8 +348,6 @@ namespace SocialNetwork.Application.Services.PostServices
                 throw new ForbiddenException("You are not authorized to delete this post.");
             }
 
-            if (!isAdmin && post.Account.Status != AccountStatusEnum.Active)
-                throw new ForbiddenException("You must reactivate your account to delete posts.");
             await _postRepository.SoftDeletePostAsync(postId);
             return post.AccountId;
         }

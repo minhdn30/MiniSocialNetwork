@@ -102,6 +102,16 @@ namespace SocialNetwork.Application.Services.FollowServices
                 PageSize = request.PageSize
             };
         }
+        
+        public async Task<FollowCountResponse> GetStatsAsync(Guid userId)
+        {
+             var counts = await _followRepository.GetFollowCountsAsync(userId);
+             return new FollowCountResponse
+             {
+                 Followers = counts.Followers,
+                 Following = counts.Following
+             };
+        }
 
     }
 }

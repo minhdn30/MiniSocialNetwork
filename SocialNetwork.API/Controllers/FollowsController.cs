@@ -17,8 +17,8 @@ namespace SocialNetwork.API.Controllers
     {
         private readonly IFollowService _followService;
         private readonly IAccountService _accountService;
-        private readonly IHubContext<FollowHub> _hubContext;
-        public FollowsController(IFollowService followService, IAccountService accountService, IHubContext<FollowHub> hubContext)
+        private readonly IHubContext<UserHub> _hubContext;
+        public FollowsController(IFollowService followService, IAccountService accountService, IHubContext<UserHub> hubContext)
         {
             _followService = followService;
             _accountService = accountService;
@@ -32,8 +32,14 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
             var result = await _followService.FollowAsync(currentId.Value, targetId);
 
-            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId,
-                Action = "follow" , FollowCount = result.Followers, isFollowing = true});
+            // notify Target (Update Followers count for Target)
+            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = targetId,
+                Action = "follow" , Followers = result.Followers, Following = result.Following });
+
+            // notify Current User (Update Following count for Me)
+            var myStats = await _followService.GetStatsAsync(currentId.Value);
+            await _hubContext.Clients.Group($"Account-{currentId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = currentId.Value,
+                Action = "follow_sent", Followers = myStats.Followers, Following = myStats.Following });
 
             return Ok(result);
         }
@@ -45,8 +51,15 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
             var result = await _followService.UnfollowAsync(currentId.Value, targetId);
-            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId,
-                Action = "unfollow" , FollowCount = result.Followers, isFollowing = false });
+            
+            // notify Target (Update Followers count for Target)
+            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = targetId,
+                Action = "unfollow" , Followers = result.Followers, Following = result.Following });
+
+            // notify Current User (Update Following count for Me)
+            var myStats = await _followService.GetStatsAsync(currentId.Value);
+            await _hubContext.Clients.Group($"Account-{currentId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = currentId.Value,
+                Action = "unfollow_sent", Followers = myStats.Followers, Following = myStats.Following });
 
             return Ok(result);
         }

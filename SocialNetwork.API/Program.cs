@@ -138,7 +138,7 @@ namespace SocialNetwork.API
                             (
                                 path.StartsWithSegments("/chatHub") ||
                                 path.StartsWithSegments("/postHub") ||
-                                path.StartsWithSegments("/followHub")
+                                path.StartsWithSegments("/userHub")
                             ))
                         {
                             context.Token = accessToken;
@@ -231,7 +231,7 @@ namespace SocialNetwork.API
             app.UseAuthorization();
             app.UseMiddleware<AccountStatusMiddleware>();
             app.MapHub<PostHub>("/postHub");
-            app.MapHub<FollowHub>("/followHub");
+            app.MapHub<UserHub>("/userHub");
             app.MapHub<ChatHub>("/chatHub");
 
             app.MapControllers();
