@@ -156,6 +156,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                     Content = p.Content,
                     CreatedAt = p.CreatedAt,
                     Medias = p.Medias
+                        .OrderBy(m => m.CreatedAt)
                         .Select(m => new MediaPostPersonalListModel
                         {
                             MediaId = m.MediaId,
@@ -165,7 +166,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         .ToList(),
                     MediaCount = p.Medias.Count(),
                     ReactCount = p.Reacts.Count(),
-                    CommentCount = p.Comments.Count(),
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null),
                     IsReactedByCurrentUser =
                         currentId.HasValue &&
                         p.Reacts.Any(r => r.AccountId == currentId)
@@ -233,7 +234,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                    }).ToList(),
                    MediaCount = p.Medias.Count(),
                    ReactCount = p.Reacts.Count(),
-                   CommentCount = p.Comments.Count(),
+                   CommentCount = p.Comments.Count(c => c.ParentCommentId == null),
                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
                    IsOwner = p.AccountId == currentId
                 }).ToListAsync();
