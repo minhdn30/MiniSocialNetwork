@@ -26,46 +26,50 @@ namespace SocialNetwork.Application.Services.FollowServices
             _mapper = mapper;
             _accountRepository = accountRepository;
         }
-        public async Task<int> FollowAsync(Guid followerId, Guid targetId)
+        public async Task<FollowCountResponse> FollowAsync(Guid followerId, Guid targetId)
         {
             if (followerId == targetId)
                 throw new BadRequestException("You cannot follow yourself.");
 
-            var target = await _accountRepository.GetAccountById(targetId);
-            if (target == null)
-                throw new NotFoundException($"User with ID {targetId} does not exist.");
+            // Use the optimized IsAccountIdExist which already checks for existence and Active status
+            if (!await _accountRepository.IsAccountIdExist(targetId))
+                throw new BadRequestException("This user is unavailable or does not exist.");
 
-            if (target.Status != AccountStatusEnum.Active)
-                throw new BadRequestException("This user is currently unavailable.");
-
-            var follower = await _accountRepository.GetAccountById(followerId);
-            if (follower == null)
-                throw new BadRequestException($"Follower account with ID {followerId} not found.");
-
-            if (follower.Status != AccountStatusEnum.Active)
+            // Check if record exists (regardless of status) to prevent duplicate key exception (500)
+            var recordExists = await _followRepository.IsFollowRecordExistAsync(followerId, targetId);
+            
+            if (!await _accountRepository.IsAccountIdExist(followerId))
                 throw new ForbiddenException("You must reactivate your account to follow users.");
             
-            var exists = await _followRepository.IsFollowingAsync(followerId, targetId);
-            if (exists)
+            if (recordExists)
                 throw new BadRequestException("You already follow this user.");
 
-            var follow = new Follow
-            {
-                FollowerId = followerId,
-                FollowedId = targetId
-            };
+            await _followRepository.AddFollowAsync(new Follow { FollowerId = followerId, FollowedId = targetId });
 
-            await _followRepository.AddFollowAsync(follow);
-            return await _followRepository.CountFollowersAsync(targetId);
+            var counts = await _followRepository.GetFollowCountsAsync(targetId);
+            return new FollowCountResponse
+            {
+                Followers = counts.Followers,
+                Following = counts.Following,
+                IsFollowedByCurrentUser = true
+            };
         }
-        public async Task<int> UnfollowAsync(Guid followerId, Guid targetId)
+        public async Task<FollowCountResponse> UnfollowAsync(Guid followerId, Guid targetId)
         {
-            var exists = await _followRepository.IsFollowingAsync(followerId, targetId);
-            if (!exists)
+            // Allowed to unfollow even if target is inactive, as long as the record exists
+            var recordExists = await _followRepository.IsFollowRecordExistAsync(followerId, targetId);
+            if (!recordExists)
                 throw new BadRequestException("You are not following this user.");
 
             await _followRepository.RemoveFollowAsync(followerId, targetId);
-            return await _followRepository.CountFollowersAsync(targetId);
+
+            var counts = await _followRepository.GetFollowCountsAsync(targetId);
+            return new FollowCountResponse
+            {
+                Followers = counts.Followers,
+                Following = counts.Following,
+                IsFollowedByCurrentUser = false
+            };
         }
         public Task<bool> IsFollowingAsync(Guid followerId, Guid targetId)
         {
@@ -87,11 +91,9 @@ namespace SocialNetwork.Application.Services.FollowServices
         }
         public async Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowingAsync(Guid accountId, Guid? currentId, FollowPagingRequest request)
         {
-            if(!await _accountRepository.IsAccountIdExist(accountId))
+            if (!await _accountRepository.IsAccountIdExist(accountId))
                 throw new NotFoundException($"Account with ID {accountId} does not exist.");
-
             var (items, total) = await _followRepository.GetFollowingAsync(accountId, currentId, request.Keyword, request.Page, request.PageSize);
-
             return new PagedResponse<AccountWithFollowStatusModel>
             {
                 Items = items,
@@ -100,5 +102,6 @@ namespace SocialNetwork.Application.Services.FollowServices
                 PageSize = request.PageSize
             };
         }
+
     }
 }
