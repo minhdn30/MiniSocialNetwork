@@ -13,6 +13,8 @@ namespace SocialNetwork.Infrastructure.Models
         public string Username { get; set; } = null!;
         public string FullName { get; set; } = null!;
         public string? AvatarUrl { get; set; }
+        public string? Bio { get; set; }
+        public string? CoverUrl { get; set; }
         public AccountStatusEnum Status { get; set; }
     }
 }

@@ -24,6 +24,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .AnyAsync(f => f.FollowerId == followerId && f.FollowedId == followedId && f.Followed.Status == AccountStatusEnum.Active);
         }
 
+        public async Task<bool> IsFollowRecordExistAsync(Guid followerId, Guid followedId)
+        {
+            return await _context.Follows
+                .AnyAsync(f => f.FollowerId == followerId && f.FollowedId == followedId);
+        }
+
         public async Task AddFollowAsync(Follow follow)
         {
             _context.Follows.Add(follow);
@@ -140,6 +146,18 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
             return await _context.Follows
                 .Where(f => f.FollowerId == accountId && f.Followed.Status == AccountStatusEnum.Active)
                 .CountAsync();
+        }
+
+        public async Task<(int Followers, int Following)> GetFollowCountsAsync(Guid targetId)
+        {
+            // Count using separate queries to ensure stable SQL translation and correct active status filtering
+            var followers = await _context.Follows
+                .CountAsync(f => f.FollowedId == targetId && f.Follower.Status == AccountStatusEnum.Active);
+
+            var following = await _context.Follows
+                .CountAsync(f => f.FollowerId == targetId && f.Followed.Status == AccountStatusEnum.Active);
+
+            return (followers, following);
         }
 
 
