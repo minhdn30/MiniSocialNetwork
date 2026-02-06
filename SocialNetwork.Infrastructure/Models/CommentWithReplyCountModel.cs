@@ -18,5 +18,6 @@ namespace SocialNetwork.Infrastructure.Models
         public int ReactCount { get; set; }
         public int ReplyCount { get; set; }
         public bool IsCommentReactedByCurrentUser { get; set; } = false; 
+        public Guid PostOwnerId { get; set; }
     }
 }

@@ -11,14 +11,16 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
     public interface IFollowRepository
     {
         Task<bool> IsFollowingAsync(Guid followerId, Guid followedId);
+        Task<bool> IsFollowRecordExistAsync(Guid followerId, Guid followedId);
         Task AddFollowAsync(Follow follow);
         Task RemoveFollowAsync(Guid followerId, Guid followedId);
         Task<List<Guid>> GetFollowingIdsAsync(Guid followerId);
         Task<List<Guid>> GetFollowerIdsAsync(Guid followedId);
-        Task<(List<AccountBasicInfoModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, string? keyword, int page, int pageSize);
-        Task<(List<AccountBasicInfoModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, string? keyword, int page, int pageSize);
+        Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize);
+        Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize);
         Task<int> CountFollowersAsync(Guid accountId);
         Task<int> CountFollowingAsync(Guid accountId);
+        Task<(int Followers, int Following)> GetFollowCountsAsync(Guid targetId);
 
     }
 }

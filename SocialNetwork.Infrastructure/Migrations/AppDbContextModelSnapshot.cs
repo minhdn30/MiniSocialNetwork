@@ -20,6 +20,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                 .HasAnnotation("ProductVersion", "8.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Account", b =>
@@ -35,6 +36,14 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<string>("AvatarUrl")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Bio")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("CoverUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -76,8 +85,8 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<int>("RoleId")
                         .HasColumnType("integer");
 
-                    b.Property<bool>("Status")
-                        .HasColumnType("boolean");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -92,12 +101,42 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
+                    b.HasIndex("FullName");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("FullName"), "GIN");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("FullName"), new[] { "gin_trgm_ops" });
+
                     b.HasIndex("RoleId");
 
                     b.HasIndex("Username")
                         .IsUnique();
 
                     b.ToTable("Accounts");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.AccountSettings", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AddressPrivacy")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DefaultPostPrivacy")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FollowerPrivacy")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FollowingPrivacy")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PhonePrivacy")
+                        .HasColumnType("integer");
+
+                    b.HasKey("AccountId");
+
+                    b.ToTable("AccountSettings");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Comment", b =>
@@ -130,10 +169,11 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.HasIndex("ParentCommentId");
+                    b.HasIndex("ParentCommentId", "CreatedAt")
+                        .HasDatabaseName("IX_Comment_Parent_Created");
 
-                    b.HasIndex("PostId")
-                        .HasDatabaseName("IX_Comment_PostId");
+                    b.HasIndex("PostId", "ParentCommentId", "CreatedAt")
+                        .HasDatabaseName("IX_Comment_Post_Parent_Created");
 
                     b.ToTable("Comments");
                 });
@@ -272,7 +312,9 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasKey("FollowerId", "FollowedId");
 
-                    b.HasIndex("FollowedId");
+                    b.HasIndex("FollowedId", "CreatedAt");
+
+                    b.HasIndex("FollowerId", "CreatedAt");
 
                     b.ToTable("Follows");
                 });
@@ -443,9 +485,6 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.HasIndex("PostId")
-                        .HasDatabaseName("IX_PostReact_PostId");
-
                     b.ToTable("PostReacts");
                 });
 
@@ -479,6 +518,17 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.AccountSettings", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
+                        .WithOne("Settings")
+                        .HasForeignKey("SocialNetwork.Domain.Entities.AccountSettings", "AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Comment", b =>
@@ -665,6 +715,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Navigation("PostReacts");
 
                     b.Navigation("Posts");
+
+                    b.Navigation("Settings")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Comment", b =>

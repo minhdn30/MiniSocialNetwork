@@ -26,6 +26,7 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<ConversationMember> ConversationMembers { get; set; }
         public virtual DbSet<Message> Messages { get; set; }
         public virtual DbSet<MessageMedia> MessageMedias { get; set; }
+        public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -40,11 +41,25 @@ namespace SocialNetwork.Infrastructure.Data
                 entity.HasIndex(e => e.Email).IsUnique();
                 entity.HasIndex(e => e.Username).IsUnique();
 
+                // Trigram index for fast partial search on FullName
+                entity.HasIndex(e => e.FullName)
+                      .HasMethod("GIN")
+                      .HasOperators("gin_trgm_ops");
+
                 entity.HasOne(a => a.Role)
                       .WithMany(r => r.Accounts)
                       .HasForeignKey(a => a.RoleId)
                       .OnDelete(DeleteBehavior.Restrict);
+
+                // Account - AccountSettings (1:1)
+                entity.HasOne(a => a.Settings)
+                      .WithOne(s => s.Account)
+                      .HasForeignKey<AccountSettings>(s => s.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
+
+            // Enable pg_trgm extension
+            modelBuilder.HasPostgresExtension("pg_trgm");
 
             modelBuilder.Entity<Role>(entity =>
             {
@@ -58,8 +73,14 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasKey(f => new { f.FollowerId, f.FollowedId });
 
             // Index for FollowedId to optimize "Who follows me" queries
+            // Index for FollowedId to optimize "Who follows me" queries
+            // Also include CreatedAt for efficient sorting
             modelBuilder.Entity<Follow>()
-                .HasIndex(f => f.FollowedId);
+                .HasIndex(f => new { f.FollowedId, f.CreatedAt });
+
+            // Index for FollowerId + CreatedAt for efficient sorting of "Following" list
+            modelBuilder.Entity<Follow>()
+                .HasIndex(f => new { f.FollowerId, f.CreatedAt });
 
             modelBuilder.Entity<Follow>()
                 .HasOne(f => f.Follower)
@@ -84,7 +105,7 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasDatabaseName("IX_Posts_Feed");
             //for Post in Profile
             modelBuilder.Entity<Post>()
-                .HasIndex(p => new { p.AccountId, p.CreatedAt })
+                .HasIndex(p => new { p.AccountId, p.IsDeleted, p.CreatedAt })
                 .HasDatabaseName("IX_Posts_Account_CreatedAt");
 
             modelBuilder.Entity<Post>()
@@ -132,8 +153,9 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasKey(r => new { r.PostId, r.AccountId });
 
             modelBuilder.Entity<PostReact>()
-                .HasIndex(r => r.PostId)
-                .HasDatabaseName("IX_PostReact_PostId");
+                .HasKey(r => new { r.PostId, r.AccountId });
+
+            // IX_PostReact_PostId is redundant because PostId is the leading column of the PK
 
             // PostReact → Account
             modelBuilder.Entity<PostReact>()
@@ -157,8 +179,12 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasKey(c => c.CommentId);
 
             modelBuilder.Entity<Comment>()
-                .HasIndex(r => r.PostId)
-                .HasDatabaseName("IX_Comment_PostId");
+                .HasIndex(c => new { c.PostId, c.ParentCommentId, c.CreatedAt })
+                .HasDatabaseName("IX_Comment_Post_Parent_Created");
+
+            modelBuilder.Entity<Comment>()
+                .HasIndex(c => new { c.ParentCommentId, c.CreatedAt })
+                .HasDatabaseName("IX_Comment_Parent_Created");
 
             // Comment → Account
             modelBuilder.Entity<Comment>()
@@ -246,8 +272,7 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasIndex(cm => cm.AccountId);
 
             // Index: get members by conversation
-            modelBuilder.Entity<ConversationMember>()
-                .HasIndex(cm => cm.ConversationId);
+            // Redundant with PK but good for clarity if needed, though PK (ConvId, AccId) already covers this
 
             // ConversationMember → Account
             modelBuilder.Entity<ConversationMember>()

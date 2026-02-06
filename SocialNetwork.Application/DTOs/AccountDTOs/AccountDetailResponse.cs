@@ -1,4 +1,6 @@
-﻿using SocialNetwork.Application.DTOs.FollowDTOs;
+﻿using SocialNetwork.Domain.Enums;
+using SocialNetwork.Application.DTOs.FollowDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -13,19 +15,22 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
     {
         public Guid AccountId { get; set; }
         public string Username { get; set; } = null!;
-        public string Email { get; set; } = null!;
+        public string? Email { get; set; }
         public string FullName { get; set; } = null!;
         public string? AvatarUrl { get; set; }
         public string? Phone { get; set; }
         public bool? Gender { get; set; }
         public string? Address { get; set; }
+        public string? Bio { get; set; }
+        public string? CoverUrl { get; set; }
         public int RoleId { get; set; }
         public string RoleName { get; set; } = null!;
-        public bool Status { get; set; }
-        public DateTime CreatedAt { get; set; } 
+        public AccountStatusEnum Status { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public AccountSettingsResponse? Settings { get; set; }
         public DateTime? UpdatedAt { get; set; }
-        public bool IsEmailVerified { get; set; } 
+        public bool IsEmailVerified { get; set; }
         public DateTime? LastActiveAt { get; set; }
-        
+
     }
 }

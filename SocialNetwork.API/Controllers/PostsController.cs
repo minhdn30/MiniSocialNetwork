@@ -78,6 +78,21 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
         [Authorize]
+        [HttpPatch("{postId}/content")]
+        public async Task<ActionResult<PostUpdateContentResponse>> UpdatePostContent([FromRoute] Guid postId, [FromBody] PostUpdateContentRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _postService.UpdatePostContent(postId, currentId.Value, request);
+            //send signalR notification to FE
+            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveUpdatedPostContent", result);
+            await _hubContext.Clients.Group($"PostList-{currentId.Value}").SendAsync("ReceiveUpdatedPostContent", result);
+
+            return Ok(result);
+        }
+        [Authorize]
         [HttpDelete("{postId}")]
         public async Task<IActionResult> SoftDeletePost([FromRoute] Guid postId)
         {
@@ -92,7 +107,7 @@ namespace SocialNetwork.API.Controllers
                 await _hubContext.Clients.Group($"PostList-{accountId}").SendAsync("ReceiveDeletedPost", postId);
             return NoContent();
         }
-        [HttpGet("personal/{accountId}")]
+        [HttpGet("profile/{accountId}")]
         public async Task<ActionResult<PagedResponse<PostPersonalListModel>>> GetPostsByAccountId([FromRoute] Guid accountId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             var currentId = User.GetAccountId();

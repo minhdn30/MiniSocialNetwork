@@ -8,6 +8,8 @@ using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,27 +25,36 @@ namespace SocialNetwork.Application.Services.CommentServices
         private readonly ICommentReactRepository _commentReactRepository;
         private readonly IPostRepository _postRepository;
         private readonly IAccountRepository _accountRepository;
+        private readonly IFollowRepository _followRepository;
         private readonly IMapper _mapper;
         public CommentService(ICommentRepository commentRepository, ICommentReactRepository commentReactRepository, IPostRepository postRepository,
-            IAccountRepository accountRepository, IMapper mapper)
+            IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper)
         {
             _commentRepository = commentRepository;
             _commentReactRepository = commentReactRepository;
             _postRepository = postRepository;
             _accountRepository = accountRepository;
+            _followRepository = followRepository;
             _mapper = mapper;
         }
         public async Task<CommentResponse> AddCommentAsync(Guid postId, Guid accountId, CommentCreateRequest request)
         {
-            if(!await _postRepository.IsPostExist(postId))
+            var post = await _postRepository.GetPostBasicInfoById(postId);
+            if (post == null)
             {
                 throw new BadRequestException($"Post with ID {postId} not found.");
             }
+
+            await ValidatePostPrivacyAsync(post, accountId, "comment on");
  
-            if(!await _accountRepository.IsAccountIdExist(accountId))
+            var account = await _accountRepository.GetAccountById(accountId);
+            if(account == null)
             {
                 throw new BadRequestException($"Account with ID {accountId} not found.");
             }
+
+            if (account.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to comment.");
             if (request.ParentCommentId.HasValue)
             {
                 var parentId = request.ParentCommentId.Value;
@@ -67,13 +78,17 @@ namespace SocialNetwork.Application.Services.CommentServices
             var result = _mapper.Map<CommentResponse>(comment);
             
             // Populate Owner info for realtime rendering
-            var account = await _accountRepository.GetAccountById(accountId);
             if (account != null)
             {
                 result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
             }
 
             result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(postId);
+
+            // Calculate business rules
+            result.CanEdit = true; // Newly created comment by the user
+            result.CanDelete = true; // Owner of the comment can always delete it
+
             return result;
         }
         public async Task<CommentResponse> UpdateCommentAsync(Guid commentId, Guid accountId, CommentUpdateRequest request)
@@ -83,62 +98,157 @@ namespace SocialNetwork.Application.Services.CommentServices
             {
                 throw new BadRequestException($"Comment with ID {commentId} not found.");
             }
-            if(!await _postRepository.IsPostExist(comment.PostId))
-            {
-                throw new BadRequestException($"Post with ID {comment.PostId} not found.");
-            }
+
             if (comment.AccountId != accountId)
             {
                 throw new ForbiddenException("You are not authorized to update this comment.");
             }
-            _mapper.Map(request, comment);
+
+            if (comment.Account.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to update comments.");
+
+            var post = await _postRepository.GetPostBasicInfoById(comment.PostId);
+            if (post == null)
+            {
+                throw new BadRequestException("Post no longer exists.");
+            }
+
+            await ValidatePostPrivacyAsync(post, accountId, "modify comments on");
+
+            // Only update content as requested
+            comment.Content = request.Content;
+            comment.UpdatedAt = DateTime.UtcNow;
+
             await _commentRepository.UpdateComment(comment);
+            
             var result = _mapper.Map<CommentResponse>(comment);
+            
+            // Populate essential info for realtime rendering (consistent with AddCommentAsync)
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account != null)
+            {
+                result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+            }
+
             result.ReactCount = await _commentReactRepository.CountCommentReactAsync(comment.CommentId);
             result.ReplyCount = await _commentRepository.CountCommentRepliesAsync(comment.CommentId);
+            result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(comment.PostId);
+            
+            // Calculate business rules
+            result.CanEdit = true;
+            result.CanDelete = true;
+
             return result;
         }
-        public async Task<Guid?> DeleteCommentAsync(Guid commentId,  Guid accountId, bool isAdmin)
+        public async Task<CommentDeleteResult> DeleteCommentAsync(Guid commentId,  Guid accountId, bool isAdmin)
         {
             var comment = await _commentRepository.GetCommentById(commentId);
             if (comment == null)
             {
                 throw new BadRequestException($"Comment with ID {commentId} not found.");
             }
-            if (!await _postRepository.IsPostExist(comment.PostId))
+            var post = await _postRepository.GetPostBasicInfoById(comment.PostId);
+            if (post == null)
             {
                 throw new BadRequestException($"Post with ID {comment.PostId} not found.");
             }
-            if (comment.AccountId != accountId && !isAdmin)
+
+            bool isPostOwner = post.AccountId == accountId;
+
+            if (comment.AccountId != accountId && !isPostOwner && !isAdmin)
             {
                 throw new ForbiddenException("You are not authorized to delete this comment.");
             }
+
+            if (!isAdmin && comment.Account.Status != AccountStatusEnum.Active && !isPostOwner)
+                throw new ForbiddenException("You must reactivate your account to delete comments.");
+
+            if (!isAdmin && !isPostOwner)
+            {
+                await ValidatePostPrivacyAsync(post, accountId, "manage comments on");
+            }
+
+            var postId = comment.PostId;
+            var parentId = comment.ParentCommentId;
+
             await _commentRepository.DeleteCommentWithReplies(commentId);
-            return comment.PostId;
+            
+            // Get updated counts logic
+            // User requirement: "totalpostcomment will update when deleting a comment, not a reply"
+            
+            int? totalComments = null;
+            int? parentReplyCount = null;
+
+            if (parentId.HasValue)
+            {
+                // Deleting a reply: Update parent's reply count, but NOT total post count
+                parentReplyCount = await _commentRepository.CountCommentRepliesAsync(parentId.Value);
+            }
+            else
+            {
+                // Deleting a main comment: Update total post count
+                totalComments = await _commentRepository.CountCommentsByPostId(postId);
+            }
+
+            return new CommentDeleteResult
+            {
+                PostId = postId,
+                ParentCommentId = parentId,
+                TotalPostComments = totalComments,
+                ParentReplyCount = parentReplyCount
+            };
         }
-        public async Task<PagedResponse<CommentWithReplyCountModel>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize)
+        public async Task<PagedResponse<CommentResponse>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize)
         {
-            if(!await _postRepository.IsPostExist(postId))
+            var post = await _postRepository.GetPostBasicInfoById(postId);
+            if (post == null)
                 throw new BadRequestException($"Post with ID {postId} not found.");
+
+            await ValidatePostPrivacyAsync(post, currentId, "view comments on");
+
             var (items, totalItems) = await _commentRepository.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, page, pageSize);
 
-            return new PagedResponse<CommentWithReplyCountModel>
+            var responseItems = items.Select(item =>
             {
-                Items = items,
+                var response = _mapper.Map<CommentResponse>(item);
+                response.CanEdit = currentId != null && item.Owner.AccountId == currentId;
+                response.CanDelete = currentId != null && (item.Owner.AccountId == currentId || item.PostOwnerId == currentId);
+                return response;
+            }).ToList();
+
+            return new PagedResponse<CommentResponse>
+            {
+                Items = responseItems,
                 TotalItems = totalItems,
                 Page = page,
                 PageSize = pageSize
             };
         }
-        public async Task<PagedResponse<ReplyCommentModel>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize)
+        public async Task<PagedResponse<CommentResponse>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize)
         {
-            if (!await _commentRepository.IsCommentExist(commentId))
+            var comment = await _commentRepository.GetCommentById(commentId);
+            if (comment == null)
                 throw new BadRequestException($"Comment with ID {commentId} not found.");
+
+            var post = await _postRepository.GetPostBasicInfoById(comment.PostId);
+            if (post == null)
+                throw new BadRequestException("Post no longer exists.");
+
+            await ValidatePostPrivacyAsync(post, currentId, "view replies on");
+
             var (items, totalItems) = await _commentRepository.GetRepliesByCommentIdAsync(commentId, currentId, page, pageSize);
 
-            return new PagedResponse<ReplyCommentModel>
+            var responseItems = items.Select(item =>
             {
-                Items = items,
+                var response = _mapper.Map<CommentResponse>(item);
+                response.CanEdit = currentId != null && item.Owner.AccountId == currentId;
+                response.CanDelete = currentId != null && (item.Owner.AccountId == currentId || item.PostOwnerId == currentId);
+                return response;
+            }).ToList();
+
+            return new PagedResponse<CommentResponse>
+            {
+                Items = responseItems,
                 TotalItems = totalItems,
                 Page = page,
                 PageSize = pageSize
@@ -153,6 +263,20 @@ namespace SocialNetwork.Application.Services.CommentServices
         public async Task<int> GetReplyCountAsync(Guid commentId)
         {
             return await _commentRepository.CountCommentRepliesAsync(commentId);
+        }
+
+        private async Task ValidatePostPrivacyAsync(Post post, Guid? currentId, string action)
+        {
+            if (post.Privacy == PostPrivacyEnum.Private)
+            {
+                if (currentId == null || currentId != post.AccountId)
+                    throw new ForbiddenException($"Only the post owner can {action} a private post.");
+            }
+            else if (post.Privacy == PostPrivacyEnum.FollowOnly)
+            {
+                if (currentId == null || (currentId != post.AccountId && !await _followRepository.IsFollowingAsync(currentId.Value, post.AccountId)))
+                    throw new ForbiddenException($"Only followers can {action} this post.");
+            }
         }
     }
 }

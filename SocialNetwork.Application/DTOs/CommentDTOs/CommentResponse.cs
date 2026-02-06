@@ -20,5 +20,8 @@ namespace SocialNetwork.Application.DTOs.CommentDTOs
         public int ReactCount { get; set; } = 0;
         public int ReplyCount { get; set; } = 0;
         public int TotalCommentCount { get; set; } = 0;
+        public bool IsCommentReactedByCurrentUser { get; set; } = false;
+        public bool CanDelete { get; set; } = false;
+        public bool CanEdit { get; set; } = false;
     }
 }

@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Models;
 using System;
@@ -26,7 +27,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
             var clearedAt = member?.ClearedAt;
             var query = _context.Messages
                 .Where(m => m.ConversationId == conversationId && 
-                       (clearedAt == null || m.SentAt > clearedAt))
+                       (clearedAt == null || m.SentAt > clearedAt) &&
+                       m.Account.Status == AccountStatusEnum.Active)
                 .OrderByDescending(m => m.SentAt);
             var totalItems = await query.CountAsync();
             var messages = await query
@@ -46,7 +48,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                         AccountId = m.Account.AccountId,
                         Username = m.Account.Username,
                         FullName = m.Account.FullName,
-                        AvatarUrl = m.Account.AvatarUrl
+                        AvatarUrl = m.Account.AvatarUrl,
+                        Status = m.Account.Status
                     },
 
                     Medias = m.Medias

@@ -11,6 +11,7 @@ using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
 using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services.AccountServices;
+using SocialNetwork.Application.Services.AccountSettingServices;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Application.Services.CommentReactServices;
@@ -27,6 +28,7 @@ using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
+using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
@@ -68,6 +70,7 @@ namespace SocialNetwork.API
 
             // Repositories
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
+            builder.Services.AddScoped<IAccountSettingRepository, AccountSettingRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
             builder.Services.AddScoped<ICommentRepository, CommentRepository>();
@@ -87,6 +90,7 @@ namespace SocialNetwork.API
             // Services
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
+            builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
             builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
             builder.Services.AddTransient<IEmailService, EmailService>();
@@ -138,7 +142,7 @@ namespace SocialNetwork.API
                             (
                                 path.StartsWithSegments("/chatHub") ||
                                 path.StartsWithSegments("/postHub") ||
-                                path.StartsWithSegments("/followHub")
+                                path.StartsWithSegments("/userHub")
                             ))
                         {
                             context.Token = accessToken;
@@ -229,8 +233,9 @@ namespace SocialNetwork.API
 
             app.UseAuthentication();
             app.UseAuthorization();
+            app.UseMiddleware<AccountStatusMiddleware>();
             app.MapHub<PostHub>("/postHub");
-            app.MapHub<FollowHub>("/followHub");
+            app.MapHub<UserHub>("/userHub");
             app.MapHub<ChatHub>("/chatHub");
 
             app.MapControllers();

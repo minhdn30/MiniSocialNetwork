@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace SocialNetwork.API.Hubs
 {
-    public class FollowHub : Hub
+    public class UserHub : Hub
     {
         public async Task JoinAccountGroup(Guid accountId)
         {

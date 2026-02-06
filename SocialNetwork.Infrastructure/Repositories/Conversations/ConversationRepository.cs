@@ -1,5 +1,6 @@
 ﻿using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,8 +22,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             return await _context.Conversations
                 .Where(c => !c.IsDeleted && !c.IsGroup)
                 .Where(c => c.Members.Count == 2 
-                            && c.Members.Any(m => m.AccountId == accountId1) 
-                            && c.Members.Any(m => m.AccountId == accountId2))
+                            && c.Members.Any(m => m.AccountId == accountId1 && m.Account.Status == AccountStatusEnum.Active) 
+                            && c.Members.Any(m => m.AccountId == accountId2 && m.Account.Status == AccountStatusEnum.Active))
                 .Include(c => c.Members)
                     .ThenInclude(m => m.Account)
                 .FirstOrDefaultAsync();
@@ -38,8 +39,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
     !           c.IsDeleted &&
                 !c.IsGroup &&
                 c.Members.Count == 2 &&
-                c.Members.Any(m => m.AccountId == accountId1) &&
-                c.Members.Any(m => m.AccountId == accountId2)
+                c.Members.Any(m => m.AccountId == accountId1 && m.Account.Status == AccountStatusEnum.Active) &&
+                c.Members.Any(m => m.AccountId == accountId2 && m.Account.Status == AccountStatusEnum.Active)
             );
         }
         public async Task<Conversation> CreatePrivateConversationAsync(Guid currentId, Guid otherId)

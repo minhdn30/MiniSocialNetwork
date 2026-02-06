@@ -1,4 +1,5 @@
 ﻿using SocialNetwork.Application.DTOs.FollowDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,5 +13,7 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public ProfileDetailResponse AccountInfo { get; set; }
         public FollowCountResponse FollowInfo { get; set; }
         public int TotalPosts { get; set; }
+        public bool IsCurrentUser { get; set; }
+        public AccountSettingsResponse? Settings { get; set; }
     }
 }
