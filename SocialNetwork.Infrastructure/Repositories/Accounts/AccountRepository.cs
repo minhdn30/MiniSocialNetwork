@@ -81,13 +81,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
             }
             if (!string.IsNullOrWhiteSpace(fullname))
             {
-                var keywords = fullname.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (var word in keywords)
-                {
-                    var k = word.ToLower();
-                    query = query.Where(a => a.FullName.ToLower().Contains(k));
-                }
+                var searchKeyword = $"%{fullname.Trim()}%";
+                query = query.Where(a => EF.Functions.ILike(a.FullName, searchKeyword));
             }
             if (!string.IsNullOrWhiteSpace(phone))
             {
@@ -137,8 +132,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                     },
 
                     PostCount = a.Posts.Count(p => !p.IsDeleted),
-                    FollowerCount = a.Followers.Count(),
-                    FollowingCount = a.Followings.Count(),
+                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
+                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
 
                     IsCurrentUser = currentId.HasValue && a.AccountId == currentId.Value,
                     IsFollowedByCurrentUser =
@@ -184,37 +179,117 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
 
         public async Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId)
         {
-            return await _context.Accounts
+            var data = await _context.Accounts
                 .AsNoTracking()
                 .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active)
-                .Select(a => new ProfileInfoModel
+                .Select(a => new
                 {
-                    AccountId = a.AccountId,
-                    Username = a.Username,
-                    Email = a.Email,
-                    FullName = a.FullName,
-                    AvatarUrl = a.AvatarUrl,
-                    Phone = a.Phone,
-                    Bio = a.Bio,
-                    CoverUrl = a.CoverUrl,
-                    Gender = a.Gender,
-                    Address = a.Address,
-                    CreatedAt = a.CreatedAt,
+                    a.AccountId,
+                    a.Username,
+                    a.Email,
+                    a.FullName,
+                    a.AvatarUrl,
+                    a.Phone,
+                    a.Bio,
+                    a.CoverUrl,
+                    a.Gender,
+                    a.Address,
+                    a.CreatedAt,
                     PostCount = a.Posts.Count(p => !p.IsDeleted),
                     FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
                     FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
-                    IsCurrentUser = currentId.HasValue && a.AccountId == currentId.Value,
                     IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
-                    
-                    // Optimized projection with Virtual Defaults
-                    EmailPrivacy = a.Settings != null ? a.Settings.EmailPrivacy : AccountPrivacyEnum.Private,
-                    PhonePrivacy = a.Settings != null ? a.Settings.PhonePrivacy : AccountPrivacyEnum.Private,
-                    AddressPrivacy = a.Settings != null ? a.Settings.AddressPrivacy : AccountPrivacyEnum.Private,
-                    DefaultPostPrivacy = a.Settings != null ? a.Settings.DefaultPostPrivacy : PostPrivacyEnum.Public,
-                    FollowerPrivacy = a.Settings != null ? a.Settings.FollowerPrivacy : AccountPrivacyEnum.Public,
-                    FollowingPrivacy = a.Settings != null ? a.Settings.FollowingPrivacy : AccountPrivacyEnum.Public
+                    Settings = a.Settings
                 })
                 .FirstOrDefaultAsync();
+
+            if (data == null) return null;
+
+            var s = data.Settings;
+
+            return new ProfileInfoModel
+            {
+                AccountId = data.AccountId,
+                Username = data.Username,
+                Email = data.Email,
+                FullName = data.FullName,
+                AvatarUrl = data.AvatarUrl,
+                Phone = data.Phone,
+                Bio = data.Bio,
+                CoverUrl = data.CoverUrl,
+                Gender = data.Gender,
+                Address = data.Address,
+                CreatedAt = data.CreatedAt,
+                PostCount = data.PostCount,
+                FollowerCount = data.FollowerCount,
+                FollowingCount = data.FollowingCount,
+                IsCurrentUser = currentId.HasValue && data.AccountId == currentId.Value,
+                IsFollowedByCurrentUser = data.IsFollowedByCurrentUser,
+
+                // Virtual Defaults - Check once here
+                PhonePrivacy = s?.PhonePrivacy ?? AccountPrivacyEnum.Private,
+                AddressPrivacy = s?.AddressPrivacy ?? AccountPrivacyEnum.Private,
+                DefaultPostPrivacy = s?.DefaultPostPrivacy ?? PostPrivacyEnum.Public,
+                FollowerPrivacy = s?.FollowerPrivacy ?? AccountPrivacyEnum.Public,
+            };
+        }
+
+        public async Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId)
+        {
+            var data = await _context.Accounts
+                .AsNoTracking()
+                .Where(a => a.Username.ToLower() == username.ToLower() && a.Status == AccountStatusEnum.Active)
+                .Select(a => new
+                {
+                    a.AccountId,
+                    a.Username,
+                    a.Email,
+                    a.FullName,
+                    a.AvatarUrl,
+                    a.Phone,
+                    a.Bio,
+                    a.CoverUrl,
+                    a.Gender,
+                    a.Address,
+                    a.CreatedAt,
+                    PostCount = a.Posts.Count(p => !p.IsDeleted),
+                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
+                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
+                    IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
+                    Settings = a.Settings
+                })
+                .FirstOrDefaultAsync();
+
+            if (data == null) return null;
+
+            var s = data.Settings;
+
+            return new ProfileInfoModel
+            {
+                AccountId = data.AccountId,
+                Username = data.Username,
+                Email = data.Email,
+                FullName = data.FullName,
+                AvatarUrl = data.AvatarUrl,
+                Phone = data.Phone,
+                Bio = data.Bio,
+                CoverUrl = data.CoverUrl,
+                Gender = data.Gender,
+                Address = data.Address,
+                CreatedAt = data.CreatedAt,
+                PostCount = data.PostCount,
+                FollowerCount = data.FollowerCount,
+                FollowingCount = data.FollowingCount,
+                IsCurrentUser = currentId.HasValue && data.AccountId == currentId.Value,
+                IsFollowedByCurrentUser = data.IsFollowedByCurrentUser,
+
+                // Virtual Defaults - Check once here
+                PhonePrivacy = s?.PhonePrivacy ?? AccountPrivacyEnum.Private,
+                AddressPrivacy = s?.AddressPrivacy ?? AccountPrivacyEnum.Private,
+                DefaultPostPrivacy = s?.DefaultPostPrivacy ?? PostPrivacyEnum.Public,
+                FollowerPrivacy = s?.FollowerPrivacy ?? AccountPrivacyEnum.Public,
+                FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public
+            };
         }
     }
 }

@@ -50,9 +50,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                     },
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,
-                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId),
-                    ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId),
-                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId),
+                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
+                    ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
                     PostOwnerId = postOwnerId
                 })
                 .ToListAsync();
@@ -141,8 +141,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt,
-                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId),
-                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId),
+                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
                     PostOwnerId = postOwnerId
                 })
                 .ToListAsync();

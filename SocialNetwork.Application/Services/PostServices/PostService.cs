@@ -68,6 +68,8 @@ namespace SocialNetwork.Application.Services.PostServices
                 throw new NotFoundException($"Post with ID {postId} not found.");
             }
             var result = _mapper.Map<PostDetailResponse>(post);
+            result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
+            result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
         }
@@ -289,9 +291,8 @@ namespace SocialNetwork.Application.Services.PostServices
             await _postRepository.UpdatePost(post);
             var account = await _accountRepository.GetAccountById(post.AccountId);
             var result = _mapper.Map<PostDetailResponse>(post);
-            //can use this for performance improvement
-            //result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
-            //result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
+            result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
+            result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
 

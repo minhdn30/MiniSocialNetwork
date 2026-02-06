@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.ConversationDTOs;

@@ -1,5 +1,6 @@
 ﻿using SocialNetwork.Domain.Enums;
 using SocialNetwork.Application.DTOs.FollowDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

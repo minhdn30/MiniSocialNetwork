@@ -11,6 +11,7 @@ using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
 using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services.AccountServices;
+using SocialNetwork.Application.Services.AccountSettingServices;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Application.Services.CommentReactServices;

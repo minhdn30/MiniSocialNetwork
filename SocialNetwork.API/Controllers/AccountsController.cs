@@ -2,8 +2,10 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AccountServices;
+using SocialNetwork.Application.Services.AccountSettingServices;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -83,6 +85,14 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             var result = await _accountService.GetAccountProfileByGuid(accountId, currentId);
+            return Ok(result);
+        }
+
+        [HttpGet("profile/username/{username}")]
+        public async Task<ActionResult<ProfileInfoResponse>> GetAccountProfileByUsername([FromRoute] string username)
+        {
+            var currentId = User.GetAccountId();
+            var result = await _accountService.GetAccountProfileByUsername(username, currentId);
             return Ok(result);
         }
 

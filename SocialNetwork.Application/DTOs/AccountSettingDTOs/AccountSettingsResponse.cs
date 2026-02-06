@@ -5,11 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.DTOs.AccountDTOs
+namespace SocialNetwork.Application.DTOs.AccountSettingDTOs
 {
     public class AccountSettingsResponse
     {
-        public AccountPrivacyEnum EmailPrivacy { get; set; }
         public AccountPrivacyEnum PhonePrivacy { get; set; }
         public AccountPrivacyEnum AddressPrivacy { get; set; }
         public PostPrivacyEnum DefaultPostPrivacy { get; set; }

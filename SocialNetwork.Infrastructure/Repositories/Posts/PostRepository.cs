@@ -89,10 +89,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         .ToList(),
 
                     TotalMedias = p.Medias.Count(),
-                    TotalReacts = p.Reacts.Count(),
-                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null),
+                    TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
+                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
 
-                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
                     IsOwner = p.AccountId == currentId,
                     IsFollowedByCurrentUser = isFollower
                 })
@@ -164,8 +164,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         .Take(1)
                         .ToList(),
                     MediaCount = p.Medias.Count(),
-                    ReactCount = p.Reacts.Count(),
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null)
+                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active)
                 })
                 .ToListAsync();
 
@@ -229,9 +229,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                        Type = m.Type
                    }).ToList(),
                    MediaCount = p.Medias.Count(),
-                   ReactCount = p.Reacts.Count(),
-                   CommentCount = p.Comments.Count(c => c.ParentCommentId == null),
-                   IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
+                   ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
+                   CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
+                   IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
                    IsOwner = p.AccountId == currentId
                 }).ToListAsync();
         }
@@ -332,12 +332,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         }),
 
                     MediaCount = p.Medias.Count(),
-                    ReactCount = p.Reacts.Count(),
+                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
 
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null),
-                    ReplyCount = p.Comments.Count(c => c.ParentCommentId != null),
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
+                    ReplyCount = p.Comments.Count(c => c.ParentCommentId != null && c.Account.Status == AccountStatusEnum.Active),
 
-                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId),
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
                     IsOwner = p.AccountId == currentId,
                     IsFollowedAuthor = followedIds.Contains(p.AccountId),
 

@@ -11,6 +11,7 @@ namespace SocialNetwork.Application.DTOs.AuthDTOs
     {
         public Guid AccountId { get; set; }
         public string Fullname { get; set; } = null!;
+        public string Username { get; set; } = null!;
         public string? AvatarUrl { get; set; }
         public string? AccessToken { get; set; }
         public string? RefreshToken { get; set; }
