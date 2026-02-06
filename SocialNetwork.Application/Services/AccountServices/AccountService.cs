@@ -14,6 +14,7 @@ using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,6 +32,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         private readonly ICloudinaryService _cloudinary;
         private readonly IFollowRepository _followRepository;
         private readonly IPostRepository _postRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public AccountService(
             IAccountRepository accountRepository, 
@@ -38,7 +40,8 @@ namespace SocialNetwork.Application.Services.AccountServices
             IMapper mapper, 
             ICloudinaryService cloudinary, 
             IFollowRepository followRepository, 
-            IPostRepository postRepository)
+            IPostRepository postRepository,
+            IUnitOfWork unitOfWork)
         {
             _accountRepository = accountRepository;
             _accountSettingRepository = accountSettingRepository;
@@ -46,6 +49,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             _cloudinary = cloudinary;
             _followRepository = followRepository;
             _postRepository = postRepository;
+            _unitOfWork = unitOfWork;
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {
@@ -125,54 +129,125 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request)
         {
+            // 1. Fetch account early - No lock needed here
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
             {
                 throw new NotFoundException($"Account with ID {accountId} not found.");
             }
 
-            if (request.Image != null)
+            string? oldAvatarPublicId = null;
+            string? oldCoverPublicId = null;
+            string? newAvatarUrl = null;
+            string? newCoverUrl = null;
+
+            // 2. Prepare Cloudinary Upload Tasks - Execute OUTSIDE transaction for performance
+            var uploadTasks = new List<Task>();
+
+            if (request.DeleteAvatar == true)
             {
                 if (!string.IsNullOrEmpty(account.AvatarUrl))
-                {
-                    var publicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
-                    if (!string.IsNullOrEmpty(publicId))
-                    {
-                        await _cloudinary.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
-                    }
-                }
-                var imageURL = await _cloudinary.UploadImageAsync(request.Image);
-                if (string.IsNullOrEmpty(imageURL))
-                {
-                    throw new InternalServerException("Image upload failed.");
-                }
-                account.AvatarUrl = imageURL;
-                
+                    oldAvatarPublicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
             }
-            if (request.CoverImage != null)
+            else if (request.AvatarFile != null)
             {
-                if (!string.IsNullOrEmpty(account.CoverUrl))
-                {
-                    var publicId = _cloudinary.GetPublicIdFromUrl(account.CoverUrl);
-                    if (!string.IsNullOrEmpty(publicId))
-                    {
-                        await _cloudinary.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
-                    }
-                }
-                var coverURL = await _cloudinary.UploadImageAsync(request.CoverImage);
-                if (string.IsNullOrEmpty(coverURL))
-                {
-                    throw new InternalServerException("Cover image upload failed.");
-                }
-                account.CoverUrl = coverURL;
+                if (!string.IsNullOrEmpty(account.AvatarUrl))
+                    oldAvatarPublicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
+
+                uploadTasks.Add(Task.Run(async () => {
+                    newAvatarUrl = await _cloudinary.UploadImageAsync(request.AvatarFile);
+                }));
             }
 
-            // Map standard profile fields
-            _mapper.Map(request, account);
-            
-            account.UpdatedAt = DateTime.UtcNow;
-            await _accountRepository.UpdateAccount(account);
-            return _mapper.Map<AccountDetailResponse>(account);
+            if (request.DeleteCover == true)
+            {
+                if (!string.IsNullOrEmpty(account.CoverUrl))
+                    oldCoverPublicId = _cloudinary.GetPublicIdFromUrl(account.CoverUrl);
+            }
+            else if (request.CoverFile != null)
+            {
+                if (!string.IsNullOrEmpty(account.CoverUrl))
+                    oldCoverPublicId = _cloudinary.GetPublicIdFromUrl(account.CoverUrl);
+
+                uploadTasks.Add(Task.Run(async () => {
+                    newCoverUrl = await _cloudinary.UploadImageAsync(request.CoverFile);
+                }));
+            }
+
+            // Sync point: Parallel uploads take the most time (network latency)
+            if (uploadTasks.Any())
+            {
+                await Task.WhenAll(uploadTasks);
+                
+                // Verify results
+                if (request.AvatarFile != null && string.IsNullOrEmpty(newAvatarUrl))
+                    throw new InternalServerException("Avatar upload failed.");
+                if (request.CoverFile != null && string.IsNullOrEmpty(newCoverUrl))
+                    throw new InternalServerException("Cover image upload failed.");
+            }
+
+            // 3. Start DB Transaction - Keep it minimal
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                // Assign new URLs (Before Mapper to avoid them being wiped if mapper has conditioned logic)
+                if (request.DeleteAvatar == true) account.AvatarUrl = null;
+                else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
+
+                if (request.DeleteCover == true) account.CoverUrl = null;
+                else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
+
+                // Normalize fields
+                if (string.IsNullOrWhiteSpace(request.Bio)) request.Bio = null;
+                if (string.IsNullOrWhiteSpace(request.Phone)) request.Phone = null;
+                if (string.IsNullOrWhiteSpace(request.Address)) request.Address = null;
+
+                // Bulk map standard fields (FullName, Gender, etc.)
+                _mapper.Map(request, account);
+                
+                // Re-enforce Urls just in case Mapper tried to set them (since naming is different, normally safe)
+                if (request.DeleteAvatar == true) account.AvatarUrl = null;
+                else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
+                
+                if (request.DeleteCover == true) account.CoverUrl = null;
+                else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
+
+                account.UpdatedAt = DateTime.UtcNow;
+                await _accountRepository.UpdateAccount(account);
+
+                await transaction.CommitAsync();
+
+                // 4. Post-Commit: Cleanup old images and parallelize network calls
+                var cleanupTasks = new List<Task>();
+                if (!string.IsNullOrEmpty(oldAvatarPublicId))
+                    cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldAvatarPublicId, MediaTypeEnum.Image));
+                if (!string.IsNullOrEmpty(oldCoverPublicId))
+                    cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldCoverPublicId, MediaTypeEnum.Image));
+                
+                if (cleanupTasks.Any()) await Task.WhenAll(cleanupTasks);
+
+                return _mapper.Map<AccountDetailResponse>(account);
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                
+                // PERFORMANCE/CLEANUP: If DB fails, delete the "orphaned" new images on Cloudinary
+                var orphanTasks = new List<Task>();
+                if (!string.IsNullOrEmpty(newAvatarUrl))
+                {
+                    var pid = _cloudinary.GetPublicIdFromUrl(newAvatarUrl);
+                    if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
+                }
+                if (!string.IsNullOrEmpty(newCoverUrl))
+                {
+                    var pid = _cloudinary.GetPublicIdFromUrl(newCoverUrl);
+                    if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
+                }
+                if (orphanTasks.Any()) await Task.WhenAll(orphanTasks);
+                
+                throw;
+            }
         }
         public async Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
         {

@@ -14,11 +14,7 @@ namespace SocialNetwork.Application.DTOs.PostMediaDTOs
         public Guid MediaId { get; set; }
         public string MediaUrl { get; set; } = null!;
         public MediaTypeEnum Type { get; set; }
-        public float? CropX { get; set; }  
-        public float? CropY { get; set; }   
-        public float? CropWidth { get; set; }
-        public float? CropHeight { get; set; }
         public DateTime CreatedAt { get; set; }
-
     }
 }
+
