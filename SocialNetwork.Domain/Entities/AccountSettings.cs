@@ -15,7 +15,6 @@ namespace SocialNetwork.Domain.Entities
         [ForeignKey("Account")]
         public Guid AccountId { get; set; }
 
-        public AccountPrivacyEnum EmailPrivacy { get; set; } = AccountPrivacyEnum.Private;
         public AccountPrivacyEnum PhonePrivacy { get; set; } = AccountPrivacyEnum.Private;
         public AccountPrivacyEnum AddressPrivacy { get; set; } = AccountPrivacyEnum.Private;
         

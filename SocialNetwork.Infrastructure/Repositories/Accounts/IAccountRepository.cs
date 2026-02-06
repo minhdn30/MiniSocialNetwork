@@ -24,5 +24,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
             string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, bool? isEmailVerified, int page, int pageSize);
         Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId);
         Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId);
+        Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId);
     }
 }

@@ -59,15 +59,15 @@ namespace SocialNetwork.Application.Services.AuthServices
         }
         public async Task<LoginResponse?> LoginAsync(LoginRequest loginRequest)
         {
-            var account = await _accountRepository.GetAccountByUsername(loginRequest.Username);
+            var account = await _accountRepository.GetAccountByEmail(loginRequest.Email);
             if(account == null)
             {
-                throw new UnauthorizedException("Invalid username or password.");
+                throw new UnauthorizedException("Invalid email or password.");
             }
             var isPasswordValid = BCrypt.Net.BCrypt.Verify(loginRequest.Password, account.PasswordHash);
             if(!isPasswordValid)
             {
-                throw new UnauthorizedException("Invalid username or password.");
+                throw new UnauthorizedException("Invalid email or password.");
             }
             
             if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
@@ -94,6 +94,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             {
                 AccountId = account.AccountId,
                 Fullname = account.FullName,
+                Username = account.Username,
                 AvatarUrl = account.AvatarUrl,
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,

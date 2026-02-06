@@ -39,7 +39,7 @@ namespace SocialNetwork.API.Controllers
 
             return Ok(new { message = "Email verification successful." });
         }
-        [HttpPost("login-with-username")]
+        [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             var result = await _authService.LoginAsync(request);
@@ -80,6 +80,7 @@ namespace SocialNetwork.API.Controllers
             {
                 result.AccessToken,
                 result.Fullname,
+                result.Username,
                 result.AvatarUrl
             });
         }

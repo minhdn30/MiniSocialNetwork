@@ -1,11 +1,11 @@
-using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.Services.AccountServices
+namespace SocialNetwork.Application.Services.AccountSettingServices
 {
     public interface IAccountSettingService
     {

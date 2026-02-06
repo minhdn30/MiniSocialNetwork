@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
@@ -211,7 +212,6 @@ namespace SocialNetwork.Application.Services.AccountServices
             // Map the privacy settings into a DTO
             var currentSettings = new AccountSettingsResponse
             {
-                EmailPrivacy = profileModel.EmailPrivacy,
                 PhonePrivacy = profileModel.PhonePrivacy,
                 AddressPrivacy = profileModel.AddressPrivacy,
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
@@ -222,11 +222,80 @@ namespace SocialNetwork.Application.Services.AccountServices
             // Enforce privacy logic
             if (!result.IsCurrentUser)
             {
-                // Check Email Privacy
-                if (!IsDataVisible(profileModel.EmailPrivacy, profileModel.IsFollowedByCurrentUser))
+                // Always hide Email
+                result.AccountInfo.Email = null;
+
+                // Check Phone Privacy
+                if (!IsDataVisible(profileModel.PhonePrivacy, profileModel.IsFollowedByCurrentUser))
                 {
-                    result.AccountInfo.Email = null;
+                    result.AccountInfo.Phone = null;
                 }
+
+                // Check Address Privacy
+                if (!IsDataVisible(profileModel.AddressPrivacy, profileModel.IsFollowedByCurrentUser))
+                {
+                    result.AccountInfo.Address = null;
+                }
+            }
+            else
+            {
+                // Only return settings values if it's the current user viewing their own profile
+                result.Settings = currentSettings;
+            }
+
+            return result;
+        }
+
+        public async Task<ProfileInfoResponse?> GetAccountProfileByUsername(string username, Guid? currentId)
+        {
+            var profileModel = await _accountRepository.GetProfileInfoByUsernameAsync(username, currentId);
+            
+            if (profileModel == null)
+            {
+                throw new NotFoundException($"Account with username '{username}' not found or inactive.");
+            }
+
+            var result = new ProfileInfoResponse
+            {
+                AccountInfo = new ProfileDetailResponse
+                {
+                    AccountId = profileModel.AccountId,
+                    Username = profileModel.Username,
+                    Email = profileModel.Email,
+                    FullName = profileModel.FullName,
+                    AvatarUrl = profileModel.AvatarUrl,
+                    Phone = profileModel.Phone,
+                    Bio = profileModel.Bio,
+                    CoverUrl = profileModel.CoverUrl,
+                    Gender = profileModel.Gender,
+                    Address = profileModel.Address,
+                    CreatedAt = profileModel.CreatedAt
+                },
+                FollowInfo = new FollowCountResponse
+                {
+                    Followers = profileModel.FollowerCount,
+                    Following = profileModel.FollowingCount,
+                    IsFollowedByCurrentUser = profileModel.IsFollowedByCurrentUser
+                },
+                TotalPosts = profileModel.PostCount,
+                IsCurrentUser = profileModel.IsCurrentUser
+            };
+            
+            // Map the privacy settings into a DTO
+            var currentSettings = new AccountSettingsResponse
+            {
+                PhonePrivacy = profileModel.PhonePrivacy,
+                AddressPrivacy = profileModel.AddressPrivacy,
+                DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
+                FollowerPrivacy = profileModel.FollowerPrivacy,
+                FollowingPrivacy = profileModel.FollowingPrivacy
+            };
+
+            // Enforce privacy logic
+            if (!result.IsCurrentUser)
+            {
+                // Always hide Email
+                result.AccountInfo.Email = null;
 
                 // Check Phone Privacy
                 if (!IsDataVisible(profileModel.PhonePrivacy, profileModel.IsFollowedByCurrentUser))
