@@ -249,6 +249,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         {
             return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
         }
+
+        public async Task<bool> IsPostCodeExist(string postCode)
+        {
+            return await _context.Posts.AnyAsync(p => p.PostCode == postCode);
+        }
         //no use
         public async Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {

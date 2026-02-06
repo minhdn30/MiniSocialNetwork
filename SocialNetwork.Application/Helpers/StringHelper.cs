@@ -1,8 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace SocialNetwork.Application.Helpers
 {
@@ -12,11 +9,10 @@ namespace SocialNetwork.Application.Helpers
 
         public static string GeneratePostCode(int length = 10)
         {
-            var random = new Random();
             var sb = new StringBuilder(length);
             for (int i = 0; i < length; i++)
             {
-                sb.Append(Base62Chars[random.Next(Base62Chars.Length)]);
+                sb.Append(Base62Chars[RandomNumberGenerator.GetInt32(Base62Chars.Length)]);
             }
             return sb.ToString();
         }
