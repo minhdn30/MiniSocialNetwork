@@ -12,6 +12,6 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
         public Guid PostId { get; set; }
         public string? Content { get; set; }
         public PostPrivacyEnum Privacy { get; set; }
-        public DateTime UpdatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
     }
 }
