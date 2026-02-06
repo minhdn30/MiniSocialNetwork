@@ -12,9 +12,11 @@ namespace SocialNetwork.API.Controllers
     public class AccountsController : ControllerBase
     {
         private readonly IAccountService _accountService;
-        public AccountsController(IAccountService accountService)
+        private readonly IAccountSettingService _accountSettingService;
+        public AccountsController(IAccountService accountService, IAccountSettingService accountSettingService)
         {
             _accountService = accountService;
+            _accountSettingService = accountSettingService;
         }
         [Authorize(Roles = "Admin")]
         [HttpGet("get-all")]
@@ -44,6 +46,27 @@ namespace SocialNetwork.API.Controllers
             var result = await _accountService.UpdateAccount(accountId, request);
             return Ok(result); 
         }
+        [Authorize]
+        [HttpPatch("profile")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<AccountDetailResponse>> PatchAccountProfile([FromForm] ProfileUpdateRequest request)
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+            var result = await _accountService.UpdateAccountProfile(accountId.Value, request);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPatch("settings")]
+        public async Task<ActionResult<AccountSettingsResponse>> PatchAccountSettings([FromBody] AccountSettingsUpdateRequest request)
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+            var result = await _accountSettingService.UpdateSettingsAsync(accountId.Value, request);
+            return Ok(result);
+        }
+
         [Authorize]
         [HttpPut("profile/{accountId}")]
         [Consumes("multipart/form-data")]

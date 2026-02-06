@@ -14,7 +14,7 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
     {
         public Guid AccountId { get; set; }
         public string Username { get; set; } = null!;
-        public string Email { get; set; } = null!;
+        public string? Email { get; set; }
         public string FullName { get; set; } = null!;
         public string? AvatarUrl { get; set; }
         public string? Phone { get; set; }
@@ -25,10 +25,11 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public int RoleId { get; set; }
         public string RoleName { get; set; } = null!;
         public AccountStatusEnum Status { get; set; }
-        public DateTime CreatedAt { get; set; } 
+        public DateTime CreatedAt { get; set; }
+        public AccountSettingsResponse? Settings { get; set; }
         public DateTime? UpdatedAt { get; set; }
-        public bool IsEmailVerified { get; set; } 
+        public bool IsEmailVerified { get; set; }
         public DateTime? LastActiveAt { get; set; }
-        
+
     }
 }

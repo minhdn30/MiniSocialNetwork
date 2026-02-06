@@ -26,6 +26,7 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<ConversationMember> ConversationMembers { get; set; }
         public virtual DbSet<Message> Messages { get; set; }
         public virtual DbSet<MessageMedia> MessageMedias { get; set; }
+        public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -49,6 +50,12 @@ namespace SocialNetwork.Infrastructure.Data
                       .WithMany(r => r.Accounts)
                       .HasForeignKey(a => a.RoleId)
                       .OnDelete(DeleteBehavior.Restrict);
+
+                // Account - AccountSettings (1:1)
+                entity.HasOne(a => a.Settings)
+                      .WithOne(s => s.Account)
+                      .HasForeignKey<AccountSettings>(s => s.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
 
             // Enable pg_trgm extension

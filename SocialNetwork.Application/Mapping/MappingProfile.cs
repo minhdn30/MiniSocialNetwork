@@ -31,13 +31,17 @@ namespace SocialNetwork.Application.Mapping
             CreateMap<Account, AccountOverviewResponse>()
                 .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
             CreateMap<Account, AccountDetailResponse>()
-                .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
+                .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName))
+                .ForMember(dest => dest.Settings, opt => opt.MapFrom(src => src.Settings));
+            CreateMap<AccountSettings, AccountSettingsResponse>();
             CreateMap<AccountCreateRequest, Account>()
                 .ForMember(dest => dest.AccountId, opt => opt.MapFrom(_ => Guid.NewGuid()))
                 .ForMember(dest => dest.PasswordHash, opt => opt.Ignore());
             CreateMap<AccountUpdateRequest, Account>()
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
             CreateMap<ProfileUpdateRequest, Account>()
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+            CreateMap<AccountSettingsUpdateRequest, AccountSettings>()
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
              CreateMap<Account, ProfileDetailResponse>();
             //Account -> Post mappings

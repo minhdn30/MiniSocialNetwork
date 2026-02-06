@@ -13,5 +13,6 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public FollowCountResponse FollowInfo { get; set; }
         public int TotalPosts { get; set; }
         public bool IsCurrentUser { get; set; }
+        public AccountSettingsResponse? Settings { get; set; }
     }
 }
