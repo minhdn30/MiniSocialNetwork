@@ -27,6 +27,7 @@ using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
+using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
@@ -68,6 +69,7 @@ namespace SocialNetwork.API
 
             // Repositories
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
+            builder.Services.AddScoped<IAccountSettingRepository, AccountSettingRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
             builder.Services.AddScoped<ICommentRepository, CommentRepository>();
@@ -87,6 +89,7 @@ namespace SocialNetwork.API
             // Services
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
+            builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
             builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
             builder.Services.AddTransient<IEmailService, EmailService>();
