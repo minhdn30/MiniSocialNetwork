@@ -17,14 +17,17 @@ namespace SocialNetwork.Application.Services.FollowServices
 {
     public class FollowService : IFollowService
     {
-        private readonly  IFollowRepository _followRepository;
+        private readonly IFollowRepository _followRepository;
         private readonly IAccountRepository _accountRepository;
+        private readonly SocialNetwork.Infrastructure.Repositories.AccountSettingRepos.IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
-        public FollowService(IFollowRepository followRepository, IMapper mapper, IAccountRepository accountRepository)
+        public FollowService(IFollowRepository followRepository, IMapper mapper, IAccountRepository accountRepository, 
+            SocialNetwork.Infrastructure.Repositories.AccountSettingRepos.IAccountSettingRepository accountSettingRepository)
         {
             _followRepository = followRepository;
             _mapper = mapper;
             _accountRepository = accountRepository;
+            _accountSettingRepository = accountSettingRepository;
         }
         public async Task<FollowCountResponse> FollowAsync(Guid followerId, Guid targetId)
         {
@@ -79,6 +82,24 @@ namespace SocialNetwork.Application.Services.FollowServices
         {
             if (!await _accountRepository.IsAccountIdExist(accountId))
                 throw new NotFoundException($"Account with ID {accountId} does not exist.");
+
+            // Privacy Check
+            if (currentId != accountId)
+            {
+                var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(accountId);
+                var privacy = settings != null ? settings.FollowerPrivacy : AccountPrivacyEnum.Public;
+
+                if (privacy == AccountPrivacyEnum.Private)
+                    throw new ForbiddenException("This user's followers list is private.");
+
+                if (privacy == AccountPrivacyEnum.FollowOnly)
+                {
+                    bool isFollowing = currentId.HasValue && await _followRepository.IsFollowingAsync(currentId.Value, accountId);
+                    if (!isFollowing)
+                        throw new ForbiddenException("You must follow this user to see their followers list.");
+                }
+            }
+
             var (items, total) = await _followRepository.GetFollowersAsync(accountId, currentId, request.Keyword, request.Page, request.PageSize);
 
             return new PagedResponse<AccountWithFollowStatusModel>
@@ -93,6 +114,24 @@ namespace SocialNetwork.Application.Services.FollowServices
         {
             if (!await _accountRepository.IsAccountIdExist(accountId))
                 throw new NotFoundException($"Account with ID {accountId} does not exist.");
+
+            // Privacy Check
+            if (currentId != accountId)
+            {
+                var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(accountId);
+                var privacy = settings != null ? settings.FollowingPrivacy : AccountPrivacyEnum.Public;
+
+                if (privacy == AccountPrivacyEnum.Private)
+                    throw new ForbiddenException("This user's following list is private.");
+
+                if (privacy == AccountPrivacyEnum.FollowOnly)
+                {
+                    bool isFollowing = currentId.HasValue && await _followRepository.IsFollowingAsync(currentId.Value, accountId);
+                    if (!isFollowing)
+                        throw new ForbiddenException("You must follow this user to see their following list.");
+                }
+            }
+
             var (items, total) = await _followRepository.GetFollowingAsync(accountId, currentId, request.Keyword, request.Page, request.PageSize);
             return new PagedResponse<AccountWithFollowStatusModel>
             {

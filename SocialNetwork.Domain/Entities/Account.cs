@@ -58,7 +58,7 @@ namespace SocialNetwork.Domain.Entities
         public virtual ICollection<ConversationMember> Conversations { get; set; } = new List<ConversationMember>();
         public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
         public virtual ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();
-
+        public virtual AccountSettings Settings { get; set; } = null!;
 
     }
 }

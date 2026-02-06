@@ -25,5 +25,13 @@ namespace SocialNetwork.Infrastructure.Models
         public int FollowingCount { get; set; }
         public bool IsFollowedByCurrentUser { get; set; }
         public bool IsCurrentUser { get; set; }
+
+        // Settings (Projected for optimization)
+        public AccountPrivacyEnum EmailPrivacy { get; set; }
+        public AccountPrivacyEnum PhonePrivacy { get; set; }
+        public AccountPrivacyEnum AddressPrivacy { get; set; }
+        public PostPrivacyEnum DefaultPostPrivacy { get; set; }
+        public AccountPrivacyEnum FollowerPrivacy { get; set; }
+        public AccountPrivacyEnum FollowingPrivacy { get; set; }
     }
 }

@@ -204,11 +204,17 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                     FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
                     FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
                     IsCurrentUser = currentId.HasValue && a.AccountId == currentId.Value,
-                    IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value)
+                    IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
+                    
+                    // Optimized projection with Virtual Defaults
+                    EmailPrivacy = a.Settings != null ? a.Settings.EmailPrivacy : AccountPrivacyEnum.Private,
+                    PhonePrivacy = a.Settings != null ? a.Settings.PhonePrivacy : AccountPrivacyEnum.Private,
+                    AddressPrivacy = a.Settings != null ? a.Settings.AddressPrivacy : AccountPrivacyEnum.Private,
+                    DefaultPostPrivacy = a.Settings != null ? a.Settings.DefaultPostPrivacy : PostPrivacyEnum.Public,
+                    FollowerPrivacy = a.Settings != null ? a.Settings.FollowerPrivacy : AccountPrivacyEnum.Public,
+                    FollowingPrivacy = a.Settings != null ? a.Settings.FollowingPrivacy : AccountPrivacyEnum.Public
                 })
                 .FirstOrDefaultAsync();
         }
-
-
     }
 }

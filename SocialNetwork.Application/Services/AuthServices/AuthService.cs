@@ -9,6 +9,7 @@ using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
+using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,11 +24,15 @@ namespace SocialNetwork.Application.Services.AuthServices
     public class AuthService : IAuthService
     {
         private readonly IAccountRepository _accountRepository;
+        private readonly IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
         private readonly IJwtService _jwtService;
-        public AuthService(IAccountRepository accountRepository, IMapper mapper, IJwtService jwtService)
+        public AuthService(IAccountRepository accountRepository, 
+            IAccountSettingRepository accountSettingRepository,
+            IMapper mapper, IJwtService jwtService)
         {
             _accountRepository = accountRepository;
+            _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
             _jwtService = jwtService;
         }
@@ -82,6 +87,9 @@ namespace SocialNetwork.Application.Services.AuthServices
 
             await _accountRepository.UpdateAccount(account);
 
+            var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
+            var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
+
             return new LoginResponse
             {
                 AccountId = account.AccountId,
@@ -90,7 +98,8 @@ namespace SocialNetwork.Application.Services.AuthServices
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
-                Status = account.Status
+                Status = account.Status,
+                DefaultPostPrivacy = defaultPostPrivacy
             };
         }
         public async Task<LoginResponse> LoginWithGoogleAsync(string idToken)
@@ -122,12 +131,16 @@ namespace SocialNetwork.Application.Services.AuthServices
 
             await _accountRepository.UpdateAccount(account);
 
+            var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
+            var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
+
             return new LoginResponse
             {
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
-                Status = account.Status
+                Status = account.Status,
+                DefaultPostPrivacy = defaultPostPrivacy
             };
         }
         public async Task<LoginResponse> RefreshTokenAsync(string refreshToken)
@@ -154,13 +167,17 @@ namespace SocialNetwork.Application.Services.AuthServices
 
             await _accountRepository.UpdateAccount(account);
 
+            var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
+            var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
+
             return new LoginResponse
             {
                 AccessToken = newAccessToken,
                 RefreshToken = newRefreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
                 Fullname = account.FullName,
-                AvatarUrl = account.AvatarUrl
+                AvatarUrl = account.AvatarUrl,
+                DefaultPostPrivacy = defaultPostPrivacy
             };
         }
 
