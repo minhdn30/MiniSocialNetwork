@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Infrastructure.Data;
+﻿using Microsoft.EntityFrameworkCore.Storage;
+using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,6 +18,11 @@ namespace SocialNetwork.Infrastructure.Repositories.UnitOfWork
         public async Task CommitAsync()
         {
             await _context.SaveChangesAsync();
+        }
+
+        public Task<IDbContextTransaction> BeginTransactionAsync()
+        {
+            return _context.Database.BeginTransactionAsync();
         }
     }
 }

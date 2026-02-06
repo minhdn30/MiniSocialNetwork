@@ -4,12 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
-using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Application.Exceptions;
 using SocialNetwork.Application.Helpers;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Services.CloudinaryServices;
-using SocialNetwork.Application.Validators;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -24,9 +22,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
+
 
 namespace SocialNetwork.Application.Services.PostServices
 {
@@ -97,6 +95,7 @@ namespace SocialNetwork.Application.Services.PostServices
 
         public async Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request)
         {
+            // 1. Pre-validation and Preparation
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
                 throw new BadRequestException($"Account with ID {accountId} not found.");
@@ -104,138 +103,88 @@ namespace SocialNetwork.Application.Services.PostServices
             if (account.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to create posts.");
 
-            if (request.Privacy.HasValue &&
-                !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
+            if (request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
                 throw new BadRequestException("Invalid privacy setting.");
 
-            if (request.FeedAspectRatio.HasValue &&
-                !Enum.IsDefined(typeof(AspectRatioEnum), request.FeedAspectRatio.Value))
+            if (request.FeedAspectRatio.HasValue && !Enum.IsDefined(typeof(AspectRatioEnum), request.FeedAspectRatio.Value))
                 throw new BadRequestException("Invalid feed aspect ratio.");
 
+            // Generate Unique PostCode
+            string postCode = StringHelper.GeneratePostCode(10);
+            if (await _postRepository.IsPostCodeExist(postCode)) postCode = StringHelper.GeneratePostCode(12);
 
+            // 2. Upload to Cloudinary (OUTSIDE Transaction) - Sequential for PostgreSQL stability
+            var uploadedUrls = new List<string>();
+            var validResults = new List<dynamic>();
 
-            // ---------- Parse MediaCrops ----------
-            List<PostMediaCropInfoRequest> cropInfos = new();
-            if (!string.IsNullOrWhiteSpace(request.MediaCrops))
-            {
-                try
-                {
-                    cropInfos = JsonSerializer.Deserialize<List<PostMediaCropInfoRequest>>(
-                        request.MediaCrops,
-                        new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true
-                        }
-                    ) ?? new();
-                }
-                catch (JsonException ex)
-                {
-                    throw new BadRequestException(
-                        $"Invalid MediaCrops format. Raw value: {request.MediaCrops}"
-                    );
-                }
-            }
-
-            // ---------- Generate Unique PostCode ----------
-            string postCode = string.Empty;
-            bool isUnique = false;
-            int retries = 0;
-            const int maxRetries = 10;
-
-            while (!isUnique && retries < maxRetries)
-            {
-                postCode = StringHelper.GeneratePostCode(10);
-                if (!await _postRepository.IsPostCodeExist(postCode))
-                {
-                    isUnique = true;
-                }
-                retries++;
-            }
-
-            if (!isUnique)
-            {
-                // Unlikely collision with 10 chars, but as fallback use 12 chars
-                postCode = StringHelper.GeneratePostCode(12);
-            }
-
-            // ---------- Create Post ----------
-            var post = _mapper.Map<Post>(request);
-            post.AccountId = accountId;
-            post.PostCode = postCode;
-
-            // Default FeedAspectRatio = Square (1:1)
-            post.FeedAspectRatio = request.FeedAspectRatio.HasValue
-                ? (AspectRatioEnum)request.FeedAspectRatio.Value
-                : AspectRatioEnum.Square;
-
-            await _postRepository.AddPost(post);
-
-            var result = _mapper.Map<PostDetailResponse>(post);
-            result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
-
-            // ---------- Handle Media ----------
             if (request.MediaFiles != null && request.MediaFiles.Any())
             {
-                var uploadTasks = request.MediaFiles.Select(async (media, index) =>
+                // Use sequential loop to avoid DbContext thread safety issues on PostgreSQL
+                for (int i = 0; i < request.MediaFiles.Count; i++)
                 {
+                    var media = request.MediaFiles[i];
                     var detectedType = await _fileTypeDetector.GetMediaTypeAsync(media);
-                    // Optimized: Remove Video support and parallelize uploads
-                    if (detectedType == null || detectedType == MediaTypeEnum.Video) return null;
+                    if (detectedType != MediaTypeEnum.Image) continue;
 
-                    string? url = detectedType.Value switch
+                    var url = await _cloudinaryService.UploadImageAsync(media);
+                    if (!string.IsNullOrEmpty(url))
                     {
-                        MediaTypeEnum.Image => await _cloudinaryService.UploadImageAsync(media),
-                        _ => null
-                    };
-
-                    if (string.IsNullOrEmpty(url)) return null;
-
-                    // Map crop by index
-                    var crop = cropInfos.FirstOrDefault(c => c.Index == index);
-                    if (crop != null)
-                    {
-                        MediaCropValidator.Validate(crop, post.FeedAspectRatio);
+                        validResults.Add(new { Url = url, Type = detectedType.Value, Index = i });
                     }
+                }
 
+                if (validResults.Count != request.MediaFiles.Count)
+                    throw new BadRequestException("Some images failed to upload or are invalid. Videos are not supported.");
+
+                // Map to domain entities
+                var now = DateTime.UtcNow;
+                var mediaEntities = validResults.Select(r => {
+                    var current = r!;
+                    uploadedUrls.Add(current.Url!);
                     return new PostMedia
                     {
-                        PostId = post.PostId,
-                        MediaUrl = url,
-                        Type = detectedType.Value,
-
-                        CropX = crop?.CropX,
-                        CropY = crop?.CropY,
-                        CropWidth = crop?.CropWidth,
-                        CropHeight = crop?.CropHeight
+                        MediaUrl = current.Url!,
+                        Type = current.Type,
+                        CreatedAt = now.AddMilliseconds(current.Index * 100)
                     };
-                });
+                }).ToList();
 
-                var uploadedMedias = await Task.WhenAll(uploadTasks);
-                var validMedias = uploadedMedias.Where(m => m != null).Cast<PostMedia>().ToList();
-
-                if (validMedias.Any())
+                // 3. DB Transaction (Atomic Post + Media)
+                using var transaction = await _unitOfWork.BeginTransactionAsync();
+                try
                 {
-                    // Ensure CreatedAt reflects the original selection order, not upload finish time
-                    var now = DateTime.UtcNow;
-                    for (int i = 0; i < validMedias.Count; i++)
-                    {
-                        validMedias[i].CreatedAt = now.AddMilliseconds(i * 100);
-                    }
+                    var post = _mapper.Map<Post>(request);
+                    post.AccountId = accountId;
+                    post.PostCode = postCode;
+                    post.FeedAspectRatio = (AspectRatioEnum)(request.FeedAspectRatio ?? (int)AspectRatioEnum.Square);
+                    post.Medias = mediaEntities;
 
-                    await _postMediaRepository.AddPostMedias(validMedias);
-                    result.Medias = _mapper.Map<List<PostMediaDetailResponse>>(validMedias);
-                    result.TotalMedias = result.Medias.Count;
+                    await _postRepository.AddPost(post);
+                    
+                    // CRITICAL: Ensure data is written to DB before committing the transaction
+                    await _unitOfWork.CommitAsync();
+                    await transaction.CommitAsync();
+
+                    var result = _mapper.Map<PostDetailResponse>(post);
+                    result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+                    result.IsOwner = true;
+                    return result;
+                }
+                catch (Exception)
+                {
+                    await transaction.RollbackAsync();
+                    
+                    // Cleanup: Delete orphaned images from Cloudinary if DB fail
+                    var cleanupTasks = uploadedUrls.Select(url => {
+                        var pid = _cloudinaryService.GetPublicIdFromUrl(url);
+                        return !string.IsNullOrEmpty(pid) ? _cloudinaryService.DeleteMediaAsync(pid, MediaTypeEnum.Image) : Task.CompletedTask;
+                    });
+                    await Task.WhenAll(cleanupTasks);
+                    throw;
                 }
             }
 
-            if (result.Medias == null || !result.Medias.Any())
-            {
-                throw new BadRequestException("Post must contain at least one valid image. Video files are not supported.");
-            }
-
-            result.IsOwner = true;
-            await _unitOfWork.CommitAsync();
-            return result;
+            throw new BadRequestException("Post must contain at least one valid image.");
         }
 
 

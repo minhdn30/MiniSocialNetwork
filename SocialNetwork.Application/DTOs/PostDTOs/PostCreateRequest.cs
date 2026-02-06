@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Http;
-using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
@@ -21,8 +20,6 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
         [Required(ErrorMessage = "At least one image is required.")]
         [MinLength(1, ErrorMessage = "At least one image is required.")]
         public List<IFormFile> MediaFiles { get; set; } = new();
-        // JSON string describing the crop for each image
-        // Example: [[{ "index":0, "cropX":0.1, ... }]]
-        public string? MediaCrops { get; set; }
     }
 }
+
