@@ -16,6 +16,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         Task<Post?> GetPostForUpdateContent(Guid postId);
         //main detail
         Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId);
+        Task<PostDetailModel?> GetPostDetailByPostCode(string postCode, Guid currentId);
         Task AddPost(Post post);
         Task UpdatePost(Post post);
         Task SoftDeletePostAsync(Guid postId);

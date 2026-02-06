@@ -62,6 +62,72 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Select(p => new PostDetailModel
                 {
                     PostId = p.PostId,
+                    PostCode = p.PostCode,
+                    Privacy = (int)p.Privacy,
+                    FeedAspectRatio = (int)p.FeedAspectRatio,
+                    Content = p.Content,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+
+                    Owner = new AccountBasicInfoModel
+                    {
+                        AccountId = p.Account.AccountId,
+                        Username = p.Account.Username,
+                        FullName = p.Account.FullName,
+                        AvatarUrl = p.Account.AvatarUrl,
+                        Status = p.Account.Status
+                    },
+
+                    Medias = p.Medias
+                        .OrderBy(m => m.CreatedAt)
+                        .Select(m => new PostMediaProfilePreviewModel
+                        {
+                            MediaId = m.MediaId,
+                            PostId = m.PostId,
+                            MediaUrl = m.MediaUrl,
+                            MediaType = m.Type
+                        })
+                        .ToList(),
+
+                    TotalMedias = p.Medias.Count(),
+                    TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
+                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
+
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsOwner = p.AccountId == currentId,
+                    IsFollowedByCurrentUser = isFollower
+                })
+                .FirstOrDefaultAsync();
+
+            return post;
+        }
+
+        public async Task<PostDetailModel?> GetPostDetailByPostCode(string postCode, Guid currentId)
+        {
+            var postRecord = await _context.Posts.AsNoTracking().FirstOrDefaultAsync(p => p.PostCode == postCode);
+            if (postRecord == null) return null;
+
+            var isFollower = await _context.Follows.AnyAsync(f =>
+                f.FollowerId == currentId &&
+                f.FollowedId == postRecord.AccountId
+            );
+
+            var post = await _context.Posts
+                .AsNoTracking()
+                .Where(p =>
+                    p.PostCode == postCode &&
+                    !p.IsDeleted &&
+                    p.Account.Status == AccountStatusEnum.Active &&
+                    (
+                        p.AccountId == currentId || // owner
+                        p.Privacy == PostPrivacyEnum.Public ||
+                        (p.Privacy == PostPrivacyEnum.FollowOnly && isFollower)
+                    )
+                )
+                .Select(p => new PostDetailModel
+                {
+                    PostId = p.PostId,
+                    PostCode = p.PostCode,
                     Privacy = (int)p.Privacy,
                     FeedAspectRatio = (int)p.FeedAspectRatio,
                     Content = p.Content,
@@ -153,6 +219,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Select(p => new PostPersonalListModel
                 {
                     PostId = p.PostId,
+                    PostCode = p.PostCode,
                     Medias = p.Medias
                         .OrderBy(m => m.CreatedAt)
                         .Select(m => new MediaPostPersonalListModel
@@ -206,6 +273,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Select(p => new PostFeedModel
                 {
                    PostId = p.PostId,
+                   PostCode = p.PostCode,
                    Content = p.Content,
                    Privacy = p.Privacy,
                    FeedAspectRatio = p.FeedAspectRatio,
@@ -306,6 +374,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Select(p => new
                 {
                     p.PostId,
+                    p.PostCode,
                     p.AccountId,
                     p.Content,
                     p.Privacy,
@@ -347,6 +416,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Select(x => new
                 {
                     x.PostId,
+                    x.PostCode,
                     x.Content,
                     x.Privacy,
                     x.FeedAspectRatio,
@@ -393,6 +463,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                 .Select(x => new PostFeedModel
                 {
                     PostId = x.PostId,
+                    PostCode = x.PostCode,
                     Content = x.Content,
                     Privacy = x.Privacy,
                     FeedAspectRatio = x.FeedAspectRatio,

@@ -50,6 +50,17 @@ namespace SocialNetwork.API.Controllers
             var result = await _postService.GetPostDetailByPostId(postId, currentId.Value);
             return Ok(result);
         }
+
+        [Authorize]
+        [HttpGet("p/{postCode}")]
+        public async Task<IActionResult> GetPostDetailByPostCodeAsync([FromRoute] string postCode)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            var result = await _postService.GetPostDetailByPostCode(postCode, currentId.Value);
+            return Ok(result);
+        }
+
         [Authorize]
         [HttpPost]
         [Consumes("multipart/form-data")]

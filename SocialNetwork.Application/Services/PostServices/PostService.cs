@@ -83,6 +83,17 @@ namespace SocialNetwork.Application.Services.PostServices
             }
             return post;
         }
+
+        public async Task<PostDetailModel> GetPostDetailByPostCode(string postCode, Guid currentId)
+        {
+            var post = await _postRepository.GetPostDetailByPostCode(postCode, currentId);
+            if (post == null)
+            {
+                throw new NotFoundException($"Post with code {postCode} not found or has been deleted.");
+            }
+            return post;
+        }
+
         public async Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request)
         {
             var account = await _accountRepository.GetAccountById(accountId);

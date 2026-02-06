@@ -11,6 +11,7 @@ using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Models;
+using SocialNetwork.Application.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,6 +51,7 @@ namespace SocialNetwork.Application.Mapping
             //Post mappings
             CreateMap<PostCreateRequest, Post>()
                 .ForMember(dest => dest.PostId, opt => opt.MapFrom(_ => Guid.NewGuid()))
+                .ForMember(dest => dest.PostCode, opt => opt.MapFrom(_ => StringHelper.GeneratePostCode(10)))
                 .ForMember(dest => dest.AccountId, opt => opt.Ignore())
                 .ForMember(dest => dest.Medias, opt => opt.Ignore());
             CreateMap<PostUpdateRequest, Post>()

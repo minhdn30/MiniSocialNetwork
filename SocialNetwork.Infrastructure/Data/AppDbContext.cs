@@ -112,6 +112,15 @@ namespace SocialNetwork.Infrastructure.Data
                 .Property(p => p.Content)
                 .HasMaxLength(5000);
 
+            modelBuilder.Entity<Post>()
+                .Property(p => p.PostCode)
+                .IsRequired()
+                .HasMaxLength(12);
+
+            modelBuilder.Entity<Post>()
+                .HasIndex(p => p.PostCode)
+                .IsUnique();
+
             // Post → Account
             modelBuilder.Entity<Post>()
                 .HasOne(p => p.Account)
