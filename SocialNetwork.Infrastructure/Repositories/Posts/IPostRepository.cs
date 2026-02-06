@@ -23,6 +23,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         Task<(IEnumerable<PostPersonalListModel> posts, int TotalItems)> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize);
         Task<int> CountPostsByAccountIdAsync(Guid accountId);
         Task<bool> IsPostExist(Guid postId);
+        Task<bool> IsPostCodeExist(string postCode);
         Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
         Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
     }

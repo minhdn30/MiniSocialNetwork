@@ -6,6 +6,7 @@ using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Application.Exceptions;
+using SocialNetwork.Application.Helpers;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Application.Validators;
@@ -135,9 +136,32 @@ namespace SocialNetwork.Application.Services.PostServices
                 }
             }
 
+            // ---------- Generate Unique PostCode ----------
+            string postCode = string.Empty;
+            bool isUnique = false;
+            int retries = 0;
+            const int maxRetries = 10;
+
+            while (!isUnique && retries < maxRetries)
+            {
+                postCode = StringHelper.GeneratePostCode(10);
+                if (!await _postRepository.IsPostCodeExist(postCode))
+                {
+                    isUnique = true;
+                }
+                retries++;
+            }
+
+            if (!isUnique)
+            {
+                // Unlikely collision with 10 chars, but as fallback use 12 chars
+                postCode = StringHelper.GeneratePostCode(12);
+            }
+
             // ---------- Create Post ----------
             var post = _mapper.Map<Post>(request);
             post.AccountId = accountId;
+            post.PostCode = postCode;
 
             // Default FeedAspectRatio = Square (1:1)
             post.FeedAspectRatio = request.FeedAspectRatio.HasValue

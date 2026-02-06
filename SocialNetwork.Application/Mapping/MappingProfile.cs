@@ -51,7 +51,6 @@ namespace SocialNetwork.Application.Mapping
             //Post mappings
             CreateMap<PostCreateRequest, Post>()
                 .ForMember(dest => dest.PostId, opt => opt.MapFrom(_ => Guid.NewGuid()))
-                .ForMember(dest => dest.PostCode, opt => opt.MapFrom(_ => StringHelper.GeneratePostCode(10)))
                 .ForMember(dest => dest.AccountId, opt => opt.Ignore())
                 .ForMember(dest => dest.Medias, opt => opt.Ignore());
             CreateMap<PostUpdateRequest, Post>()
