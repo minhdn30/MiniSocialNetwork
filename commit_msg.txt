@@ -1,0 +1,10 @@
+feat(account-settings): add account settings and enforce privacy logic
+
+- Separate profile updates from account settings management into dedicated services/DTOs.
+- Implement "Lazy Creation" for AccountSettings: records are only created in the DB when the user updates them for the first time.
+- Optimize profile retrieval using EF Core projection to fetch basic info and privacy settings in a single query with virtual defaults.
+- Enforce backend privacy checks:
+    - Set Email, Phone, and Address to null in Profile response if viewer lacks permissions.
+    - Throw ForbiddenException when accessing Followers/Following lists if privacy settings restrict access.
+- Include DefaultPostPrivacy in Login/Token Refresh responses for frontend synchronization.
+- Update Response DTOs to support nullable fields (Email, Settings) for unauthorized access scenarios.

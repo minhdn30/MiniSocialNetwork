@@ -16,7 +16,7 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
         Task<int> GetReactCountByCommentId(Guid commentId);
         Task<CommentReact?> GetUserReactOnCommentAsync(Guid commentId, Guid accountId);
         Task<bool> IsCurrentUserReactedOnCommentAsync(Guid commentId, Guid? currentId);
-        Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnCommentPaged(Guid commentId, int page, int pageSize);
+        Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnCommentPaged(Guid commentId, Guid? currentId, int page, int pageSize);
 
     }
 }

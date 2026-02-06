@@ -17,5 +17,6 @@ namespace SocialNetwork.Infrastructure.Models
         public DateTime? UpdatedAt { get; set; }
         public int ReactCount { get; set; }
         public bool IsCommentReactedByCurrentUser { get; set; } = false;
+        public Guid PostOwnerId { get; set; }
     }
 }

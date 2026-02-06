@@ -23,6 +23,10 @@ namespace SocialNetwork.Domain.Entities
         public string FullName { get; set; } = null!;
         [MaxLength(255)]
         public string? AvatarUrl { get; set; }
+        [MaxLength(500)]
+        public string? CoverUrl { get; set; }
+        [MaxLength(500)]
+        public string? Bio { get; set; }
         [MaxLength(15)]
         public string? Phone { get; set; }
         public bool? Gender { get; set; }
@@ -31,7 +35,7 @@ namespace SocialNetwork.Domain.Entities
         [MaxLength(255)]
         public string? Address { get; set; }
         public int RoleId { get; set; }
-        public bool Status { get; set; } = true;
+        public AccountStatusEnum Status { get; set; } = 0;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         public bool IsEmailVerified { get; set; } = false;
@@ -54,7 +58,7 @@ namespace SocialNetwork.Domain.Entities
         public virtual ICollection<ConversationMember> Conversations { get; set; } = new List<ConversationMember>();
         public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
         public virtual ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();
-
+        public virtual AccountSettings Settings { get; set; } = null!;
 
     }
 }

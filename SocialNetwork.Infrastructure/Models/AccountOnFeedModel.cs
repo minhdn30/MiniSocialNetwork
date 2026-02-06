@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocialNetwork.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,6 +13,7 @@ namespace SocialNetwork.Infrastructure.Models
         public string Username { get; set; } = null!;
         public string FullName { get; set; } = null!;
         public string? AvatarUrl { get; set; }
+        public AccountStatusEnum Status { get; set; }
         public bool IsFollowedByCurrentUser { get; set; } = false;
     }
 }
