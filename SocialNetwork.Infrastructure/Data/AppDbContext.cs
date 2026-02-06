@@ -105,7 +105,7 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasDatabaseName("IX_Posts_Feed");
             //for Post in Profile
             modelBuilder.Entity<Post>()
-                .HasIndex(p => new { p.AccountId, p.CreatedAt })
+                .HasIndex(p => new { p.AccountId, p.IsDeleted, p.CreatedAt })
                 .HasDatabaseName("IX_Posts_Account_CreatedAt");
 
             modelBuilder.Entity<Post>()
@@ -272,8 +272,7 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasIndex(cm => cm.AccountId);
 
             // Index: get members by conversation
-            modelBuilder.Entity<ConversationMember>()
-                .HasIndex(cm => cm.ConversationId);
+            // Redundant with PK but good for clarity if needed, though PK (ConvId, AccId) already covers this
 
             // ConversationMember → Account
             modelBuilder.Entity<ConversationMember>()

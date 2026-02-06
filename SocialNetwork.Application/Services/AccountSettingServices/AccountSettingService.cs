@@ -1,5 +1,5 @@
 using AutoMapper;
-using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using System;
@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
-namespace SocialNetwork.Application.Services.AccountServices
+namespace SocialNetwork.Application.Services.AccountSettingServices
 {
     public class AccountSettingService : IAccountSettingService
     {

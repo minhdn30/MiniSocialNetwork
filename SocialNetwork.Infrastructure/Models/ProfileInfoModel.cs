@@ -27,7 +27,6 @@ namespace SocialNetwork.Infrastructure.Models
         public bool IsCurrentUser { get; set; }
 
         // Settings (Projected for optimization)
-        public AccountPrivacyEnum EmailPrivacy { get; set; }
         public AccountPrivacyEnum PhonePrivacy { get; set; }
         public AccountPrivacyEnum AddressPrivacy { get; set; }
         public PostPrivacyEnum DefaultPostPrivacy { get; set; }
