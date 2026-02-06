@@ -311,8 +311,12 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new ForbiddenException("You are not authorized to update this post.");
             }
-
-            if (request.Content != null) post.Content = request.Content;
+            if (request.Content != null && post.Content != request.Content)
+            {
+                post.Content = request.Content;
+                post.UpdatedAt = DateTime.UtcNow;
+            }
+            
             if (request.Privacy.HasValue)
             {
                 post.Privacy = (PostPrivacyEnum)request.Privacy.Value;
@@ -321,10 +325,8 @@ namespace SocialNetwork.Application.Services.PostServices
             // Check if Post becomes empty
             if (string.IsNullOrWhiteSpace(post.Content) && (post.Medias == null || !post.Medias.Any()))
             {
-                 throw new BadRequestException("Post must have content or media files.");
+                throw new BadRequestException("Post must have content or media files.");
             }
-
-            post.UpdatedAt = DateTime.UtcNow;
 
             await _postRepository.UpdatePost(post);
             
@@ -333,7 +335,7 @@ namespace SocialNetwork.Application.Services.PostServices
                 PostId = post.PostId,
                 Content = post.Content,
                 Privacy = post.Privacy,
-                UpdatedAt = post.UpdatedAt ?? DateTime.UtcNow
+                UpdatedAt = post.UpdatedAt
             };
         }
         public async Task<Guid?> SoftDeletePost(Guid postId, Guid currentId, bool isAdmin)
