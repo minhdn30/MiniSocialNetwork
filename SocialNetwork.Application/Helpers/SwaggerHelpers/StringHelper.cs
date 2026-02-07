@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace SocialNetwork.Application.Helpers
+namespace SocialNetwork.Application.Helpers.SwaggerHelpers
 {
     public static class StringHelper
     {
