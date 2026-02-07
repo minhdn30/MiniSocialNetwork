@@ -58,6 +58,9 @@ namespace SocialNetwork.Application.Services.FollowServices
             return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
                 await _followRepository.AddFollowAsync(new Follow { FollowerId = followerId, FollowedId = targetId });
+                
+                // Commit changes first so Count queries see the new data
+                await _unitOfWork.CommitAsync();
 
                 var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
                 var myCounts = await _followRepository.GetFollowCountsAsync(followerId);
@@ -91,6 +94,9 @@ namespace SocialNetwork.Application.Services.FollowServices
             return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
                 await _followRepository.RemoveFollowAsync(followerId, targetId);
+
+                // Commit changes first
+                await _unitOfWork.CommitAsync();
 
                 var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
                 var myCounts = await _followRepository.GetFollowCountsAsync(followerId);

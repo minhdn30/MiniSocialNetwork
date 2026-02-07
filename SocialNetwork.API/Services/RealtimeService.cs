@@ -31,12 +31,9 @@ namespace SocialNetwork.API.Services
 
         public async Task NotifyPostCreatedAsync(Guid accountId, PostDetailResponse post)
         {
+            // Send full post object so UI can prepend it immediately
             await _userHubContext.Clients.Group($"Account-{accountId}")
-                .SendAsync("ReceiveNewPost", new
-                {
-                    postId = post.PostId,
-                    accountId = accountId
-                });
+                .SendAsync("ReceiveNewPost", post);
         }
 
         public async Task NotifyPostUpdatedAsync(Guid postId, Guid accountId, PostDetailResponse post)
