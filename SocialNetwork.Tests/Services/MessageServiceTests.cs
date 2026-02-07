@@ -6,7 +6,7 @@ using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.MessageDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
@@ -19,7 +19,7 @@ using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Tests.Helpers;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Tests.Services
 {

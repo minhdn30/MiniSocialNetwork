@@ -16,7 +16,7 @@ using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using Xunit;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Tests.Services
 {

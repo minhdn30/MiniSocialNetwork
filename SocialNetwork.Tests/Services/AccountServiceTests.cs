@@ -9,9 +9,11 @@ using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Application.Services.AccountServices;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
+using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
@@ -19,7 +21,7 @@ using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using Xunit;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Tests.Services
 {
@@ -32,6 +34,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<IFollowRepository> _mockFollowRepo;
         private readonly Mock<IPostRepository> _mockPostRepo;
         private readonly Mock<IUnitOfWork> _mockUnitOfWork;
+        private readonly Mock<IRealtimeService> _mockRealtimeService;
         private readonly AccountService _accountService;
 
         public AccountServiceTests()
@@ -43,6 +46,7 @@ namespace SocialNetwork.Tests.Services
             _mockFollowRepo = new Mock<IFollowRepository>();
             _mockPostRepo = new Mock<IPostRepository>();
             _mockUnitOfWork = new Mock<IUnitOfWork>();
+            _mockRealtimeService = new Mock<IRealtimeService>();
 
             _accountService = new AccountService(
                 _mockAccountRepo.Object,
@@ -51,7 +55,8 @@ namespace SocialNetwork.Tests.Services
                 _mockCloudinaryService.Object,
                 _mockFollowRepo.Object,
                 _mockPostRepo.Object,
-                _mockUnitOfWork.Object
+                _mockUnitOfWork.Object,
+                _mockRealtimeService.Object
             );
         }
 

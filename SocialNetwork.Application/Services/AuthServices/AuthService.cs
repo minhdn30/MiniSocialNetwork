@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity.Data;
 using SocialNetwork.Application.DTOs.AuthDTOs;
-using SocialNetwork.Application.Exceptions;
+using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
@@ -17,7 +17,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 using LoginRequest = SocialNetwork.Application.DTOs.AuthDTOs.LoginRequest;
 
 namespace SocialNetwork.Application.Services.AuthServices

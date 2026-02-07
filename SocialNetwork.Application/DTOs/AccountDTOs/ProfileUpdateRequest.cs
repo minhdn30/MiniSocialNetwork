@@ -25,5 +25,7 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public string? Bio { get; set; }
         [StringLength(255, ErrorMessage = "Address cannot be longer than 255 characters.")]
         public string? Address { get; set; }
+        public AccountPrivacyEnum? PhonePrivacy { get; set; }
+        public AccountPrivacyEnum? AddressPrivacy { get; set; }
     }
 }

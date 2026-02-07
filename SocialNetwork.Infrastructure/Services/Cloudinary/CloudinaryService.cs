@@ -1,21 +1,19 @@
-﻿using CloudinaryDotNet;
+using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
-using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using System;
-using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Application.Services.CloudinaryServices
+namespace SocialNetwork.Infrastructure.Services.Cloudinary
 {
     public class CloudinaryService : ICloudinaryService
     {
-        private readonly Cloudinary _cloudinary;
+        private readonly CloudinaryDotNet.Cloudinary _cloudinary;
         public CloudinaryService(IConfiguration config)
         {
             var account = new CloudinaryDotNet.Account(
@@ -24,7 +22,7 @@ namespace SocialNetwork.Application.Services.CloudinaryServices
                 config["Cloudinary:ApiSecret"]
             );
 
-            _cloudinary = new Cloudinary(account);
+            _cloudinary = new CloudinaryDotNet.Cloudinary(account);
         }
         public async Task<string?> UploadImageAsync(IFormFile file)
         {

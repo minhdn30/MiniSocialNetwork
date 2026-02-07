@@ -1,6 +1,6 @@
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Helpers.ValidationHelpers
 {

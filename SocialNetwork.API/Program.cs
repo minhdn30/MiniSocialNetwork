@@ -13,12 +13,12 @@ using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.AccountSettingServices;
 using SocialNetwork.Application.Services.AuthServices;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.CommentReactServices;
 using SocialNetwork.Application.Services.CommentServices;
 using SocialNetwork.Application.Services.ConversationMemberServices;
 using SocialNetwork.Application.Services.ConversationServices;
-using SocialNetwork.Application.Services.EmailServices;
+using SocialNetwork.Infrastructure.Services.Email;
 using SocialNetwork.Application.Services.EmailVerificationServices;
 using SocialNetwork.Application.Services.FollowServices;
 using SocialNetwork.Application.Services.JwtServices;
@@ -29,6 +29,7 @@ using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.API.Services;
 using SocialNetwork.Infrastructure.Data;
+using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.CommentReacts;
@@ -68,7 +69,6 @@ namespace SocialNetwork.API
             builder.Services.AddDbContext<AppDbContext>(options =>
                 options.UseNpgsql(connectionString)
             );
-
 
             // Repositories
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
