@@ -427,6 +427,10 @@ namespace SocialNetwork.Application.Services.AccountServices
                 account.UpdatedAt = DateTime.UtcNow;
                 await _accountRepository.UpdateAccount(account);
             }
+            else if (account.Status == AccountStatusEnum.Active)
+            {
+                throw new BadRequestException("Account is already active.");
+            }
         }
     }
 }

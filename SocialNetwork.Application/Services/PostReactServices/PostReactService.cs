@@ -8,6 +8,7 @@ using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Application.Services.RealtimeServices;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
 using System;
@@ -24,11 +25,13 @@ namespace SocialNetwork.Application.Services.PostReactServices
         private readonly ICommentRepository _commentRepository;
         private readonly IPostRepository _postRepository;
         private readonly IFollowRepository _followRepository;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IRealtimeService _realtimeService;
 
         public PostReactService(IPostReactRepository postReactRepository, ICommentRepository commentRepository, 
-            IPostRepository postRepository, IFollowRepository followRepository, IMapper mapper, IRealtimeService realtimeService)
+            IPostRepository postRepository, IFollowRepository followRepository, IMapper mapper, 
+            IRealtimeService realtimeService, IUnitOfWork unitOfWork)
         {
             _postReactRepository = postReactRepository;
             _commentRepository = commentRepository;
@@ -36,6 +39,7 @@ namespace SocialNetwork.Application.Services.PostReactServices
             _followRepository = followRepository;
             _mapper = mapper;
             _realtimeService = realtimeService;
+            _unitOfWork = unitOfWork;
         }
         public async Task<ReactToggleResponse> ToggleReactOnPost(Guid postId, Guid accountId)
         {
@@ -66,6 +70,10 @@ namespace SocialNetwork.Application.Services.PostReactServices
                 await _postReactRepository.AddPostReact(newReact);
                 isReactedByCurrentUser = true;
             }
+
+            // Must commit before counting to get accurate count from DB
+            await _unitOfWork.CommitAsync();
+
             var reactCount = await _postReactRepository.GetReactCountByPostId(postId);
 
             // Send realtime notification

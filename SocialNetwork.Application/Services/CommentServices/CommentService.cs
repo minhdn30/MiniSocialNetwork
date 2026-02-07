@@ -202,20 +202,20 @@ namespace SocialNetwork.Application.Services.CommentServices
             return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
                 await _commentRepository.DeleteCommentWithReplies(commentId);
+                
+                // Commit changes first
+                await _unitOfWork.CommitAsync();
 
                 // Get updated counts logic
-                // User requirement: "totalpostcomment will update when deleting a comment, not a reply"
                 int? totalComments = null;
                 int? parentReplyCount = null;
 
                 if (parentId.HasValue)
                 {
-                    // Deleting a reply: Update parent's reply count, but NOT total post count
                     parentReplyCount = await _commentRepository.CountCommentRepliesAsync(parentId.Value);
                 }
                 else
                 {
-                    // Deleting a main comment: Update total post count
                     totalComments = await _commentRepository.CountCommentsByPostId(postId);
                 }
 

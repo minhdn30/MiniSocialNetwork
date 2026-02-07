@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
+using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Application.Exceptions;
 using SocialNetwork.Application.Helpers;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
@@ -186,9 +187,28 @@ namespace SocialNetwork.Application.Services.PostServices
 
                         await _postRepository.AddPost(post);
 
+                        // Commit explicitly before sending notification to ensure data availability
+                        await _unitOfWork.CommitAsync();
+
                         var result = _mapper.Map<PostDetailResponse>(post);
                         result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
                         result.IsOwner = true;
+                        result.TotalReacts = 0;
+                        result.TotalComments = 0;
+                        result.IsReactedByCurrentUser = false;
+                        
+                        // Ensure medias are mapped (if not done by AutoMapper)
+                        if (post.Medias != null && (result.Medias == null || !result.Medias.Any()))
+                        {
+                            result.Medias = post.Medias.Select(m => new PostMediaDetailResponse
+                            {
+                                MediaId = m.MediaId,
+                                MediaUrl = m.MediaUrl,
+                                Type = m.Type,
+                                CreatedAt = m.CreatedAt
+                            }).ToList();
+                        }
+                        result.TotalMedias = result.Medias?.Count ?? 0;
 
                         // Send realtime notification
                         await _realtimeService.NotifyPostCreatedAsync(accountId, result);
