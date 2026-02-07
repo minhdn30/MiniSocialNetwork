@@ -8,6 +8,7 @@ using SocialNetwork.Application.Exceptions;
 using SocialNetwork.Application.Helpers;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -39,6 +40,7 @@ namespace SocialNetwork.Application.Services.PostServices
         private readonly IFileTypeDetector _fileTypeDetector;
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IRealtimeService _realtimeService;
         public PostService(IPostReactRepository postReactRepository,
                            IPostMediaRepository postMediaRepository,
                            IPostRepository postRepository,
@@ -47,7 +49,8 @@ namespace SocialNetwork.Application.Services.PostServices
                            ICloudinaryService cloudinaryService,
                            IFileTypeDetector fileTypeDetector,
                            IMapper mapper,
-                           IUnitOfWork unitOfWork)
+                           IUnitOfWork unitOfWork,
+                           IRealtimeService realtimeService)
         {
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
@@ -58,6 +61,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _fileTypeDetector = fileTypeDetector;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _realtimeService = realtimeService;
         }
         public async Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId)
         {
@@ -95,7 +99,7 @@ namespace SocialNetwork.Application.Services.PostServices
 
         public async Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request)
         {
-            // 1. Pre-validation and Preparation
+            // Pre-validation and Preparation
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
                 throw new BadRequestException($"Account with ID {accountId} not found.");
@@ -113,76 +117,97 @@ namespace SocialNetwork.Application.Services.PostServices
             string postCode = StringHelper.GeneratePostCode(10);
             if (await _postRepository.IsPostCodeExist(postCode)) postCode = StringHelper.GeneratePostCode(12);
 
-            // 2. Upload to Cloudinary (OUTSIDE Transaction) - Sequential for PostgreSQL stability
+            // Upload to Cloudinary (OUTSIDE Transaction) - Parallel for better performance
+            // Note: Parallel upload is safe here because Cloudinary calls don't use DbContext
             var uploadedUrls = new List<string>();
-            var validResults = new List<dynamic>();
+            var validResults = new List<(string Url, MediaTypeEnum Type, int Index)>();
 
             if (request.MediaFiles != null && request.MediaFiles.Any())
             {
-                // Use sequential loop to avoid DbContext thread safety issues on PostgreSQL
+                // First, validate all file types synchronously (fast operation)
+                var mediaWithTypes = new List<(Microsoft.AspNetCore.Http.IFormFile File, MediaTypeEnum Type, int Index)>();
                 for (int i = 0; i < request.MediaFiles.Count; i++)
                 {
                     var media = request.MediaFiles[i];
                     var detectedType = await _fileTypeDetector.GetMediaTypeAsync(media);
-                    if (detectedType != MediaTypeEnum.Image) continue;
-
-                    var url = await _cloudinaryService.UploadImageAsync(media);
-                    if (!string.IsNullOrEmpty(url))
+                    if (detectedType != MediaTypeEnum.Image)
                     {
-                        validResults.Add(new { Url = url, Type = detectedType.Value, Index = i });
+                        throw new BadRequestException($"File at position {i + 1} is not a valid image. Videos are not supported.");
                     }
+                    mediaWithTypes.Add((media, detectedType.Value, i));
+                }
+
+                // Parallel upload to Cloudinary (IO-bound, safe to parallelize)
+                var uploadTasks = mediaWithTypes.Select(async item =>
+                {
+                    var url = await _cloudinaryService.UploadImageAsync(item.File);
+                    return (Url: url, Type: item.Type, Index: item.Index);
+                });
+
+                var results = await Task.WhenAll(uploadTasks);
+
+                // Validate all uploads succeeded
+                foreach (var result in results)
+                {
+                    if (string.IsNullOrEmpty(result.Url))
+                    {
+                        throw new BadRequestException($"Failed to upload image at position {result.Index + 1}.");
+                    }
+                    validResults.Add((result.Url!, result.Type, result.Index));
                 }
 
                 if (validResults.Count != request.MediaFiles.Count)
                     throw new BadRequestException("Some images failed to upload or are invalid. Videos are not supported.");
 
-                // Map to domain entities
+                // Map to domain entities (ordered by original index)
                 var now = DateTime.UtcNow;
-                var mediaEntities = validResults.Select(r => {
-                    var current = r!;
-                    uploadedUrls.Add(current.Url!);
-                    return new PostMedia
+                var mediaEntities = validResults
+                    .OrderBy(r => r.Index)
+                    .Select(r => {
+                        uploadedUrls.Add(r.Url);
+                        return new PostMedia
+                        {
+                            MediaUrl = r.Url,
+                            Type = r.Type,
+                            CreatedAt = now.AddMilliseconds(r.Index * 100)
+                        };
+                    }).ToList();
+
+
+                // DB Transaction (Atomic Post + Media)
+                return await _unitOfWork.ExecuteInTransactionAsync(
+                    async () =>
                     {
-                        MediaUrl = current.Url!,
-                        Type = current.Type,
-                        CreatedAt = now.AddMilliseconds(current.Index * 100)
-                    };
-                }).ToList();
+                        var post = _mapper.Map<Post>(request);
+                        post.AccountId = accountId;
+                        post.PostCode = postCode;
+                        post.FeedAspectRatio = (AspectRatioEnum)(request.FeedAspectRatio ?? (int)AspectRatioEnum.Square);
+                        post.Medias = mediaEntities;
 
-                // 3. DB Transaction (Atomic Post + Media)
-                using var transaction = await _unitOfWork.BeginTransactionAsync();
-                try
-                {
-                    var post = _mapper.Map<Post>(request);
-                    post.AccountId = accountId;
-                    post.PostCode = postCode;
-                    post.FeedAspectRatio = (AspectRatioEnum)(request.FeedAspectRatio ?? (int)AspectRatioEnum.Square);
-                    post.Medias = mediaEntities;
+                        await _postRepository.AddPost(post);
 
-                    await _postRepository.AddPost(post);
-                    
-                    // CRITICAL: Ensure data is written to DB before committing the transaction
-                    await _unitOfWork.CommitAsync();
-                    await transaction.CommitAsync();
+                        var result = _mapper.Map<PostDetailResponse>(post);
+                        result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+                        result.IsOwner = true;
 
-                    var result = _mapper.Map<PostDetailResponse>(post);
-                    result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
-                    result.IsOwner = true;
-                    return result;
-                }
-                catch (Exception)
-                {
-                    await transaction.RollbackAsync();
-                    
-                    // Cleanup: Delete orphaned images from Cloudinary if DB fail
-                    var cleanupTasks = uploadedUrls.Select(url => {
-                        var pid = _cloudinaryService.GetPublicIdFromUrl(url);
-                        return !string.IsNullOrEmpty(pid) ? _cloudinaryService.DeleteMediaAsync(pid, MediaTypeEnum.Image) : Task.CompletedTask;
-                    });
-                    await Task.WhenAll(cleanupTasks);
-                    throw;
-                }
+                        // Send realtime notification
+                        await _realtimeService.NotifyPostCreatedAsync(accountId, result);
+
+                        return result;
+                    },
+                    // Cleanup callback: delete orphaned images from Cloudinary if DB fail
+                    async () =>
+                    {
+                        var cleanupTasks = uploadedUrls.Select(url =>
+                        {
+                            var pid = _cloudinaryService.GetPublicIdFromUrl(url);
+                            return !string.IsNullOrEmpty(pid) ? _cloudinaryService.DeleteMediaAsync(pid, MediaTypeEnum.Image) : Task.CompletedTask;
+                        });
+                        await Task.WhenAll(cleanupTasks);
+                    }
+                );
             }
+
 
             throw new BadRequestException("Post must contain at least one valid image.");
         }
@@ -273,11 +298,17 @@ namespace SocialNetwork.Application.Services.PostServices
             }
 
             await _postRepository.UpdatePost(post);
+            await _unitOfWork.CommitAsync();
+
             var account = await _accountRepository.GetAccountById(post.AccountId);
             var result = _mapper.Map<PostDetailResponse>(post);
             result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
             result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
+
+            // Send realtime notification
+            await _realtimeService.NotifyPostUpdatedAsync(postId, currentId, result);
+
             return result;
 
         }
@@ -314,14 +345,20 @@ namespace SocialNetwork.Application.Services.PostServices
             }
 
             await _postRepository.UpdatePost(post);
+            await _unitOfWork.CommitAsync();
             
-            return new PostUpdateContentResponse
+            var result = new PostUpdateContentResponse
             {
                 PostId = post.PostId,
                 Content = post.Content,
                 Privacy = post.Privacy,
                 UpdatedAt = post.UpdatedAt
             };
+
+            // Send realtime notification
+            await _realtimeService.NotifyPostContentUpdatedAsync(postId, currentId, result);
+
+            return result;
         }
         public async Task<Guid?> SoftDeletePost(Guid postId, Guid currentId, bool isAdmin)
         {
@@ -336,6 +373,11 @@ namespace SocialNetwork.Application.Services.PostServices
             }
 
             await _postRepository.SoftDeletePostAsync(postId);
+            await _unitOfWork.CommitAsync();
+
+            // Send realtime notification
+            await _realtimeService.NotifyPostDeletedAsync(postId, post.AccountId);
+
             return post.AccountId;
         }
         public async Task<PagedResponse<PostPersonalListModel>> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)

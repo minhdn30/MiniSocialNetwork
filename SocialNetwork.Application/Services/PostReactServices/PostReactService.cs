@@ -8,6 +8,7 @@ using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Application.Services.RealtimeServices;
 using static SocialNetwork.Application.Exceptions.CustomExceptions;
 using System;
 using System.Collections.Generic;
@@ -24,14 +25,17 @@ namespace SocialNetwork.Application.Services.PostReactServices
         private readonly IPostRepository _postRepository;
         private readonly IFollowRepository _followRepository;
         private readonly IMapper _mapper;
+        private readonly IRealtimeService _realtimeService;
+
         public PostReactService(IPostReactRepository postReactRepository, ICommentRepository commentRepository, 
-            IPostRepository postRepository, IFollowRepository followRepository, IMapper mapper)
+            IPostRepository postRepository, IFollowRepository followRepository, IMapper mapper, IRealtimeService realtimeService)
         {
             _postReactRepository = postReactRepository;
             _commentRepository = commentRepository;
             _postRepository = postRepository;
             _followRepository = followRepository;
             _mapper = mapper;
+            _realtimeService = realtimeService;
         }
         public async Task<ReactToggleResponse> ToggleReactOnPost(Guid postId, Guid accountId)
         {
@@ -63,6 +67,10 @@ namespace SocialNetwork.Application.Services.PostReactServices
                 isReactedByCurrentUser = true;
             }
             var reactCount = await _postReactRepository.GetReactCountByPostId(postId);
+
+            // Send realtime notification
+            await _realtimeService.NotifyPostReactUpdatedAsync(postId, reactCount);
+
             return new ReactToggleResponse
             {
                 ReactCount = reactCount,

@@ -1,13 +1,10 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR;
-using SocialNetwork.API.Hubs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.FollowServices;
-using System.Security.Claims;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -17,13 +14,15 @@ namespace SocialNetwork.API.Controllers
     {
         private readonly IFollowService _followService;
         private readonly IAccountService _accountService;
-        private readonly IHubContext<UserHub> _hubContext;
-        public FollowsController(IFollowService followService, IAccountService accountService, IHubContext<UserHub> hubContext)
+
+        public FollowsController(
+            IFollowService followService, 
+            IAccountService accountService)
         {
             _followService = followService;
             _accountService = accountService;
-            _hubContext = hubContext;
         }
+
         [Authorize]
         [HttpPost("{targetId}")]
         public async Task<IActionResult> Follow(Guid targetId)
@@ -31,18 +30,9 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
             var result = await _followService.FollowAsync(currentId.Value, targetId);
-
-            // notify Target (Update Followers count for Target)
-            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = targetId,
-                Action = "follow" , Followers = result.Followers, Following = result.Following });
-
-            // notify Current User (Update Following count for Me)
-            var myStats = await _followService.GetStatsAsync(currentId.Value);
-            await _hubContext.Clients.Group($"Account-{currentId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = currentId.Value,
-                Action = "follow_sent", Followers = myStats.Followers, Following = myStats.Following });
-
             return Ok(result);
         }
+
         [Authorize]
         [HttpDelete("{targetId}")]
         public async Task<IActionResult> Unfollow(Guid targetId)
@@ -51,16 +41,6 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
             var result = await _followService.UnfollowAsync(currentId.Value, targetId);
-            
-            // notify Target (Update Followers count for Target)
-            await _hubContext.Clients.Group($"Account-{targetId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = targetId,
-                Action = "unfollow" , Followers = result.Followers, Following = result.Following });
-
-            // notify Current User (Update Following count for Me)
-            var myStats = await _followService.GetStatsAsync(currentId.Value);
-            await _hubContext.Clients.Group($"Account-{currentId}").SendAsync("ReceiveFollowNotification", new { CurrentId = currentId, TargetId = currentId.Value,
-                Action = "unfollow_sent", Followers = myStats.Followers, Following = myStats.Following });
-
             return Ok(result);
         }
 
@@ -76,6 +56,7 @@ namespace SocialNetwork.API.Controllers
 
             return Ok(new { isFollowing = result });
         }
+
         [HttpGet("followers")]
         public async Task<IActionResult> GetFollowers([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
@@ -83,6 +64,7 @@ namespace SocialNetwork.API.Controllers
             var result = await _followService.GetFollowersAsync(accountId, currentId, request);
             return Ok(result);
         }
+
         [HttpGet("following")]
         public async Task<IActionResult> GetFollowing([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
@@ -90,6 +72,5 @@ namespace SocialNetwork.API.Controllers
             var result = await _followService.GetFollowingAsync(accountId, currentId, request);
             return Ok(result);
         }
-
     }
 }

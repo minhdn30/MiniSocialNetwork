@@ -26,6 +26,8 @@ using SocialNetwork.Application.Services.MessageMediaServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
+using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.API.Services;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
@@ -106,6 +108,9 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IConversationMemberService, ConversationMemberService>();
             builder.Services.AddScoped<IMessageService, MessageService>();
             builder.Services.AddScoped<IMessageMediaService, MessageMediaService>();
+
+            // Realtime Services
+            builder.Services.AddScoped<IRealtimeService, RealtimeService>();
 
             // Helpers
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();

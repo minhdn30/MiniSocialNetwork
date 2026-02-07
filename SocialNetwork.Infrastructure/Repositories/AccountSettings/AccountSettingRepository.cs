@@ -20,16 +20,15 @@ namespace SocialNetwork.Infrastructure.Repositories.AccountSettingRepos
             return await _context.AccountSettings.FirstOrDefaultAsync(s => s.AccountId == accountId);
         }
 
-        public async Task AddAccountSettingsAsync(AccountSettings settings)
+        public Task AddAccountSettingsAsync(AccountSettings settings)
         {
-            await _context.AccountSettings.AddAsync(settings);
-            await _context.SaveChangesAsync();
+            return _context.AccountSettings.AddAsync(settings).AsTask();
         }
 
-        public async Task UpdateAccountSettingsAsync(AccountSettings settings)
+        public Task UpdateAccountSettingsAsync(AccountSettings settings)
         {
             _context.AccountSettings.Update(settings);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
     }
 }

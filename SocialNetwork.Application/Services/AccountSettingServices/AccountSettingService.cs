@@ -2,6 +2,7 @@ using AutoMapper;
 using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,11 +16,13 @@ namespace SocialNetwork.Application.Services.AccountSettingServices
     {
         private readonly IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public AccountSettingService(IAccountSettingRepository accountSettingRepository, IMapper mapper)
+        public AccountSettingService(IAccountSettingRepository accountSettingRepository, IMapper mapper, IUnitOfWork unitOfWork)
         {
             _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AccountSettingsResponse> GetSettingsByAccountIdAsync(Guid accountId)
@@ -48,7 +51,10 @@ namespace SocialNetwork.Application.Services.AccountSettingServices
                 _mapper.Map(request, settings);
                 await _accountSettingRepository.UpdateAccountSettingsAsync(settings);
             }
+
+            await _unitOfWork.CommitAsync();
             return _mapper.Map<AccountSettingsResponse>(settings);
         }
     }
 }
+

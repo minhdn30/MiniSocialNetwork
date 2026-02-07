@@ -15,10 +15,9 @@ namespace SocialNetwork.Infrastructure.Repositories.MessageMedias
         {
             _context = context;
         }
-        public async Task AddMessageMediasAsync(List<MessageMedia> medias)
+        public Task AddMessageMediasAsync(List<MessageMedia> medias)
         {
-            await _context.MessageMedias.AddRangeAsync(medias);
-            await _context.SaveChangesAsync();
+            return _context.MessageMedias.AddRangeAsync(medias);
         }
     }
 }

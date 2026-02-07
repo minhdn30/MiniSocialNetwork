@@ -14,6 +14,8 @@ using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
+using SocialNetwork.Application.Services.RealtimeServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -33,9 +35,12 @@ namespace SocialNetwork.Application.Services.MessageServices
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
         private readonly IMapper _mapper;
+        private readonly IRealtimeService _realtimeService;
+        private readonly IUnitOfWork _unitOfWork;
+
         public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository, IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IAccountRepository accountRepository1, IMapper mapper, IAccountRepository accountRepository, ICloudinaryService cloudinaryService,
-            IFileTypeDetector fileTypeDetector)
+            IFileTypeDetector fileTypeDetector, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
         {
             _messageRepository = messageRepository;
             _messageMediaRepository = messageMediaRepository;
@@ -45,7 +50,10 @@ namespace SocialNetwork.Application.Services.MessageServices
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
             _mapper = mapper;
+            _realtimeService = realtimeService;
+            _unitOfWork = unitOfWork;
         }
+
         public async Task<PagedResponse<MessageBasicModel>> GetMessagesByConversationIdAsync(Guid conversationId, Guid currentId, int page, int pageSize)
         {
             if(! await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
@@ -63,6 +71,7 @@ namespace SocialNetwork.Application.Services.MessageServices
         }
         public async Task<SendMessageResponse> SendMessageInPrivateChatAsync(Guid senderId, SendMessageInPrivateChatRequest request)
         {
+            // === VALIDATION PHASE ===
             if(senderId == request.ReceiverId)
                 throw new BadRequestException("You cannot send a message to yourself.");
             if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
@@ -80,31 +89,18 @@ namespace SocialNetwork.Application.Services.MessageServices
 
             if (sender.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to send messages.");
-            var conversation = await _conversationRepository.GetConversationByTwoAccountIdsAsync(senderId, request.ReceiverId);
-            if (conversation == null)
-            {
-                conversation = await _conversationRepository.CreatePrivateConversationAsync(senderId, request.ReceiverId);
-            }
-            var message = new Message
-            {
-                ConversationId = conversation.ConversationId,
-                AccountId = senderId,
-                Content = request.Content,
-                MessageType = request.MediaFiles?.Any() == true ? MessageTypeEnum.Media : MessageTypeEnum.Text,
-                SentAt = DateTime.UtcNow,
-                IsEdited = false,
-                IsDeleted = false
-            };
-            await _messageRepository.AddMessageAsync(message);
-            var result = _mapper.Map<SendMessageResponse>(message);
-            result.Sender = _mapper.Map<AccountBasicInfoResponse>(sender);
+
+            // === MEDIA UPLOAD PHASE (before transaction, track uploaded URLs for cleanup) ===
+            var uploadedMediaUrls = new List<string>();
+            var mediaEntities = new List<MessageMedia>();
+            
             if (request.MediaFiles != null && request.MediaFiles.Any())
             {
-                var medias = new List<MessageMedia>();
                 foreach (var file in request.MediaFiles)
                 {
                     var detectedType = await _fileTypeDetector.GetMediaTypeAsync(file);
-                    if (detectedType == null) continue; // Skip unsupported media types
+                    if (detectedType == null) continue;
+                    
                     string? url = null;
                     switch(detectedType.Value)
                     {
@@ -114,15 +110,15 @@ namespace SocialNetwork.Application.Services.MessageServices
                         case MediaTypeEnum.Video:
                             url = await _cloudinaryService.UploadVideoAsync(file);
                             break;
-                        //Audio and Document upload later
                         default:
                             continue; 
                     };
+                    
                     if(!string.IsNullOrEmpty(url))
                     {
-                        medias.Add(new MessageMedia
+                        uploadedMediaUrls.Add(url);
+                        mediaEntities.Add(new MessageMedia
                         {
-                            MessageId = message.MessageId,
                             MediaUrl = url,
                             MediaType = detectedType.Value,
                             FileName = file.FileName,
@@ -131,13 +127,69 @@ namespace SocialNetwork.Application.Services.MessageServices
                         });
                     }
                 }
-                if(medias.Any())
-                {
-                    await _messageMediaRepository.AddMessageMediasAsync(medias);
-                    result.Medias = _mapper.Map<List<MessageMediaResponse>>(medias);
-                }
             }
-            return result;
+
+            // === DATABASE TRANSACTION PHASE ===
+            return await _unitOfWork.ExecuteInTransactionAsync(
+                async () =>
+                {
+                    // Get or create conversation
+                    var conversation = await _conversationRepository.GetConversationByTwoAccountIdsAsync(senderId, request.ReceiverId);
+                    if (conversation == null)
+                    {
+                        conversation = await _conversationRepository.CreatePrivateConversationAsync(senderId, request.ReceiverId);
+                    }
+
+                    // Create message
+                    var message = new Message
+                    {
+                        ConversationId = conversation.ConversationId,
+                        AccountId = senderId,
+                        Content = request.Content,
+                        MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
+                        SentAt = DateTime.UtcNow,
+                        IsEdited = false,
+                        IsDeleted = false
+                    };
+                    await _messageRepository.AddMessageAsync(message);
+
+                    // Link media to message and save
+                    if (mediaEntities.Any())
+                    {
+                        foreach (var media in mediaEntities)
+                        {
+                            media.MessageId = message.MessageId;
+                        }
+                        await _messageMediaRepository.AddMessageMediasAsync(mediaEntities);
+                    }
+
+                    // Build response
+                    var result = _mapper.Map<SendMessageResponse>(message);
+                    result.Sender = _mapper.Map<AccountBasicInfoResponse>(sender);
+                    if (mediaEntities.Any())
+                    {
+                        result.Medias = _mapper.Map<List<MessageMediaResponse>>(mediaEntities);
+                    }
+
+                    // Send realtime notification (after successful commit)
+                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, result);
+
+                    return result;
+                },
+                // Cleanup callback: delete orphaned cloud media if DB transaction fails
+                async () =>
+                {
+                    var cleanupTasks = uploadedMediaUrls.Select(url =>
+                    {
+                        var publicId = _cloudinaryService.GetPublicIdFromUrl(url);
+                        return !string.IsNullOrEmpty(publicId) 
+                            ? _cloudinaryService.DeleteMediaAsync(publicId, MediaTypeEnum.Image) 
+                            : Task.CompletedTask;
+                    });
+                    await Task.WhenAll(cleanupTasks);
+                }
+            );
         }
+
     }
 }

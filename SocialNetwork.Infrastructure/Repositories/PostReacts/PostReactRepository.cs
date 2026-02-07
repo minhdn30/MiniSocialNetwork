@@ -21,12 +21,11 @@ namespace SocialNetwork.Infrastructure.Repositories.PostReacts
         public async Task AddPostReact(PostReact postReact)
         {
             await _context.PostReacts.AddAsync(postReact);
-            await _context.SaveChangesAsync();
         }
-        public async Task RemovePostReact(PostReact postReact)
+        public Task RemovePostReact(PostReact postReact)
         {
             _context.PostReacts.Remove(postReact);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<int> GetReactCountByPostId(Guid postId)
         {

@@ -16,3 +16,10 @@ packages/
 # Others
 *.db
 *.DS_Store
+
+# Sensitive Files
+SocialNetwork.API/appsettings.Development.json
+SocialNetwork.API/appsettings.Local.json
+*.txt
+!README.md
+!SocialNetwork.API/SocialNetwork.API.http

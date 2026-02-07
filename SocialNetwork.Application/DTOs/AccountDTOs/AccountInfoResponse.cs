@@ -9,8 +9,8 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
 {
     public class AccountInfoResponse
     {
-        public AccountDetailResponse AccountInfo { get; set; }
-        public FollowCountResponse FollowInfo { get; set; }
+        public AccountDetailResponse AccountInfo { get; set; } = null!;
+        public FollowCountResponse FollowInfo { get; set; } = null!;
         public int TotalPosts { get; set; }
     }
 }
