@@ -1,17 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using SocialNetwork.Domain.Entities;
-using SocialNetwork.Infrastructure.Data;
+using SocialNetwork.Domain.Exceptions;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Mail;
-using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
-namespace SocialNetwork.Application.Services.EmailServices
+namespace SocialNetwork.Infrastructure.Services.Email
 {
     public class EmailService : IEmailService
     {
@@ -54,7 +49,5 @@ namespace SocialNetwork.Application.Services.EmailServices
                 throw new InternalServerException($"Failed to send email: {ex.Message}");
             }
         }
-
-
     }
 }
