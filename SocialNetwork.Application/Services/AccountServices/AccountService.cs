@@ -6,6 +6,7 @@ using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
+using SocialNetwork.Application.Helpers.ValidationHelpers;
 using SocialNetwork.Application.Services.CloudinaryServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
@@ -100,10 +101,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             {
                 throw new BadRequestException("Email already exists.");
             }
-            if(!Enum.IsDefined(typeof(RoleEnum), request.RoleId))
-            {
-                throw new BadRequestException("Role not found.");
-            }
+            EnumValidator.ValidateEnum<RoleEnum>(request.RoleId);
             var account = _mapper.Map<Account>(request);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             await _accountRepository.AddAccount(account);
@@ -112,10 +110,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request)
         {
-            if (request.RoleId.HasValue && !Enum.IsDefined(typeof(RoleEnum), request.RoleId.Value))
-            {
-                throw new BadRequestException("Role not found.");
-            }
+            EnumValidator.ValidateEnumIfHasValue<RoleEnum>(request.RoleId);
 
             var account = await _accountRepository.GetAccountById(accountId);
             if(account  == null)
