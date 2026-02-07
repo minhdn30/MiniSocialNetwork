@@ -46,6 +46,10 @@ namespace SocialNetwork.Infrastructure.Data
                       .HasMethod("GIN")
                       .HasOperators("gin_trgm_ops");
 
+                // Index for Status filter (used in many joins)
+                entity.HasIndex(e => e.Status)
+                      .HasDatabaseName("IX_Accounts_Status");
+
                 entity.HasOne(a => a.Role)
                       .WithMany(r => r.Accounts)
                       .HasForeignKey(a => a.RoleId)
@@ -81,6 +85,11 @@ namespace SocialNetwork.Infrastructure.Data
             // Index for FollowerId + CreatedAt for efficient sorting of "Following" list
             modelBuilder.Entity<Follow>()
                 .HasIndex(f => new { f.FollowerId, f.CreatedAt });
+
+            // Composite index for fast relationship checks
+            modelBuilder.Entity<Follow>()
+                .HasIndex(f => new { f.FollowerId, f.FollowedId })
+                .HasDatabaseName("IX_Follow_Follower_Followed");
 
             modelBuilder.Entity<Follow>()
                 .HasOne(f => f.Follower)
@@ -164,7 +173,10 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<PostReact>()
                 .HasKey(r => new { r.PostId, r.AccountId });
 
-            // IX_PostReact_PostId is redundant because PostId is the leading column of the PK
+            // Covering index for post detail queries (count reacts, check if reacted)
+            modelBuilder.Entity<PostReact>()
+                .HasIndex(r => r.PostId)
+                .HasDatabaseName("IX_PostReact_PostId_Covering");
 
             // PostReact → Account
             modelBuilder.Entity<PostReact>()
@@ -194,6 +206,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Comment>()
                 .HasIndex(c => new { c.ParentCommentId, c.CreatedAt })
                 .HasDatabaseName("IX_Comment_Parent_Created");
+
+            // Index for querying comments by account
+            modelBuilder.Entity<Comment>()
+                .HasIndex(c => c.AccountId)
+                .HasDatabaseName("IX_Comment_AccountId");
 
             // Comment → Account
             modelBuilder.Entity<Comment>()
