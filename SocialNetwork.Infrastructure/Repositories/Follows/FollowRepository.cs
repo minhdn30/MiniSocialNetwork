@@ -30,10 +30,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .AnyAsync(f => f.FollowerId == followerId && f.FollowedId == followedId);
         }
 
-        public async Task AddFollowAsync(Follow follow)
+        public Task AddFollowAsync(Follow follow)
         {
             _context.Follows.Add(follow);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
 
         public async Task RemoveFollowAsync(Guid followerId, Guid followedId)

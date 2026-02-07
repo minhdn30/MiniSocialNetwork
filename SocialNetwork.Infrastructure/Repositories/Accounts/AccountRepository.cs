@@ -35,7 +35,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         public async Task AddAccount(Account account)
         {
             await _context.Accounts.AddAsync(account);
-            await _context.SaveChangesAsync();
         }
         public async Task<Account?> GetAccountById(Guid accountId)
         {
@@ -45,10 +44,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         {
             return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.Email.ToLower() == email.ToLower());
         }
-        public async Task UpdateAccount(Account account)
+        public Task UpdateAccount(Account account)
         {
             _context.Accounts.Update(account);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<Account?> GetAccountByUsername(string username)
         {
@@ -153,6 +152,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                             {
                                 MediaId = m.MediaId,
                                 PostId = p.PostId,
+                                PostCode = p.PostCode,
                                 MediaUrl = m.MediaUrl,
                                 MediaType = m.Type
                             })

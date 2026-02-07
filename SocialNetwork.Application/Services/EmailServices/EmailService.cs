@@ -29,6 +29,11 @@ namespace SocialNetwork.Application.Services.EmailServices
             var smtpPass = _config["Email:SmtpPass"];
             var fromEmail = _config["Email:FromEmail"];
 
+            if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(fromEmail))
+            {
+                throw new InternalServerException("Email configuration is missing. Please check SmtpHost and FromEmail settings.");
+            }
+
             using var client = new SmtpClient(smtpHost, smtpPort)
             {
                 Credentials = new NetworkCredential(smtpUser, smtpPass),

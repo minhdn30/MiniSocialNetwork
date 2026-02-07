@@ -84,6 +84,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         {
                             MediaId = m.MediaId,
                             PostId = m.PostId,
+                            PostCode = p.PostCode,
                             MediaUrl = m.MediaUrl,
                             MediaType = m.Type
                         })
@@ -149,6 +150,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         {
                             MediaId = m.MediaId,
                             PostId = m.PostId,
+                            PostCode = p.PostCode,
                             MediaUrl = m.MediaUrl,
                             MediaType = m.Type
                         })
@@ -171,10 +173,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
         {
             await _context.Posts.AddAsync(post);
         }
-        public async Task UpdatePost(Post post)
+        public Task UpdatePost(Post post)
         {
             _context.Posts.Update(post);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task SoftDeletePostAsync(Guid postId)
         {
@@ -182,7 +184,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
             if (post != null)
             {
                 post.IsDeleted = true;
-                await _context.SaveChangesAsync();
             }
         }
         public async Task<(IEnumerable<PostPersonalListModel> posts, int TotalItems)> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)
@@ -294,7 +295,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                            f.FollowerId == currentId && f.FollowedId == p.AccountId)
                    },
                    Medias = p.Medias.OrderBy(m => m.CreatedAt)
-                   .Take(3) //preview media
                    .Select(m => new MediaPostPersonalListModel
                    {
                        MediaId = m.MediaId,
@@ -397,7 +397,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
 
                     Medias = p.Medias
                         .OrderBy(m => m.CreatedAt)
-                        .Take(3)
                         .Select(m => new
                         {
                             m.MediaId,

@@ -69,10 +69,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 .ToListAsync();
             return (messages, totalItems);
         }
-        public async Task AddMessageAsync(Message message)
+        public Task AddMessageAsync(Message message)
         {
             _context.Messages.Add(message);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<bool> IsMessageNewer(Guid newMessageId, Guid? lastSeenMessageId)
         {

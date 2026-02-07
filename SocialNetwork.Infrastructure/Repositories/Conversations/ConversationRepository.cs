@@ -28,10 +28,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     .ThenInclude(m => m.Account)
                 .FirstOrDefaultAsync();
         }
-        public async Task AddConversationAsync(Conversation conversation)
+        public Task AddConversationAsync(Conversation conversation)
         {
             _context.Conversations.Add(conversation);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         } 
         public async Task<bool> IsPrivateConversationExistBetweenTwoAccounts(Guid accountId1, Guid accountId2)
         {
@@ -43,7 +43,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 c.Members.Any(m => m.AccountId == accountId2 && m.Account.Status == AccountStatusEnum.Active)
             );
         }
-        public async Task<Conversation> CreatePrivateConversationAsync(Guid currentId, Guid otherId)
+        public Task<Conversation> CreatePrivateConversationAsync(Guid currentId, Guid otherId)
         {
             var conversation = new Conversation
             {
@@ -65,8 +65,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     }
                 };
             _context.ConversationMembers.AddRange(members);
-            await _context.SaveChangesAsync();
-            return conversation;
+            return Task.FromResult(conversation);
         }
+
     }
 }

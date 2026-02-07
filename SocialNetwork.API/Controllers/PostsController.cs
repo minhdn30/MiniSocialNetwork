@@ -1,19 +1,15 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR;
-using SocialNetwork.API.Hubs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
-using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.CommentServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Infrastructure.Models;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -24,14 +20,17 @@ namespace SocialNetwork.API.Controllers
         private readonly IPostService _postService;
         private readonly IPostReactService _postReactService;
         private readonly ICommentService _commentService;
-        private readonly IHubContext<PostHub> _hubContext;
-        public PostsController(IPostService postService, IPostReactService postReactService, ICommentService commentService, IHubContext<PostHub> hubContext)
+
+        public PostsController(
+            IPostService postService, 
+            IPostReactService postReactService, 
+            ICommentService commentService)
         {
             _postService = postService;
             _postReactService = postReactService;
             _commentService = commentService;
-            _hubContext = hubContext;
         }
+
         [Authorize]
         [HttpGet("info/{postId}")]
         public async Task<ActionResult<PostDetailResponse>> GetPostById([FromRoute] Guid postId)
@@ -40,6 +39,7 @@ namespace SocialNetwork.API.Controllers
             var result = await _postService.GetPostById(postId, currentId);
             return Ok(result);
         }
+
         //main detail api
         [Authorize]
         [HttpGet("{postId}")]
@@ -72,6 +72,7 @@ namespace SocialNetwork.API.Controllers
             var result = await _postService.CreatePost(currentId.Value, request);
             return CreatedAtAction(nameof(GetPostById), new { postId = result.PostId }, result);
         }
+
         [Authorize]
         [HttpPut("{postId}")]
         [Consumes("multipart/form-data")]
@@ -82,12 +83,9 @@ namespace SocialNetwork.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
             var result = await _postService.UpdatePost(postId, currentId.Value, request);
-            //send signalR notification to FE
-            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveUpdatedPost", result);
-            await _hubContext.Clients.Group($"PostList-{currentId.Value}").SendAsync("ReceiveUpdatedPost", result);
-
             return Ok(result);
         }
+
         [Authorize]
         [HttpPatch("{postId}/content")]
         public async Task<ActionResult<PostUpdateContentResponse>> UpdatePostContent([FromRoute] Guid postId, [FromBody] PostUpdateContentRequest request)
@@ -97,12 +95,9 @@ namespace SocialNetwork.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
             var result = await _postService.UpdatePostContent(postId, currentId.Value, request);
-            //send signalR notification to FE
-            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveUpdatedPostContent", result);
-            await _hubContext.Clients.Group($"PostList-{currentId.Value}").SendAsync("ReceiveUpdatedPostContent", result);
-
             return Ok(result);
         }
+
         [Authorize]
         [HttpDelete("{postId}")]
         public async Task<IActionResult> SoftDeletePost([FromRoute] Guid postId)
@@ -111,13 +106,10 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            var accountId = await _postService.SoftDeletePost(postId, currentId.Value, User.IsAdmin());
-            //send signalR notification to FE
-            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveDeletedPost", postId);
-            if (accountId != null)
-                await _hubContext.Clients.Group($"PostList-{accountId}").SendAsync("ReceiveDeletedPost", postId);
+            await _postService.SoftDeletePost(postId, currentId.Value, User.IsAdmin());
             return NoContent();
         }
+
         [HttpGet("profile/{accountId}")]
         public async Task<ActionResult<PagedResponse<PostPersonalListModel>>> GetPostsByAccountId([FromRoute] Guid accountId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
@@ -125,6 +117,7 @@ namespace SocialNetwork.API.Controllers
             var result = await _postService.GetPostsByAccountId(accountId, currentId, page, pageSize);
             return Ok(result);
         }
+
         [Authorize]
         [HttpGet("feed")]
         public async Task<IActionResult> GetFeedPostsByScore([FromQuery] int limit = 10, 
@@ -154,6 +147,7 @@ namespace SocialNetwork.API.Controllers
                     : null
             });
         }
+
         //React
         [Authorize]
         [HttpPost("{postId}/react")]
@@ -162,17 +156,15 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
             var result = await _postReactService.ToggleReactOnPost(postId, currentId.Value);
-            await _hubContext.Clients.Group($"Post-{postId}").SendAsync("ReceiveReactUpdate", postId, result.ReactCount);
             return Ok(result);
         }
+
         [HttpGet("{postId}/reacts")]
-        public async Task<ActionResult<PagedResponse<AccountReactListModel>>> GetPostReacts(Guid postId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<ActionResult<PagedResponse<AccountReactListModel>>> GetPostReacts([FromRoute] Guid postId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
             var result = await _postReactService.GetAccountsReactOnPostPaged(postId, currentId, page, pageSize);
             return Ok(result);
         }
-
-        
     }
 }

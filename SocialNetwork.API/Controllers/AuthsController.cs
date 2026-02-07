@@ -43,14 +43,20 @@ namespace SocialNetwork.API.Controllers
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             var result = await _authService.LoginAsync(request);
+            if (result == null)
+                return Unauthorized(new { message = "Login failed." });
+
             // Set refresh token in HttpOnly cookie
-            Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
+            if (!string.IsNullOrEmpty(result.RefreshToken))
             {
-                HttpOnly = true,
-                Secure = false, 
-                SameSite = SameSiteMode.None,
-                Expires = result.RefreshTokenExpiryTime
-            });
+                Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = false, 
+                    SameSite = SameSiteMode.None,
+                    Expires = result.RefreshTokenExpiryTime
+                });
+            }
             return Ok(result);
         }
         [HttpPost("login-with-google")]
@@ -67,14 +73,19 @@ namespace SocialNetwork.API.Controllers
                 return Unauthorized("No refresh token");
 
             var result = await _authService.RefreshTokenAsync(refreshToken);
+            if (result == null)
+                return Unauthorized(new { message = "Invalid or expired refresh token." });
 
-            Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
+            if (!string.IsNullOrEmpty(result.RefreshToken))
             {
-                HttpOnly = true,
-                Secure = false,                 // local
-                SameSite = SameSiteMode.Lax,    
-                Expires = result.RefreshTokenExpiryTime
-            });
+                Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = false,                 // local
+                    SameSite = SameSiteMode.Lax,    
+                    Expires = result.RefreshTokenExpiryTime
+                });
+            }
 
             return Ok(new
             {

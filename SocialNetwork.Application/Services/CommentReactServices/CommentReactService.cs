@@ -10,6 +10,7 @@ using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Application.Services.RealtimeServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,8 +27,10 @@ namespace SocialNetwork.Application.Services.CommentReactServices
         private readonly IAccountRepository _accountRepository;
         private readonly IFollowRepository _followRepository;
         private readonly IMapper _mapper;
+        private readonly IRealtimeService _realtimeService;
+
         public CommentReactService(ICommentRepository commentRepository, ICommentReactRepository commentReactRepository, IPostRepository postRepository,
-            IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper)
+            IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper, IRealtimeService realtimeService)
         {
             _commentRepository = commentRepository;
             _commentReactRepository = commentReactRepository;
@@ -35,6 +38,7 @@ namespace SocialNetwork.Application.Services.CommentReactServices
             _accountRepository = accountRepository;
             _followRepository = followRepository;
             _mapper = mapper;
+            _realtimeService = realtimeService;
         }
         public async Task<ReactToggleResponse> ToggleReactOnComment(Guid commentId, Guid accountId)
         {
@@ -72,6 +76,10 @@ namespace SocialNetwork.Application.Services.CommentReactServices
                 isReactedByCurrentUser = true;
             }
             var reactCount = await _commentReactRepository.GetReactCountByCommentId(commentId);
+
+            // Send realtime notification
+            await _realtimeService.NotifyCommentReactUpdatedAsync(comment.PostId, commentId, reactCount);
+
             return new ReactToggleResponse
             {
                 ReactCount = reactCount,

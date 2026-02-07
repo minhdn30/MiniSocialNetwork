@@ -107,6 +107,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             var account = _mapper.Map<Account>(request);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             await _accountRepository.AddAccount(account);
+            await _unitOfWork.CommitAsync();
             return _mapper.Map<AccountDetailResponse>(account);
         }
         public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request)
@@ -125,6 +126,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             _mapper.Map(request, account);
             account.UpdatedAt = DateTime.UtcNow;
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
             return _mapper.Map<AccountDetailResponse>(account);
         }
         public async Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request)
@@ -187,68 +189,66 @@ namespace SocialNetwork.Application.Services.AccountServices
             }
 
             // 3. Start DB Transaction - Keep it minimal
-            using var transaction = await _unitOfWork.BeginTransactionAsync();
-            try
-            {
-                // Assign new URLs (Before Mapper to avoid them being wiped if mapper has conditioned logic)
-                if (request.DeleteAvatar == true) account.AvatarUrl = null;
-                else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
-
-                if (request.DeleteCover == true) account.CoverUrl = null;
-                else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
-
-                // Normalize fields
-                if (string.IsNullOrWhiteSpace(request.Bio)) request.Bio = null;
-                if (string.IsNullOrWhiteSpace(request.Phone)) request.Phone = null;
-                if (string.IsNullOrWhiteSpace(request.Address)) request.Address = null;
-
-                // Bulk map standard fields (FullName, Gender, etc.)
-                _mapper.Map(request, account);
-                
-                // Re-enforce Urls just in case Mapper tried to set them (since naming is different, normally safe)
-                if (request.DeleteAvatar == true) account.AvatarUrl = null;
-                else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
-                
-                if (request.DeleteCover == true) account.CoverUrl = null;
-                else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
-
-                account.UpdatedAt = DateTime.UtcNow;
-                await _accountRepository.UpdateAccount(account);
-
-                await transaction.CommitAsync();
-
-                // 4. Post-Commit: Cleanup old images and parallelize network calls
-                var cleanupTasks = new List<Task>();
-                if (!string.IsNullOrEmpty(oldAvatarPublicId))
-                    cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldAvatarPublicId, MediaTypeEnum.Image));
-                if (!string.IsNullOrEmpty(oldCoverPublicId))
-                    cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldCoverPublicId, MediaTypeEnum.Image));
-                
-                if (cleanupTasks.Any()) await Task.WhenAll(cleanupTasks);
-
-                return _mapper.Map<AccountDetailResponse>(account);
-            }
-            catch (Exception)
-            {
-                await transaction.RollbackAsync();
-                
-                // PERFORMANCE/CLEANUP: If DB fails, delete the "orphaned" new images on Cloudinary
-                var orphanTasks = new List<Task>();
-                if (!string.IsNullOrEmpty(newAvatarUrl))
+            var result = await _unitOfWork.ExecuteInTransactionAsync(
+                async () =>
                 {
-                    var pid = _cloudinary.GetPublicIdFromUrl(newAvatarUrl);
-                    if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
-                }
-                if (!string.IsNullOrEmpty(newCoverUrl))
+                    // Assign new URLs
+                    if (request.DeleteAvatar == true) account.AvatarUrl = null;
+                    else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
+
+                    if (request.DeleteCover == true) account.CoverUrl = null;
+                    else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
+
+                    // Normalize fields
+                    if (string.IsNullOrWhiteSpace(request.Bio)) request.Bio = null;
+                    if (string.IsNullOrWhiteSpace(request.Phone)) request.Phone = null;
+                    if (string.IsNullOrWhiteSpace(request.Address)) request.Address = null;
+
+                    // Bulk map standard fields
+                    _mapper.Map(request, account);
+                    
+                    // Re-enforce Urls just in case Mapper tried to set them
+                    if (request.DeleteAvatar == true) account.AvatarUrl = null;
+                    else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
+                    
+                    if (request.DeleteCover == true) account.CoverUrl = null;
+                    else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
+
+                    account.UpdatedAt = DateTime.UtcNow;
+                    await _accountRepository.UpdateAccount(account);
+
+                    return _mapper.Map<AccountDetailResponse>(account);
+                },
+                // Rollback cleanup for NEW images
+                async () =>
                 {
-                    var pid = _cloudinary.GetPublicIdFromUrl(newCoverUrl);
-                    if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
+                    var orphanTasks = new List<Task>();
+                    if (!string.IsNullOrEmpty(newAvatarUrl))
+                    {
+                        var pid = _cloudinary.GetPublicIdFromUrl(newAvatarUrl);
+                        if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
+                    }
+                    if (!string.IsNullOrEmpty(newCoverUrl))
+                    {
+                        var pid = _cloudinary.GetPublicIdFromUrl(newCoverUrl);
+                        if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
+                    }
+                    if (orphanTasks.Any()) await Task.WhenAll(orphanTasks);
                 }
-                if (orphanTasks.Any()) await Task.WhenAll(orphanTasks);
-                
-                throw;
-            }
+            );
+
+            // 4. Post-Commit: Cleanup OLD images
+            var cleanupTasks = new List<Task>();
+            if (!string.IsNullOrEmpty(oldAvatarPublicId))
+                cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldAvatarPublicId, MediaTypeEnum.Image));
+            if (!string.IsNullOrEmpty(oldCoverPublicId))
+                cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldCoverPublicId, MediaTypeEnum.Image));
+            
+            if (cleanupTasks.Any()) await Task.WhenAll(cleanupTasks);
+
+            return result;
         }
+
         public async Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
         {
             var profileModel = await _accountRepository.GetProfileInfoAsync(accountId, currentId);

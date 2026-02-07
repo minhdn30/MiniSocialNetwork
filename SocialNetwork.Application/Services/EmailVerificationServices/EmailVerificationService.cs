@@ -2,6 +2,7 @@
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,16 +18,18 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
         private readonly IEmailService _emailService;
         private readonly IAccountRepository _accountRepository;
         private readonly IEmailVerificationRepository _emailVerificationRepository;
-        public EmailVerificationService(IEmailService emailService, IEmailVerificationRepository emailVerificationRepository, IAccountRepository accountRepository)
+        private readonly IUnitOfWork _unitOfWork;
+
+        public EmailVerificationService(IEmailService emailService, IEmailVerificationRepository emailVerificationRepository, IAccountRepository accountRepository, IUnitOfWork unitOfWork)
         {
             _emailService = emailService;
             _emailVerificationRepository = emailVerificationRepository;
             _accountRepository = accountRepository;
+            _unitOfWork = unitOfWork;
         }
         public async Task SendVerificationEmailAsync(string email)
         {
             var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
-
 
             var exist = await _emailVerificationRepository.GetByEmailAsync(email);
             if (exist != null)
@@ -52,6 +55,8 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
 
                 await _emailVerificationRepository.AddEmailVerificationAsync(verification);
             }
+
+            await _unitOfWork.CommitAsync();
 
             string body = $@"
 <html>
@@ -134,14 +139,18 @@ If you did not request this code, please ignore this email.<br/>
             {
                 return false;
             }
-            await _emailVerificationRepository.DeleteEmailVerificationAsync(email);
-            var account  = await _accountRepository.GetAccountByEmail(email);
-            if(account != null)
+
+            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
-                account.IsEmailVerified = true;
-                await _accountRepository.UpdateAccount(account);
-            }
-            return true;
+                await _emailVerificationRepository.DeleteEmailVerificationAsync(email);
+                var account = await _accountRepository.GetAccountByEmail(email);
+                if (account != null)
+                {
+                    account.IsEmailVerified = true;
+                    await _accountRepository.UpdateAccount(account);
+                }
+                return true;
+            });
         }
     }
 }

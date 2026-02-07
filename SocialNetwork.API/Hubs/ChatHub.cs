@@ -8,7 +8,14 @@ namespace SocialNetwork.API.Hubs
     public class ChatHub : Hub
     {
         private readonly IConversationMemberService _conversationMemberService;
+
+        public ChatHub(IConversationMemberService conversationMemberService)
+        {
+            _conversationMemberService = conversationMemberService;
+        }
+
         public override async Task OnConnectedAsync()
+
         {
             var userId = Context.User?.GetAccountId();
             if (userId != null)
