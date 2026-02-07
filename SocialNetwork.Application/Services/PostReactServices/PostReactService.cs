@@ -10,7 +10,7 @@ using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Application.Services.RealtimeServices;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 using System;
 using System.Collections.Generic;
 using System.Linq;

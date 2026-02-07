@@ -7,7 +7,9 @@ using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
 using SocialNetwork.Application.Helpers.ValidationHelpers;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Services.AuthServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
+using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -21,7 +23,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.AccountServices
 {
@@ -34,6 +36,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         private readonly IFollowRepository _followRepository;
         private readonly IPostRepository _postRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IRealtimeService _realtimeService;
 
         public AccountService(
             IAccountRepository accountRepository, 
@@ -42,7 +45,8 @@ namespace SocialNetwork.Application.Services.AccountServices
             ICloudinaryService cloudinary, 
             IFollowRepository followRepository, 
             IPostRepository postRepository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IRealtimeService realtimeService)
         {
             _accountRepository = accountRepository;
             _accountSettingRepository = accountSettingRepository;
@@ -51,6 +55,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             _followRepository = followRepository;
             _postRepository = postRepository;
             _unitOfWork = unitOfWork;
+            _realtimeService = realtimeService;
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {
@@ -122,11 +127,12 @@ namespace SocialNetwork.Application.Services.AccountServices
             account.UpdatedAt = DateTime.UtcNow;
             await _accountRepository.UpdateAccount(account);
             await _unitOfWork.CommitAsync();
+
             return _mapper.Map<AccountDetailResponse>(account);
         }
         public async Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request)
         {
-            // 1. Fetch account early - No lock needed here
+            // fetch account early
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
             {
@@ -138,7 +144,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             string? newAvatarUrl = null;
             string? newCoverUrl = null;
 
-            // 2. Prepare Cloudinary Upload Tasks - Execute OUTSIDE transaction for performance
+            // prepare cloudinary upload tasks
             var uploadTasks = new List<Task>();
 
             if (request.DeleteAvatar == true)
@@ -171,38 +177,38 @@ namespace SocialNetwork.Application.Services.AccountServices
                 }));
             }
 
-            // Sync point: Parallel uploads take the most time (network latency)
+            // sync point
             if (uploadTasks.Any())
             {
                 await Task.WhenAll(uploadTasks);
                 
-                // Verify results
+                // verify results
                 if (request.AvatarFile != null && string.IsNullOrEmpty(newAvatarUrl))
                     throw new InternalServerException("Avatar upload failed.");
                 if (request.CoverFile != null && string.IsNullOrEmpty(newCoverUrl))
                     throw new InternalServerException("Cover image upload failed.");
             }
 
-            // 3. Start DB Transaction - Keep it minimal
+            // start db transaction
             var result = await _unitOfWork.ExecuteInTransactionAsync(
                 async () =>
                 {
-                    // Assign new URLs
+                    // assign new urls
                     if (request.DeleteAvatar == true) account.AvatarUrl = null;
                     else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
 
                     if (request.DeleteCover == true) account.CoverUrl = null;
                     else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
 
-                    // Normalize fields
+                    // normalize fields
                     if (string.IsNullOrWhiteSpace(request.Bio)) request.Bio = null;
                     if (string.IsNullOrWhiteSpace(request.Phone)) request.Phone = null;
                     if (string.IsNullOrWhiteSpace(request.Address)) request.Address = null;
 
-                    // Bulk map standard fields
+                    // bulk map standard fields
                     _mapper.Map(request, account);
                     
-                    // Re-enforce Urls just in case Mapper tried to set them
+                    // re-enforce urls
                     if (request.DeleteAvatar == true) account.AvatarUrl = null;
                     else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
                     
@@ -212,9 +218,43 @@ namespace SocialNetwork.Application.Services.AccountServices
                     account.UpdatedAt = DateTime.UtcNow;
                     await _accountRepository.UpdateAccount(account);
 
+                    // update privacy settings if provided
+                    if (request.PhonePrivacy.HasValue || request.AddressPrivacy.HasValue)
+                    {
+                        var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(accountId);
+                        bool isNewSettings = false;
+
+                        if (settings == null)
+                        {
+                            settings = new AccountSettings { AccountId = accountId };
+                            isNewSettings = true;
+                        }
+
+                        if (request.PhonePrivacy.HasValue)
+                        {
+                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.PhonePrivacy.Value);
+                            settings.PhonePrivacy = request.PhonePrivacy.Value;
+                        }
+
+                        if (request.AddressPrivacy.HasValue)
+                        {
+                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.AddressPrivacy.Value);
+                            settings.AddressPrivacy = request.AddressPrivacy.Value;
+                        }
+
+                        if (isNewSettings)
+                        {
+                            await _accountSettingRepository.AddAccountSettingsAsync(settings);
+                        }
+                        else
+                        {
+                            await _accountSettingRepository.UpdateAccountSettingsAsync(settings);
+                        }
+                    }
+
                     return _mapper.Map<AccountDetailResponse>(account);
                 },
-                // Rollback cleanup for NEW images
+                // rollback cleanup for new images
                 async () =>
                 {
                     var orphanTasks = new List<Task>();
@@ -232,7 +272,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                 }
             );
 
-            // 4. Post-Commit: Cleanup OLD images
+            // post commit cleanup old images
             var cleanupTasks = new List<Task>();
             if (!string.IsNullOrEmpty(oldAvatarPublicId))
                 cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldAvatarPublicId, MediaTypeEnum.Image));
@@ -240,10 +280,12 @@ namespace SocialNetwork.Application.Services.AccountServices
                 cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldCoverPublicId, MediaTypeEnum.Image));
             
             if (cleanupTasks.Any()) await Task.WhenAll(cleanupTasks);
+            
+            // real-time notification
+            _ = _realtimeService.NotifyProfileUpdatedAsync(accountId, result);
 
             return result;
         }
-
         public async Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
         {
             var profileModel = await _accountRepository.GetProfileInfoAsync(accountId, currentId);
@@ -279,7 +321,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                 IsCurrentUser = profileModel.IsCurrentUser
             };
             
-            // Map the privacy settings into a DTO
+            // map the privacy settings into a dto
             var currentSettings = new AccountSettingsResponse
             {
                 PhonePrivacy = profileModel.PhonePrivacy,
@@ -289,19 +331,19 @@ namespace SocialNetwork.Application.Services.AccountServices
                 FollowingPrivacy = profileModel.FollowingPrivacy
             };
 
-            // Enforce privacy logic
+            // enforce privacy logic
             if (!result.IsCurrentUser)
             {
-                // Always hide Email
+                // always hide email
                 result.AccountInfo.Email = null;
 
-                // Check Phone Privacy
+                // check phone privacy
                 if (!IsDataVisible(profileModel.PhonePrivacy, profileModel.IsFollowedByCurrentUser))
                 {
                     result.AccountInfo.Phone = null;
                 }
 
-                // Check Address Privacy
+                // check address privacy
                 if (!IsDataVisible(profileModel.AddressPrivacy, profileModel.IsFollowedByCurrentUser))
                 {
                     result.AccountInfo.Address = null;
@@ -309,13 +351,12 @@ namespace SocialNetwork.Application.Services.AccountServices
             }
             else
             {
-                // Only return settings values if it's the current user viewing their own profile
+                // only return settings values if it's the current user viewing their own profile
                 result.Settings = currentSettings;
             }
 
             return result;
         }
-
         public async Task<ProfileInfoResponse?> GetAccountProfileByUsername(string username, Guid? currentId)
         {
             var profileModel = await _accountRepository.GetProfileInfoByUsernameAsync(username, currentId);
@@ -421,6 +462,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                 account.Status = AccountStatusEnum.Active;
                 account.UpdatedAt = DateTime.UtcNow;
                 await _accountRepository.UpdateAccount(account);
+                await _unitOfWork.CommitAsync();
             }
             else if (account.Status == AccountStatusEnum.Active)
             {

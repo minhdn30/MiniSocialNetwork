@@ -1,6 +1,6 @@
-using SocialNetwork.Application.Exceptions;
+using SocialNetwork.Domain.Exceptions;
 using System;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Helpers.ValidationHelpers
 {

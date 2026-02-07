@@ -7,10 +7,8 @@ using SocialNetwork.Application.Services.RealtimeServices;
 
 namespace SocialNetwork.API.Services
 {
-    /// <summary>
-    /// Implementation of IRealtimeService using SignalR hubs.
-    /// Centralizes all realtime notification logic.
-    /// </summary>
+    // implementation of irealtimeservice using signalr hubs
+    // centralizes all realtime notification logic
     public class RealtimeService : IRealtimeService
     {
         private readonly IHubContext<PostHub> _postHubContext;
@@ -27,22 +25,22 @@ namespace SocialNetwork.API.Services
             _chatHubContext = chatHubContext;
         }
 
-        // ==================== POST NOTIFICATIONS ====================
+        // post notifications
 
         public async Task NotifyPostCreatedAsync(Guid accountId, PostDetailResponse post)
         {
-            // Send full post object so UI can prepend it immediately
+            // send full post object so ui can prepend it immediately
             await _userHubContext.Clients.Group($"Account-{accountId}")
                 .SendAsync("ReceiveNewPost", post);
         }
 
         public async Task NotifyPostUpdatedAsync(Guid postId, Guid accountId, PostDetailResponse post)
         {
-            // Notify post detail viewers
+            // notify post detail viewers
             await _postHubContext.Clients.Group($"Post-{postId}")
                 .SendAsync("ReceiveUpdatedPost", post);
 
-            // Notify post list viewers (feed/profile)
+            // notify post list viewers (feed/profile)
             await _postHubContext.Clients.Group($"PostList-{accountId}")
                 .SendAsync("ReceiveUpdatedPost", post);
         }
@@ -74,7 +72,7 @@ namespace SocialNetwork.API.Services
                 .SendAsync("ReceiveReactUpdate", postId, reactCount);
         }
 
-        // ==================== COMMENT NOTIFICATIONS ====================
+        // comment notifications
 
         public async Task NotifyCommentCreatedAsync(Guid postId, CommentResponse comment, int? parentReplyCount)
         {
@@ -100,11 +98,11 @@ namespace SocialNetwork.API.Services
                 .SendAsync("ReceiveCommentReactUpdate", commentId, reactCount);
         }
 
-        // ==================== FOLLOW NOTIFICATIONS ====================
+        // follow notifications
 
         public async Task NotifyFollowChangedAsync(Guid currentId, Guid targetId, string action, int targetFollowers, int targetFollowing, int myFollowers, int myFollowing)
         {
-            // Notify target user (their follower count changed)
+            // notify target user (their follower count changed)
             await _userHubContext.Clients.Group($"Account-{targetId}")
                 .SendAsync("ReceiveFollowNotification", new
                 {
@@ -115,7 +113,7 @@ namespace SocialNetwork.API.Services
                     Following = targetFollowing
                 });
 
-            // Notify current user (their following count changed)
+            // notify current user (their following count changed)
             var myAction = action == "follow" ? "follow_sent" : "unfollow_sent";
             await _userHubContext.Clients.Group($"Account-{currentId}")
                 .SendAsync("ReceiveFollowNotification", new
@@ -127,8 +125,16 @@ namespace SocialNetwork.API.Services
                     Following = myFollowing
                 });
         }
+        
+        // account notifications
 
-        // ==================== MESSAGE NOTIFICATIONS ====================
+        public async Task NotifyProfileUpdatedAsync(Guid accountId, SocialNetwork.Application.DTOs.AccountDTOs.AccountDetailResponse account)
+        {
+            await _userHubContext.Clients.Group($"Account-{accountId}")
+                .SendAsync("ReceiveProfileUpdate", account);
+        }
+
+        // message notifications
 
         public async Task NotifyNewMessageAsync(Guid conversationId, SendMessageResponse message)
         {

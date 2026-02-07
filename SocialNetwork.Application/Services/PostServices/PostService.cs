@@ -5,11 +5,11 @@ using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
-using SocialNetwork.Application.Exceptions;
+using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
 using SocialNetwork.Application.Helpers.ValidationHelpers;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
@@ -26,7 +26,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 
 namespace SocialNetwork.Application.Services.PostServices
@@ -78,7 +78,6 @@ namespace SocialNetwork.Application.Services.PostServices
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             return result;
         }
-        //main get by id for frontend
         public async Task<PostDetailModel> GetPostDetailByPostId(Guid postId, Guid currentId)
         {
             var post = await _postRepository.GetPostDetailByPostId(postId, currentId);

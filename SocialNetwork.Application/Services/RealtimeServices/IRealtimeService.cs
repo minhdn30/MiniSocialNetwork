@@ -5,68 +5,55 @@ using SocialNetwork.Application.DTOs.PostDTOs;
 namespace SocialNetwork.Application.Services.RealtimeServices
 {
    
-    /// Centralized service for all SignalR realtime notifications.
-    /// This abstracts SignalR logic from controllers and services.
+    // centralized service for all signalr realtime notifications
+    // this abstracts signalr logic from controllers and services
     
     public interface IRealtimeService
     {
-        // ==================== POST NOTIFICATIONS ====================
+        // post notifications
         
-       
-        /// Notify when a new post is created (for profile post count update)
-        
+        // notify when a new post is created (for profile post count update)
         Task NotifyPostCreatedAsync(Guid accountId, PostDetailResponse post);
 
-       
-        /// Notify when a post is updated (content + privacy)
-        
+        // notify when a post is updated (content + privacy)
         Task NotifyPostUpdatedAsync(Guid postId, Guid accountId, PostDetailResponse post);
 
-       
-        /// Notify when only post content is updated
-        
+        // notify when only post content is updated
         Task NotifyPostContentUpdatedAsync(Guid postId, Guid accountId, PostUpdateContentResponse content);
 
-       
-        /// Notify when a post is deleted
-        
+        // notify when a post is deleted
         Task NotifyPostDeletedAsync(Guid postId, Guid? accountId);
 
-       
-        /// Notify when post react count changes
-        
+        // notify when post react count changes
         Task NotifyPostReactUpdatedAsync(Guid postId, int reactCount);
 
-        // ==================== COMMENT NOTIFICATIONS ====================
+        // comment notifications
 
-        /// Notify when a new comment is created
+        // notify when a new comment is created
         Task NotifyCommentCreatedAsync(Guid postId, CommentResponse comment, int? parentReplyCount);
 
-        /// Notify when a comment is updated
+        // notify when a comment is updated
         Task NotifyCommentUpdatedAsync(Guid postId, CommentResponse comment);
 
-       
-        /// Notify when a comment is deleted
-        
+        // notify when a comment is deleted
         Task NotifyCommentDeletedAsync(Guid postId, Guid commentId, Guid? parentCommentId, int? totalPostComments, int? parentReplyCount);
 
-       
-        /// Notify when comment react count changes
-        
+        // notify when comment react count changes
         Task NotifyCommentReactUpdatedAsync(Guid postId, Guid commentId, int reactCount);
 
-        // ==================== FOLLOW NOTIFICATIONS ====================
+        // follow notifications
 
-       
-        /// Notify when follow status changes (follow/unfollow)
-        
+        // notify when follow status changes (follow/unfollow)
         Task NotifyFollowChangedAsync(Guid currentId, Guid targetId, string action, int targetFollowers, int targetFollowing, int myFollowers, int myFollowing);
 
-        // ==================== MESSAGE NOTIFICATIONS ====================
+        // account notifications
 
-       
-        /// Notify when a new message is sent
-        
+        // notify when account profile information is updated
+        Task NotifyProfileUpdatedAsync(Guid accountId, SocialNetwork.Application.DTOs.AccountDTOs.AccountDetailResponse account);
+
+        // message notifications
+
+        // notify when a new message is sent
         Task NotifyNewMessageAsync(Guid conversationId, SendMessageResponse message);
     }
 }

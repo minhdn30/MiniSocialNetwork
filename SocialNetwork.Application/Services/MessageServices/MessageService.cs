@@ -4,7 +4,7 @@ using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.MessageDTOs;
 using SocialNetwork.Application.DTOs.MessageMediaDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.ConversationServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.MessageServices
 {

@@ -7,11 +7,12 @@ using Microsoft.AspNetCore.Http;
 using Moq;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
+using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
@@ -21,7 +22,7 @@ using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using Xunit;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Tests.Services
 {
