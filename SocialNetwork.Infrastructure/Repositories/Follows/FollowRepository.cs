@@ -59,38 +59,55 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .ToListAsync();
         }
         //get a list of your followers
-        public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
+        public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, bool? sortByCreatedASC, int page, int pageSize)
         {
             var query = _context.Follows
                 .Where(f => f.FollowedId == accountId && f.Follower.Status == AccountStatusEnum.Active)
                 .Select(f => new
                 {
-                    FollowRecord = f,
-                    FollowerAccount = f.Follower
-                })
-                .AsQueryable();
+                    f.Follower.AccountId,
+                    f.Follower.Username,
+                    f.Follower.FullName,
+                    f.Follower.AvatarUrl,
+                    f.CreatedAt,
+                    IsFollowing = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == currentId.Value && fol.FollowedId == f.FollowerId),
+                    IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowerId && fol.FollowedId == currentId.Value)
+                });
 
-            //search by FullName using Trigram search (ILike)
             if (!string.IsNullOrWhiteSpace(keyword))
             {
-                var searchKeyword = $"%{keyword.Trim()}%";
-                query = query.Where(x => EF.Functions.ILike(x.FollowerAccount.FullName, searchKeyword));
+                var words = keyword.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var word in words)
+                {
+                    var searchPattern = $"%{word}%";
+                    query = query.Where(x => EF.Functions.ILike(AppDbContext.Unaccent(x.FullName), AppDbContext.Unaccent(searchPattern)) 
+                                          || EF.Functions.ILike(x.Username, searchPattern));
+                }
+
             }
 
             int totalItems = await query.CountAsync();
 
-            var items = await query
-                .OrderByDescending(x => x.FollowRecord.CreatedAt)
+            var sortedQuery = sortByCreatedASC.HasValue
+                ? (sortByCreatedASC.Value 
+                    ? query.OrderBy(x => x.CreatedAt) 
+                    : query.OrderByDescending(x => x.CreatedAt))
+                : query.OrderByDescending(x => currentId.HasValue && x.AccountId == currentId.Value)
+                       .ThenByDescending(x => x.IsFollowing)
+                       .ThenByDescending(x => x.IsFollower)
+                       .ThenByDescending(x => x.CreatedAt);
+
+            var items = await sortedQuery
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(x => new AccountWithFollowStatusModel
                 {
-                    AccountId = x.FollowerAccount.AccountId,
-                    Username = x.FollowerAccount.Username,
-                    AvatarUrl = x.FollowerAccount.AvatarUrl,
-                    FullName = x.FollowerAccount.FullName,
-                    IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == x.FollowerAccount.AccountId),
-                    IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == x.FollowerAccount.AccountId && f.FollowedId == currentId.Value)
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    AvatarUrl = x.AvatarUrl,
+                    FullName = x.FullName,
+                    IsFollowing = x.IsFollowing,
+                    IsFollower = x.IsFollower
                 })
                 .ToListAsync();
 
@@ -98,38 +115,55 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         }
 
         //get a list of people you follow
-        public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, int page, int pageSize)
+        public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, bool? sortByCreatedASC, int page, int pageSize)
         {
             var query = _context.Follows
                 .Where(f => f.FollowerId == accountId && f.Followed.Status == AccountStatusEnum.Active)
                 .Select(f => new
                 {
-                    FollowRecord = f,
-                    FollowedAccount = f.Followed
-                })
-                .AsQueryable();
+                    f.Followed.AccountId,
+                    f.Followed.Username,
+                    f.Followed.FullName,
+                    f.Followed.AvatarUrl,
+                    f.CreatedAt,
+                    IsFollowing = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == currentId.Value && fol.FollowedId == f.FollowedId),
+                    IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowedId && fol.FollowedId == currentId.Value)
+                });
 
-            //search by FullName using Trigram search (ILike)
             if (!string.IsNullOrWhiteSpace(keyword))
             {
-                var searchKeyword = $"%{keyword.Trim()}%";
-                query = query.Where(x => EF.Functions.ILike(x.FollowedAccount.FullName, searchKeyword));
+                var words = keyword.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var word in words)
+                {
+                    var searchPattern = $"%{word}%";
+                    query = query.Where(x => EF.Functions.ILike(AppDbContext.Unaccent(x.FullName), AppDbContext.Unaccent(searchPattern)) 
+                                          || EF.Functions.ILike(x.Username, searchPattern));
+                }
+
             }
 
             int totalItems = await query.CountAsync();
 
-            var items = await query
-                .OrderByDescending(x => x.FollowRecord.CreatedAt)
+            var sortedQuery = sortByCreatedASC.HasValue
+                ? (sortByCreatedASC.Value 
+                    ? query.OrderBy(x => x.CreatedAt) 
+                    : query.OrderByDescending(x => x.CreatedAt))
+                : query.OrderByDescending(x => currentId.HasValue && x.AccountId == currentId.Value)
+                       .ThenByDescending(x => x.IsFollowing)
+                       .ThenByDescending(x => x.IsFollower)
+                       .ThenByDescending(x => x.CreatedAt);
+
+            var items = await sortedQuery
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(x => new AccountWithFollowStatusModel
                 {
-                    AccountId = x.FollowedAccount.AccountId,
-                    Username = x.FollowedAccount.Username,
-                    AvatarUrl = x.FollowedAccount.AvatarUrl,
-                    FullName = x.FollowedAccount.FullName,
-                    IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == x.FollowedAccount.AccountId),
-                    IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == x.FollowedAccount.AccountId && f.FollowedId == currentId.Value)
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    AvatarUrl = x.AvatarUrl,
+                    FullName = x.FullName,
+                    IsFollowing = x.IsFollowing,
+                    IsFollower = x.IsFollower
                 })
                 .ToListAsync();
 

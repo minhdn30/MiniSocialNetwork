@@ -89,8 +89,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
             }
             if (!string.IsNullOrWhiteSpace(fullname))
             {
-                var searchKeyword = $"%{fullname.Trim()}%";
-                query = query.Where(a => EF.Functions.ILike(a.FullName, searchKeyword));
+                var words = fullname.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var word in words)
+                {
+                    var searchPattern = $"%{word}%";
+                    query = query.Where(a => EF.Functions.ILike(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(searchPattern)));
+                }
             }
             if (!string.IsNullOrWhiteSpace(phone))
             {

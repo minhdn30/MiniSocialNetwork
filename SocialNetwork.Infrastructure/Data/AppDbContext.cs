@@ -12,7 +12,7 @@ namespace SocialNetwork.Infrastructure.Data
     public class AppDbContext : DbContext
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
-
+        public static string Unaccent(string text) => throw new NotSupportedException();
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
@@ -46,6 +46,11 @@ namespace SocialNetwork.Infrastructure.Data
                       .HasMethod("GIN")
                       .HasOperators("gin_trgm_ops");
 
+                // Expression indexes for unaccent(FullName) and unaccent(Username) 
+                // will be created manually via raw SQL in migration
+                // EF Core doesn't support functional indexes via Fluent API
+
+
                 // Index for Status filter (used in many joins)
                 entity.HasIndex(e => e.Status)
                       .HasDatabaseName("IX_Accounts_Status");
@@ -62,8 +67,16 @@ namespace SocialNetwork.Infrastructure.Data
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Enable pg_trgm extension
+            // Enable extensions
             modelBuilder.HasPostgresExtension("pg_trgm");
+            modelBuilder.HasPostgresExtension("unaccent");
+
+            // Map to immutable_unaccent wrapper function (created in migration)
+            // Required for functional indexes - PostgreSQL requires IMMUTABLE functions for indexes
+            modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(Unaccent), new[] { typeof(string) })!)
+                .HasName("immutable_unaccent");
+
+
 
             modelBuilder.Entity<Role>(entity =>
             {

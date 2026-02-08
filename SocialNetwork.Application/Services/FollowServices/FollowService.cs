@@ -147,7 +147,7 @@ namespace SocialNetwork.Application.Services.FollowServices
                 }
             }
 
-            var (items, total) = await _followRepository.GetFollowersAsync(accountId, currentId, request.Keyword, request.Page, request.PageSize);
+            var (items, total) = await _followRepository.GetFollowersAsync(accountId, currentId, request.Keyword, request.SortByCreatedASC, request.Page, request.PageSize);
 
             return new PagedResponse<AccountWithFollowStatusModel>
             {
@@ -179,7 +179,7 @@ namespace SocialNetwork.Application.Services.FollowServices
                 }
             }
 
-            var (items, total) = await _followRepository.GetFollowingAsync(accountId, currentId, request.Keyword, request.Page, request.PageSize);
+            var (items, total) = await _followRepository.GetFollowingAsync(accountId, currentId, request.Keyword, request.SortByCreatedASC, request.Page, request.PageSize);
             return new PagedResponse<AccountWithFollowStatusModel>
             {
                 Items = items,

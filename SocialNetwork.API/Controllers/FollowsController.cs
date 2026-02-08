@@ -57,6 +57,7 @@ namespace SocialNetwork.API.Controllers
             return Ok(new { isFollowing = result });
         }
 
+        [Authorize]
         [HttpGet("followers")]
         public async Task<IActionResult> GetFollowers([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
@@ -65,6 +66,7 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
 
+        [Authorize]
         [HttpGet("following")]
         public async Task<IActionResult> GetFollowing([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
