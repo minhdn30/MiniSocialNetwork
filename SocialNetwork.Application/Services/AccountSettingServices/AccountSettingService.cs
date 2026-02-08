@@ -1,5 +1,6 @@
 using AutoMapper;
 using SocialNetwork.Application.DTOs.AccountSettingDTOs;
+using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
@@ -17,12 +18,18 @@ namespace SocialNetwork.Application.Services.AccountSettingServices
         private readonly IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IRealtimeService _realtimeService;
 
-        public AccountSettingService(IAccountSettingRepository accountSettingRepository, IMapper mapper, IUnitOfWork unitOfWork)
+        public AccountSettingService(
+            IAccountSettingRepository accountSettingRepository, 
+            IMapper mapper, 
+            IUnitOfWork unitOfWork,
+            IRealtimeService realtimeService)
         {
             _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _realtimeService = realtimeService;
         }
 
         public async Task<AccountSettingsResponse> GetSettingsByAccountIdAsync(Guid accountId)
@@ -53,7 +60,12 @@ namespace SocialNetwork.Application.Services.AccountSettingServices
             }
 
             await _unitOfWork.CommitAsync();
-            return _mapper.Map<AccountSettingsResponse>(settings);
+            var response = _mapper.Map<AccountSettingsResponse>(settings);
+
+            // Trigger real-time notification
+            _ = _realtimeService.NotifyAccountSettingsUpdatedAsync(accountId, response);
+
+            return response;
         }
     }
 }

@@ -51,6 +51,9 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         // notify when account profile information is updated
         Task NotifyProfileUpdatedAsync(Guid accountId, SocialNetwork.Application.DTOs.AccountDTOs.AccountDetailResponse account);
 
+        // notify when account settings are updated
+        Task NotifyAccountSettingsUpdatedAsync(Guid accountId, SocialNetwork.Application.DTOs.AccountSettingDTOs.AccountSettingsResponse settings);
+
         // message notifications
 
         // notify when a new message is sent
