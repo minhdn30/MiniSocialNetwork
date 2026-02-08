@@ -134,6 +134,12 @@ namespace SocialNetwork.API.Services
                 .SendAsync("ReceiveProfileUpdate", account);
         }
 
+        public async Task NotifyAccountSettingsUpdatedAsync(Guid accountId, SocialNetwork.Application.DTOs.AccountSettingDTOs.AccountSettingsResponse settings)
+        {
+            await _userHubContext.Clients.Group($"Account-{accountId}")
+                .SendAsync("ReceiveAccountSettingsUpdate", settings);
+        }
+
         // message notifications
 
         public async Task NotifyNewMessageAsync(Guid conversationId, SendMessageResponse message)
