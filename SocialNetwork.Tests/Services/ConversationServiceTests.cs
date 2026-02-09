@@ -7,6 +7,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
+using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Tests.Helpers;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
@@ -16,6 +17,7 @@ namespace SocialNetwork.Tests.Services
     {
         private readonly Mock<IConversationRepository> _conversationRepositoryMock;
         private readonly Mock<IConversationMemberRepository> _conversationMemberRepositoryMock;
+        private readonly Mock<IMessageRepository> _messageRepositoryMock;
         private readonly Mock<IAccountRepository> _accountRepositoryMock;
         private readonly Mock<IMapper> _mapperMock;
         private readonly ConversationService _conversationService;
@@ -24,15 +26,16 @@ namespace SocialNetwork.Tests.Services
         {
             _conversationRepositoryMock = new Mock<IConversationRepository>();
             _conversationMemberRepositoryMock = new Mock<IConversationMemberRepository>();
+            _messageRepositoryMock = new Mock<IMessageRepository>();
             _accountRepositoryMock = new Mock<IAccountRepository>();
             _mapperMock = new Mock<IMapper>();
 
             _conversationService = new ConversationService(
                 _conversationRepositoryMock.Object,
                 _conversationMemberRepositoryMock.Object,
+                _messageRepositoryMock.Object,
                 _accountRepositoryMock.Object,
-                _mapperMock.Object,
-                _accountRepositoryMock.Object
+                _mapperMock.Object
             );
         }
 

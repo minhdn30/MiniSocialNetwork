@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SocialNetwork.Infrastructure.Data;
@@ -11,9 +12,11 @@ using SocialNetwork.Infrastructure.Data;
 namespace SocialNetwork.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260209153641_AddConversationAvatar")]
+    partial class AddConversationAvatar
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -115,7 +118,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Accounts", (string)null);
+                    b.ToTable("Accounts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.AccountSettings", b =>
@@ -140,7 +143,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasKey("AccountId");
 
-                    b.ToTable("AccountSettings", (string)null);
+                    b.ToTable("AccountSettings");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Comment", b =>
@@ -180,7 +183,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("PostId", "ParentCommentId", "CreatedAt")
                         .HasDatabaseName("IX_Comment_Post_Parent_Created");
 
-                    b.ToTable("Comments", (string)null);
+                    b.ToTable("Comments");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.CommentReact", b =>
@@ -201,7 +204,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.ToTable("CommentReacts", (string)null);
+                    b.ToTable("CommentReacts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Conversation", b =>
@@ -234,7 +237,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("CreatedBy");
 
-                    b.ToTable("Conversations", (string)null);
+                    b.ToTable("Conversations");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.ConversationMember", b =>
@@ -276,7 +279,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.ToTable("ConversationMembers", (string)null);
+                    b.ToTable("ConversationMembers");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.EmailVerification", b =>
@@ -305,7 +308,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("EmailVerifications", (string)null);
+                    b.ToTable("EmailVerifications");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Follow", b =>
@@ -328,7 +331,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("FollowerId", "FollowedId")
                         .HasDatabaseName("IX_Follow_Follower_Followed");
 
-                    b.ToTable("Follows", (string)null);
+                    b.ToTable("Follows");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Message", b =>
@@ -370,7 +373,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("ConversationId", "SentAt");
 
-                    b.ToTable("Messages", (string)null);
+                    b.ToTable("Messages");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageHidden", b =>
@@ -388,7 +391,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.ToTable("MessageHiddens", (string)null);
+                    b.ToTable("MessageHiddens");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageMedia", b =>
@@ -423,7 +426,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("MessageId");
 
-                    b.ToTable("MessageMedias", (string)null);
+                    b.ToTable("MessageMedias");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageReact", b =>
@@ -446,7 +449,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("MessageId");
 
-                    b.ToTable("MessageReacts", (string)null);
+                    b.ToTable("MessageReacts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Post", b =>
@@ -493,7 +496,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("IsDeleted", "Privacy", "CreatedAt")
                         .HasDatabaseName("IX_Posts_Feed");
 
-                    b.ToTable("Posts", (string)null);
+                    b.ToTable("Posts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.PostMedia", b =>
@@ -519,7 +522,7 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("PostId");
 
-                    b.ToTable("PostMedias", (string)null);
+                    b.ToTable("PostMedias");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.PostReact", b =>
@@ -543,7 +546,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("PostId")
                         .HasDatabaseName("IX_PostReact_PostId_Covering");
 
-                    b.ToTable("PostReacts", (string)null);
+                    b.ToTable("PostReacts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Role", b =>
@@ -564,7 +567,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("RoleName")
                         .IsUnique();
 
-                    b.ToTable("Roles", (string)null);
+                    b.ToTable("Roles");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Account", b =>

@@ -1,31 +1,28 @@
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SocialNetwork.Infrastructure.Models
+namespace SocialNetwork.Application.DTOs.ConversationDTOs
 {
-    public class ConversationListModel
+    public class ConversationListItemResponse
     {
         public Guid ConversationId { get; set; }
         public bool IsGroup { get; set; }
         
-        // Flattened for easy UI access
+        // Common display info
         public string? DisplayName { get; set; }
         public string? DisplayAvatar { get; set; }
-        
-        // For Private Chat
-        public OtherMemberBasicInfo? OtherMember { get; set; }
-        
-        // For Group Chat
-        public string? ConversationName { get; set; }
-        public string? ConversationAvatar { get; set; }
+
+        // Specific for Private
+        public OtherMemberInfo? OtherMember { get; set; }
 
         public MessageBasicModel? LastMessage { get; set; }
+        public string? LastMessagePreview { get; set; }
         public bool IsRead { get; set; }
         public int UnreadCount { get; set; }
-        public DateTime? LastSeenAt { get; set; }
         public DateTime? LastMessageSentAt { get; set; }
     }
 }
