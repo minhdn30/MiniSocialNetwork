@@ -53,9 +53,13 @@ namespace SocialNetwork.API.Middleware
                         break;
 
                     default:
-                        _logger.LogError(ex, "Unhandled exception");
+                        _logger.LogError(ex, "Unhandled exception: {Message}", ex.Message);
+                        if (ex.InnerException != null)
+                        {
+                            _logger.LogError(ex.InnerException, "Inner exception: {Message}", ex.InnerException.Message);
+                        }
                         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-                        await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Internal server error." }));
+                        await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Internal server error.", details = ex.Message }));
                         break;
                 }
             }

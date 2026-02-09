@@ -11,7 +11,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
     public class PrivateConversationIncludeMessagesResponse
     {
         public bool IsNew { get; set; }
-        public ConversationResponse? Conversation { get; set; }
+        public ConversationMetaData? MetaData { get; set; }
         public PagedResponse<MessageBasicModel> Messages { get; set; } = new PagedResponse<MessageBasicModel>();
     }
 }
