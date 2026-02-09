@@ -149,7 +149,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                         MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
                         SentAt = DateTime.UtcNow,
                         IsEdited = false,
-                        IsDeleted = false
+                        IsRecalled = false
                     };
                     await _messageRepository.AddMessageAsync(message);
 

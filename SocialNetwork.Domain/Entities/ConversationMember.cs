@@ -15,6 +15,7 @@ namespace SocialNetwork.Domain.Entities
         public bool IsAdmin { get; set; } = false;
         public bool HasLeft { get; set; } = false;
         public Guid? LastSeenMessageId { get; set; }
+        public DateTime? LastSeenAt { get; set; } 
         public bool IsMuted { get; set; } = false; // mute notification
         public bool IsDeleted { get; set; } = false;
         public DateTime? ClearedAt { get; set; } 

@@ -41,7 +41,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     MessageType = m.MessageType,
                     SentAt = m.SentAt,
                     IsEdited = m.IsEdited,
-                    IsDeleted = m.IsDeleted,
+                    IsRecalled = m.IsRecalled,
 
                     Sender = new AccountBasicInfoModel
                     {

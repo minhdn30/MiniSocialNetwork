@@ -40,6 +40,8 @@ using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
+using SocialNetwork.Infrastructure.Repositories.MessageHiddens;
+using SocialNetwork.Infrastructure.Repositories.MessageReacts;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
@@ -84,6 +86,8 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IConversationMemberRepository, ConversationMemberRepository>();
             builder.Services.AddScoped<IMessageRepository, MessageRepository>();
             builder.Services.AddScoped<IMessageMediaRepository, MessageMediaRepository>();
+            builder.Services.AddScoped<IMessageHiddenRepository, MessageHiddenRepository>();
+            builder.Services.AddScoped<IMessageReactRepository, MessageReactRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 

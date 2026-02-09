@@ -26,6 +26,8 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<ConversationMember> ConversationMembers { get; set; }
         public virtual DbSet<Message> Messages { get; set; }
         public virtual DbSet<MessageMedia> MessageMedias { get; set; }
+        public virtual DbSet<MessageHidden> MessageHiddens { get; set; }
+        public virtual DbSet<MessageReact> MessageReacts { get; set; }
         public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
 
 
@@ -373,6 +375,58 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasOne(mm => mm.Message)
                 .WithMany(m => m.Medias)
                 .HasForeignKey(mm => mm.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // MESSAGE HIDDEN
+            // =====================
+            modelBuilder.Entity<MessageHidden>()
+                .HasKey(mh => new { mh.MessageId, mh.AccountId });
+
+            // Index: get hidden messages by account
+            modelBuilder.Entity<MessageHidden>()
+                .HasIndex(mh => mh.AccountId);
+
+            // MessageHidden → Message
+            modelBuilder.Entity<MessageHidden>()
+                .HasOne(mh => mh.Message)
+                .WithMany(m => m.HiddenBy)
+                .HasForeignKey(mh => mh.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // MessageHidden → Account
+            modelBuilder.Entity<MessageHidden>()
+                .HasOne(mh => mh.Account)
+                .WithMany()  // No navigation from Account
+                .HasForeignKey(mh => mh.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // MESSAGE REACT
+            // =====================
+            modelBuilder.Entity<MessageReact>()
+                .HasKey(mr => new { mr.MessageId, mr.AccountId });
+
+            // Index: count reactions by message
+            modelBuilder.Entity<MessageReact>()
+                .HasIndex(mr => mr.MessageId);
+
+            // Index: get reactions by account
+            modelBuilder.Entity<MessageReact>()
+                .HasIndex(mr => mr.AccountId);
+
+            // MessageReact → Message
+            modelBuilder.Entity<MessageReact>()
+                .HasOne(mr => mr.Message)
+                .WithMany(m => m.Reacts)
+                .HasForeignKey(mr => mr.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // MessageReact → Account
+            modelBuilder.Entity<MessageReact>()
+                .HasOne(mr => mr.Account)
+                .WithMany()  // No navigation from Account
+                .HasForeignKey(mr => mr.AccountId)
                 .OnDelete(DeleteBehavior.Cascade);
 
 
