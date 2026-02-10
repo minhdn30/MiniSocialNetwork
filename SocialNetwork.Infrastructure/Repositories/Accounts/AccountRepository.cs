@@ -304,5 +304,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public
             };
         }
+
+        public async Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds)
+        {
+            return await _context.Accounts
+                .Where(a => accountIds.Contains(a.AccountId))
+                .ToListAsync();
+        }
     }
 }

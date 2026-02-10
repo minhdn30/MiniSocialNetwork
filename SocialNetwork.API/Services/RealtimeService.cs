@@ -142,10 +142,23 @@ namespace SocialNetwork.API.Services
 
         // message notifications
 
-        public async Task NotifyNewMessageAsync(Guid conversationId, SendMessageResponse message)
+        public async Task NotifyNewMessageAsync(Guid conversationId, List<Guid> memberIds, SendMessageResponse message)
         {
+            // 1. Notify the "Conversation Room" group on ChatHub
+            // For users with this specific chat window ACTIVE
             await _chatHubContext.Clients.Group(conversationId.ToString())
                 .SendAsync("ReceiveNewMessage", message);
+
+            // 2. Notify each member on UserHub (Global Channel)
+            // For global notifications (toasts, badges) when NOT in this chat
+            foreach (var memberId in memberIds)
+            {
+                await _userHubContext.Clients.Group($"Account-{memberId}")
+                    .SendAsync("ReceiveMessageNotification", new {
+                        ConversationId = conversationId,
+                        Message = message
+                    });
+            }
         }
     }
 }

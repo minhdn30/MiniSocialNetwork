@@ -57,6 +57,6 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         // message notifications
 
         // notify when a new message is sent
-        Task NotifyNewMessageAsync(Guid conversationId, SendMessageResponse message);
+        Task NotifyNewMessageAsync(Guid conversationId, List<Guid> memberIds, SendMessageResponse message);
     }
 }

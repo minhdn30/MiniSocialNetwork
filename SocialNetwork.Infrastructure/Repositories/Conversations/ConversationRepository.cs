@@ -52,6 +52,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         {
             var conversation = new Conversation
             {
+                ConversationId = Guid.NewGuid(),
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = currentId
             };
@@ -269,6 +270,25 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 UnreadCount = unreadCount,
                 IsRead = unreadCount == 0
             };
+        }
+
+        // lightweight query - only returns conversation id without includes
+        public async Task<Guid?> GetPrivateConversationIdAsync(Guid accountId1, Guid accountId2)
+        {
+            return await _context.Conversations
+                .Where(c => !c.IsDeleted && !c.IsGroup)
+                .Where(c => c.Members.Count == 2
+                            && c.Members.Any(m => m.AccountId == accountId1)
+                            && c.Members.Any(m => m.AccountId == accountId2))
+                .Select(c => (Guid?)c.ConversationId)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<Conversation?> GetConversationByIdAsync(Guid conversationId)
+        {
+            return await _context.Conversations
+                .Where(c => c.ConversationId == conversationId && !c.IsDeleted)
+                .FirstOrDefaultAsync();
         }
     }
 }

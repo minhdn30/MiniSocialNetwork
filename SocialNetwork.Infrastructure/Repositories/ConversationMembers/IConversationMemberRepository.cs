@@ -14,5 +14,6 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
         Task UpdateConversationMember(ConversationMember member);
         Task<bool> IsMemberOfConversation(Guid conversationId, Guid accountId);
         Task<ConversationMember?> GetConversationMemberAsync(Guid conversationId, Guid accountId);
+        Task<List<Guid>> GetMemberIdsByConversationIdAsync(Guid conversationId);
     }
 }

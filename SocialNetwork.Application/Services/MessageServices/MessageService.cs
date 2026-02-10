@@ -71,27 +71,35 @@ namespace SocialNetwork.Application.Services.MessageServices
         }
         public async Task<SendMessageResponse> SendMessageInPrivateChatAsync(Guid senderId, SendMessageInPrivateChatRequest request)
         {
-            // === VALIDATION PHASE ===
+            // === validation phase ===
+            
+            // check can't send to self
             if(senderId == request.ReceiverId)
                 throw new BadRequestException("You cannot send a message to yourself.");
+
+            // check content + media not both empty
             if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
                 throw new BadRequestException("Message content and media files cannot both be empty.");
-            var receiver = await _accountRepository.GetAccountById(request.ReceiverId);
-            if (receiver == null)
-                throw new BadRequestException($"Receiver account with ID {request.ReceiverId} does not exist.");
-            
-            if (receiver.Status != AccountStatusEnum.Active)
-                throw new BadRequestException("This user is currently unavailable.");
 
-            var sender = await _accountRepository.GetAccountById(senderId);
+            // batch query both sender and receiver in single query
+            var accounts = await _accountRepository.GetAccountsByIds(new[] { senderId, request.ReceiverId });
+            var sender = accounts.FirstOrDefault(a => a.AccountId == senderId);
+            var receiver = accounts.FirstOrDefault(a => a.AccountId == request.ReceiverId);
+            
             if(sender == null) 
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-
             if (sender.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to send messages.");
+            
+            if (receiver == null)
+                throw new BadRequestException($"Receiver account with ID {request.ReceiverId} does not exist.");
+            if (receiver.Status != AccountStatusEnum.Active)
+                throw new BadRequestException("This user is currently unavailable.");
+            
+            var now = DateTime.UtcNow;
 
-            // === MEDIA UPLOAD PHASE (before transaction, track uploaded URLs for cleanup) ===
-            var uploadedMediaUrls = new List<string>();
+            // === media upload phase (before transaction) ===, track uploaded URLs for cleanup) ===
+            var uploadedMedia = new List<(string url, MediaTypeEnum type)>();
             var mediaEntities = new List<MessageMedia>();
             
             if (request.MediaFiles != null && request.MediaFiles.Any())
@@ -114,40 +122,49 @@ namespace SocialNetwork.Application.Services.MessageServices
                             continue; 
                     };
                     
-                    if(!string.IsNullOrEmpty(url))
+                    if (!string.IsNullOrEmpty(url))
                     {
-                        uploadedMediaUrls.Add(url);
+                        uploadedMedia.Add((url, detectedType.Value));
                         mediaEntities.Add(new MessageMedia
                         {
                             MediaUrl = url,
                             MediaType = detectedType.Value,
                             FileName = file.FileName,
                             FileSize = file.Length,
-                            CreatedAt = DateTime.UtcNow
+                            CreatedAt = now
                         });
                     }
                 }
             }
-
-            // === DATABASE TRANSACTION PHASE ===
+            
+            // === database transaction phase ===
             return await _unitOfWork.ExecuteInTransactionAsync(
                 async () =>
                 {
-                    // Get or create conversation
-                    var conversation = await _conversationRepository.GetConversationByTwoAccountIdsAsync(senderId, request.ReceiverId);
-                    if (conversation == null)
+                    // get or create conversation - optimized to only fetch id
+                    var conversationId = await _conversationRepository.GetPrivateConversationIdAsync(senderId, request.ReceiverId);
+                    Guid actualConversationId;
+                    if (conversationId == null)
                     {
-                        conversation = await _conversationRepository.CreatePrivateConversationAsync(senderId, request.ReceiverId);
+                        var conversation = await _conversationRepository.CreatePrivateConversationAsync(senderId, request.ReceiverId);
+                        // Flush conversation + members to DB first (still within the transaction)
+                        // This ensures the FK reference exists before inserting the message
+                        await _unitOfWork.CommitAsync();
+                        actualConversationId = conversation.ConversationId;
+                    }
+                    else
+                    {
+                        actualConversationId = conversationId.Value;
                     }
 
                     // Create message
                     var message = new Message
                     {
-                        ConversationId = conversation.ConversationId,
+                        ConversationId = actualConversationId,
                         AccountId = senderId,
                         Content = request.Content,
                         MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
-                        SentAt = DateTime.UtcNow,
+                        SentAt = now,
                         IsEdited = false,
                         IsRecalled = false
                     };
@@ -172,18 +189,146 @@ namespace SocialNetwork.Application.Services.MessageServices
                     }
 
                     // Send realtime notification (after successful commit)
-                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, result);
+                    var memberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(result.ConversationId);
+                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, memberIds, result);
 
                     return result;
                 },
                 // Cleanup callback: delete orphaned cloud media if DB transaction fails
                 async () =>
                 {
-                    var cleanupTasks = uploadedMediaUrls.Select(url =>
+                    var cleanupTasks = uploadedMedia.Select(m =>
                     {
-                        var publicId = _cloudinaryService.GetPublicIdFromUrl(url);
+                        var publicId = _cloudinaryService.GetPublicIdFromUrl(m.url);
                         return !string.IsNullOrEmpty(publicId) 
-                            ? _cloudinaryService.DeleteMediaAsync(publicId, MediaTypeEnum.Image) 
+                            ? _cloudinaryService.DeleteMediaAsync(publicId, m.type)
+                            : Task.CompletedTask;
+                    });
+                    await Task.WhenAll(cleanupTasks);
+                }
+            );
+        }
+
+        // send message to group chat (conversation must exist)
+        public async Task<SendMessageResponse> SendMessageInGroupAsync(Guid senderId, Guid conversationId, SendMessageRequest request)
+        {
+            // === validation phase ===
+            
+            // check content + media not both empty
+            if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
+                throw new BadRequestException("Message content and media files cannot both be empty.");
+            
+            // verify conversation exists
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException("Conversation not found.");
+            
+            // verify it's a group conversation
+            if (!conversation.IsGroup)
+                throw new BadRequestException("This endpoint is for group chats only. Use /private-chat for 1:1 messaging.");
+            
+            // verify user is member of this conversation
+            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, senderId))
+                throw new ForbiddenException("You are not a member of this conversation.");
+            
+            // verify sender exists and active
+            var sender = await _accountRepository.GetAccountById(senderId);
+            if(sender == null) 
+                throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
+            if (sender.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to send messages.");
+            
+            var now = DateTime.UtcNow;
+
+            // === media upload phase (before transaction) ===
+            var uploadedMedia = new List<(string url, MediaTypeEnum type)>();
+            var mediaEntities = new List<MessageMedia>();
+            
+            if (request.MediaFiles != null && request.MediaFiles.Any())
+            {
+                foreach (var file in request.MediaFiles)
+                {
+                    var detectedType = await _fileTypeDetector.GetMediaTypeAsync(file);
+                    if (detectedType == null)
+                        continue;
+                    
+                    string? url = null;
+                    switch(detectedType.Value)
+                    {
+                        case MediaTypeEnum.Image:
+                            url = await _cloudinaryService.UploadImageAsync(file);
+                            break;
+                        case MediaTypeEnum.Video:
+                            url = await _cloudinaryService.UploadVideoAsync(file);
+                            break;
+                        default:
+                            continue; 
+                    };
+                    
+                    if (!string.IsNullOrEmpty(url))
+                    {
+                        uploadedMedia.Add((url, detectedType.Value));
+                        mediaEntities.Add(new MessageMedia
+                        {
+                            MediaUrl = url,
+                            MediaType = detectedType.Value,
+                            FileName = file.FileName,
+                            FileSize = file.Length,
+                            CreatedAt = now
+                        });
+                    }
+                }
+            }
+            
+            // === database transaction phase ===
+            return await _unitOfWork.ExecuteInTransactionAsync(
+                async () =>
+                {
+                    // create message in existing conversation
+                    var message = new Message
+                    {
+                        ConversationId = conversationId,
+                        AccountId = senderId,
+                        Content = request.Content,
+                        MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
+                        SentAt = now,
+                        IsEdited = false,
+                        IsRecalled = false
+                    };
+                    await _messageRepository.AddMessageAsync(message);
+                    
+                    // link media to message
+                    if (mediaEntities.Any())
+                    {
+                        foreach (var media in mediaEntities)
+                        {
+                            media.MessageId = message.MessageId;
+                        }
+                        await _messageMediaRepository.AddMessageMediasAsync(mediaEntities);
+                    }
+                    
+                    // build response
+                    var result = _mapper.Map<SendMessageResponse>(message);
+                    result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
+                    if (mediaEntities.Any())
+                    {
+                        result.Medias = _mapper.Map<List<MessageMediaResponse>>(mediaEntities);
+                    }
+                    
+                    // send realtime notification to conversation members
+                    var memberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(result.ConversationId);
+                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, memberIds, result);
+                    
+                    return result;
+                },
+                // cleanup callback: delete orphaned cloud media if db transaction fails
+                async () =>
+                {
+                    var cleanupTasks = uploadedMedia.Select(m =>
+                    {
+                        var publicId = _cloudinaryService.GetPublicIdFromUrl(m.url);
+                        return !string.IsNullOrEmpty(publicId) 
+                            ? _cloudinaryService.DeleteMediaAsync(publicId, m.type)
                             : Task.CompletedTask;
                     });
                     await Task.WhenAll(cleanupTasks);

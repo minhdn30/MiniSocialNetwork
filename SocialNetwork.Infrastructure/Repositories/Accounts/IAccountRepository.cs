@@ -25,5 +25,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId);
         Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId);
         Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId);
+        Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds);
     }
 }
