@@ -28,11 +28,12 @@ namespace SocialNetwork.Infrastructure.Models
         public DateTime? LastSeenAt { get; set; }
         public DateTime? LastMessageSentAt { get; set; }
 
-        /// <summary>
-        /// Members who have seen the last message (only when last message is from current user).
-        /// Max 3 entries for sidebar display.
-        /// </summary>
+        // Members who have seen the last message (only when last message is from current user)
+        // Max 3 entries for sidebar display
         public List<SeenByMemberInfo>? LastMessageSeenBy { get; set; }
+
+        // Total number of members who have seen the last message (excluding current user)
+        public int LastMessageSeenCount { get; set; }
     }
 
     public class SeenByMemberInfo

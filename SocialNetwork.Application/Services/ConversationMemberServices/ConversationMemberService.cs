@@ -45,6 +45,10 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             await _conversationMemberRepository.UpdateConversationMember(member);
             await _unitOfWork.CommitAsync();
         }
+        public async Task<bool> IsMemberAsync(Guid conversationId, Guid accountId)
+        {
+            return await _conversationMemberRepository.IsMemberOfConversation(conversationId, accountId);
+        }
         public async Task SoftDeleteChatHistory(Guid conversationId, Guid currentId)
         {
             var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);

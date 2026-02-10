@@ -9,6 +9,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 {
     public interface IConversationMemberService
     {
+        Task<bool> IsMemberAsync(Guid conversationId, Guid accountId);
         Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request);
         Task SoftDeleteChatHistory(Guid conversationId, Guid currentId);
         Task MarkSeenAsync(Guid conversationId, Guid currentId, Guid newMessageId);

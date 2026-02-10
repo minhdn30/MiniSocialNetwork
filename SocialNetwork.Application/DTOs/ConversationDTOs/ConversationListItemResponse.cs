@@ -24,9 +24,11 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public int UnreadCount { get; set; }
         public DateTime? LastMessageSentAt { get; set; }
 
-        /// <summary>
-        /// Members who seen the last message (only populated when the current user sent the last message).
-        /// </summary>
+        // Members who seen the last message (only populated when the current user sent the last message).
+
         public List<SeenByMemberInfo>? LastMessageSeenBy { get; set; }
+
+        // Total count of members who seen the last message (excluding current user)
+        public int LastMessageSeenCount { get; set; }
     }
 }

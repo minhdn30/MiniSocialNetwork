@@ -76,7 +76,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 IsRead = item.IsRead,
                 UnreadCount = item.UnreadCount,
                 LastMessageSentAt = item.LastMessageSentAt,
-                LastMessageSeenBy = item.LastMessageSeenBy
+                LastMessageSeenBy = item.LastMessageSeenBy,
+                LastMessageSeenCount = item.LastMessageSeenCount
             }).ToList();
 
             return new PagedResponse<ConversationListItemResponse>(responseItems, page, pageSize, totalCount);

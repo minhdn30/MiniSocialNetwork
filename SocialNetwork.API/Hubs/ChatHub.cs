@@ -1,10 +1,12 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.SignalR;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.ConversationMemberServices;
 using SocialNetwork.Application.Services.ConversationServices;
 
 namespace SocialNetwork.API.Hubs
 {
+    [Authorize]
     public class ChatHub : Hub
     {
         private readonly IConversationMemberService _conversationMemberService;
@@ -18,8 +20,21 @@ namespace SocialNetwork.API.Hubs
         {
             await base.OnConnectedAsync();
         }
+        private async Task<Guid> EnsureMemberAsync(Guid conversationId)
+        {
+            var currentId = Context.User?.GetAccountId()
+                ?? throw new HubException("Unauthorized");
+
+            var isMember = await _conversationMemberService.IsMemberAsync(conversationId, currentId);
+            if (!isMember)
+                throw new HubException("Forbidden");
+
+            return currentId;
+        }
+
         public async Task JoinConversation(Guid conversationId)
         {
+            await EnsureMemberAsync(conversationId);
             await Groups.AddToGroupAsync(
                 Context.ConnectionId,
                 conversationId.ToString()
@@ -28,6 +43,7 @@ namespace SocialNetwork.API.Hubs
 
         public async Task LeaveConversation(Guid conversationId)
         {
+            await EnsureMemberAsync(conversationId);
             await Groups.RemoveFromGroupAsync(
                 Context.ConnectionId,
                 conversationId.ToString()
@@ -35,8 +51,7 @@ namespace SocialNetwork.API.Hubs
         }
         public async Task SeenConversation(Guid conversationId, Guid lastSeenMessageId)
         {
-            var currentId = Context.User?.GetAccountId()
-                ?? throw new HubException("Unauthorized");
+            var currentId = await EnsureMemberAsync(conversationId);
 
             await _conversationMemberService.MarkSeenAsync(
                 conversationId,
@@ -55,8 +70,7 @@ namespace SocialNetwork.API.Hubs
 
         public async Task Typing(Guid conversationId, bool isTyping)
         {
-            var currentId = Context.User?.GetAccountId()
-                ?? throw new HubException("Unauthorized");
+            var currentId = await EnsureMemberAsync(conversationId);
 
             await Clients
                 .GroupExcept(conversationId.ToString(), Context.ConnectionId)
