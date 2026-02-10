@@ -14,7 +14,7 @@ namespace SocialNetwork.Application.DTOs.MessageDTOs
     {
         public Guid MessageId { get; set; }
         public Guid ConversationId { get; set; }
-        public AccountBasicInfoResponse Sender { get; set; } = null!;
+        public AccountChatInfoResponse Sender { get; set; } = null!;
         public string? Content { get; set; }
         public MessageTypeEnum MessageType { get; set; } // Text / Media / System
         public DateTime SentAt { get; set; }
