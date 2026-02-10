@@ -75,7 +75,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 LastMessagePreview = FormatLastMessagePreview(item.LastMessage),
                 IsRead = item.IsRead,
                 UnreadCount = item.UnreadCount,
-                LastMessageSentAt = item.LastMessageSentAt
+                LastMessageSentAt = item.LastMessageSentAt,
+                LastMessageSeenBy = item.LastMessageSeenBy
             }).ToList();
 
             return new PagedResponse<ConversationListItemResponse>(responseItems, page, pageSize, totalCount);
@@ -112,6 +113,15 @@ namespace SocialNetwork.Application.Services.ConversationServices
                             IsActive = repoMeta.OtherMember.IsActive
                         } : null
                     };
+
+                    var members = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+                    metaData.MemberSeenStatuses = members.Select(m => new MemberSeenStatus
+                    {
+                        AccountId = m.AccountId,
+                        AvatarUrl = m.Account.AvatarUrl,
+                        DisplayName = m.Nickname ?? m.Account.Username,
+                        LastSeenMessageId = m.LastSeenMessageId
+                    }).ToList();
                 }
             }
 
@@ -189,6 +199,10 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
             if (msg.MessageType == MessageTypeEnum.Media)
             {
+                // If media message also has text content, show the text
+                if (!string.IsNullOrWhiteSpace(msg.Content))
+                    return msg.Content;
+
                 var firstMedia = msg.Medias?.FirstOrDefault();
                 if (firstMedia == null) return "Sent a media file";
 
@@ -205,6 +219,11 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 return msg.Content;
 
             return msg.Content;
+        }
+
+        public async Task<int> GetUnreadConversationCountAsync(Guid currentId)
+        {
+            return await _conversationRepository.GetUnreadConversationCountAsync(currentId);
         }
     }
 }
