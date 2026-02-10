@@ -16,5 +16,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         Task<Conversation> CreatePrivateConversationAsync(Guid currentId, Guid otherId);
         Task<(List<ConversationListModel> Items, int TotalCount)> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize);
         Task<ConversationListModel?> GetConversationMetaDataAsync(Guid conversationId, Guid currentId);
+        Task<Guid?> GetPrivateConversationIdAsync(Guid accountId1, Guid accountId2);
+        Task<Conversation?> GetConversationByIdAsync(Guid conversationId);
     }
 }

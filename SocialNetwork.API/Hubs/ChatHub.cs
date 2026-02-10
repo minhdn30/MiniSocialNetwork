@@ -15,18 +15,20 @@ namespace SocialNetwork.API.Hubs
         }
 
         public override async Task OnConnectedAsync()
-
         {
-            var userId = Context.User?.GetAccountId();
-            if (userId != null)
-            {
-                await Groups.AddToGroupAsync(Context.ConnectionId, userId.Value.ToString());
-            }
             await base.OnConnectedAsync();
         }
         public async Task JoinConversation(Guid conversationId)
         {
             await Groups.AddToGroupAsync(
+                Context.ConnectionId,
+                conversationId.ToString()
+            );
+        }
+
+        public async Task LeaveConversation(Guid conversationId)
+        {
+            await Groups.RemoveFromGroupAsync(
                 Context.ConnectionId,
                 conversationId.ToString()
             );

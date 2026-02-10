@@ -44,5 +44,13 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
                                            && cm.AccountId == accountId 
                                            && !cm.HasLeft);
         }
+
+        public async Task<List<Guid>> GetMemberIdsByConversationIdAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .Select(cm => cm.AccountId)
+                .ToListAsync();
+        }
     }
 }

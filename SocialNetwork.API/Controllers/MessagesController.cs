@@ -49,5 +49,23 @@ namespace SocialNetwork.API.Controllers
             var result = await _messageService.SendMessageInPrivateChatAsync(senderId.Value, request);
             return Ok(result);
         }
+
+        /// <summary>
+        /// send message to group chat
+        /// </summary>
+        [Authorize]
+        [HttpPost("group/{conversationId}")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> SendMessageInGroup(
+            [FromRoute] Guid conversationId,
+            [FromForm] SendMessageRequest request)
+        {
+            var senderId = User.GetAccountId();
+            if (senderId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            
+            var result = await _messageService.SendMessageInGroupAsync(senderId.Value, conversationId, request);
+            return Ok(result);
+        }
     }
 }
