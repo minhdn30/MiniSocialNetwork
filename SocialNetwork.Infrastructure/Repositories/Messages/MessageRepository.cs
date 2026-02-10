@@ -43,13 +43,13 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     IsEdited = m.IsEdited,
                     IsRecalled = m.IsRecalled,
 
-                    Sender = new AccountBasicInfoModel
+                    Sender = new AccountChatInfoModel
                     {
                         AccountId = m.Account.AccountId,
                         Username = m.Account.Username,
                         FullName = m.Account.FullName,
                         AvatarUrl = m.Account.AvatarUrl,
-                        Status = m.Account.Status
+                        IsActive = m.Account.Status == AccountStatusEnum.Active
                     },
 
                     Medias = m.Medias

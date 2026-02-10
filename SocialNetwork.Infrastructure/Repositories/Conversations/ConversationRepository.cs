@@ -162,13 +162,13 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                         SentAt = msg.SentAt,
                         IsEdited = msg.IsEdited,
                         IsRecalled = msg.IsRecalled,
-                        Sender = new AccountBasicInfoModel
+                        Sender = new AccountChatInfoModel
                         {
                             AccountId = msg.Account.AccountId,
                             FullName = msg.Account.FullName,
                             AvatarUrl = msg.Account.AvatarUrl,
                             Username = msg.Account.Username,
-                            Status = msg.Account.Status
+                            IsActive = msg.Account.Status == AccountStatusEnum.Active
                         },
                         Medias = msg.Medias.Select(med => new MessageMediaBasicModel
                         {

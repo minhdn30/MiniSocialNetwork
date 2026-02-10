@@ -165,7 +165,7 @@ namespace SocialNetwork.Application.Services.MessageServices
 
                     // Build response
                     var result = _mapper.Map<SendMessageResponse>(message);
-                    result.Sender = _mapper.Map<AccountBasicInfoResponse>(sender);
+                    result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
                     if (mediaEntities.Any())
                     {
                         result.Medias = _mapper.Map<List<MessageMediaResponse>>(mediaEntities);

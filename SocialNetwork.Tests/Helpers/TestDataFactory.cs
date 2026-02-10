@@ -172,6 +172,20 @@ namespace SocialNetwork.Tests.Helpers
             };
         }
 
+        public static AccountChatInfoModel CreateAccountChatInfoModel(
+            Guid? accountId = null,
+            string? fullName = null)
+        {
+            return new AccountChatInfoModel
+            {
+                AccountId = accountId ?? Guid.NewGuid(),
+                FullName = fullName ?? "Test User",
+                Username = $"user_{_random.Next(1000, 9999)}",
+                AvatarUrl = null,
+                IsActive = true
+            };
+        }
+
         public static PostFeedModel CreatePostFeedModel(
             Guid? postId = null,
             Guid? ownerId = null)
@@ -230,7 +244,7 @@ namespace SocialNetwork.Tests.Helpers
             return new MessageBasicModel
             {
                 MessageId = messageId ?? Guid.NewGuid(),
-                Sender = CreateAccountBasicInfoModel(senderId),
+                Sender = CreateAccountChatInfoModel(senderId),
                 Content = "Test message",
                 SentAt = DateTime.UtcNow
             };

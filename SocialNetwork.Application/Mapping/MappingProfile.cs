@@ -10,6 +10,7 @@ using SocialNetwork.Application.DTOs.MessageMediaDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Application.Helpers;
 using System;
@@ -48,6 +49,8 @@ namespace SocialNetwork.Application.Mapping
              CreateMap<Account, ProfileDetailResponse>();
             //Account -> Post mappings
             CreateMap<Account, AccountBasicInfoResponse>();
+            CreateMap<Account, AccountChatInfoResponse>()
+                .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => src.Status == AccountStatusEnum.Active));
             //Post mappings
             CreateMap<PostCreateRequest, Post>()
                 .ForMember(dest => dest.PostId, opt => opt.MapFrom(_ => Guid.NewGuid()))
@@ -102,6 +105,7 @@ namespace SocialNetwork.Application.Mapping
 
             // Infrastructure model mappings
             CreateMap<AccountBasicInfoModel, AccountBasicInfoResponse>();
+            CreateMap<AccountChatInfoModel, AccountChatInfoResponse>();
             CreateMap<CommentWithReplyCountModel, CommentResponse>();
             CreateMap<ReplyCommentModel, CommentResponse>();
         }
