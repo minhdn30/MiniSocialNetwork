@@ -191,10 +191,50 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 .Where(cm => cm.AccountId == currentId && conversationIds.Contains(cm.ConversationId))
                 .Select(cm => new {
                     cm.ConversationId,
-                    // Subquery for count is generally well-translated
-                    Count = _context.Messages.Count(m => m.ConversationId == cm.ConversationId && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value))
+                    Count = _context.Messages.Count(m => m.ConversationId == cm.ConversationId && m.AccountId != cm.AccountId && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value))
                 })
                 .ToListAsync();
+
+            // Identify conversations where last message is from current user (for seen-by display)
+            var myLastMsgConvIds = lastMessages
+                .Where(lm => lm.Message.Sender.AccountId == currentId)
+                .Select(lm => lm.ConvId)
+                .ToList();
+
+            // Bulk fetch members who have seen the last message (for "seen by" avatars)
+            var seenByMembers = new List<(Guid ConvId, SeenByMemberInfo Info)>();
+            if (myLastMsgConvIds.Count > 0)
+            {
+                var lastMsgSentAts = lastMessages
+                    .Where(lm => myLastMsgConvIds.Contains(lm.ConvId))
+                    .ToDictionary(lm => lm.ConvId, lm => lm.Message.SentAt);
+
+                foreach (var convId in myLastMsgConvIds)
+                {
+                    if (!lastMsgSentAts.TryGetValue(convId, out var sentAt)) continue;
+
+                    var seenMembers = await _context.ConversationMembers
+                        .Where(cm => cm.ConversationId == convId
+                            && cm.AccountId != currentId
+                            && !cm.HasLeft
+                            && cm.LastSeenAt.HasValue
+                            && cm.LastSeenAt.Value >= sentAt)
+                        .OrderByDescending(cm => cm.LastSeenAt)
+                        .Take(3)
+                        .Select(cm => new SeenByMemberInfo
+                        {
+                            AccountId = cm.AccountId,
+                            AvatarUrl = cm.Account.AvatarUrl,
+                            DisplayName = cm.Nickname ?? cm.Account.Username
+                        })
+                        .ToListAsync();
+
+                    foreach (var m in seenMembers)
+                    {
+                        seenByMembers.Add((convId, m));
+                    }
+                }
+            }
 
             var result = pagedData.Select(item =>
             {
@@ -205,6 +245,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
 
                 string? displayName = item.IsGroup ? item.ConversationName : (otherMember?.Nickname ?? otherMember?.Username);
                 string? displayAvatar = item.IsGroup ? item.ConversationAvatar : otherMember?.AvatarUrl;
+
+                var seenBy = seenByMembers
+                    .Where(s => s.ConvId == item.ConversationId)
+                    .Select(s => s.Info)
+                    .ToList();
 
                 return new ConversationListModel
                 {
@@ -219,7 +264,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     UnreadCount = unreadCount,
                     IsRead = unreadCount == 0,
                     LastMessage = lastMsgEntry.Message,
-                    LastMessageSentAt = item.LastMessageSentAt
+                    LastMessageSentAt = item.LastMessageSentAt,
+                    LastMessageSeenBy = seenBy.Count > 0 ? seenBy : null
                 };
             }).ToList();
 
@@ -289,6 +335,23 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             return await _context.Conversations
                 .Where(c => c.ConversationId == conversationId && !c.IsDeleted)
                 .FirstOrDefaultAsync();
+        }
+
+        public async Task<int> GetUnreadConversationCountAsync(Guid currentId)
+        {
+            return await _context.ConversationMembers
+                .Where(cm => cm.AccountId == currentId
+                    && !cm.HasLeft
+                    && !cm.IsMuted
+                    && !cm.Conversation.IsDeleted
+                    && cm.Conversation.Messages.Any())
+                .CountAsync(cm =>
+                    _context.Messages.Any(m =>
+                        m.ConversationId == cm.ConversationId
+                        && m.AccountId != currentId
+                        && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value)
+                    )
+                );
         }
     }
 }

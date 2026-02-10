@@ -27,5 +27,18 @@ namespace SocialNetwork.Infrastructure.Models
         public int UnreadCount { get; set; }
         public DateTime? LastSeenAt { get; set; }
         public DateTime? LastMessageSentAt { get; set; }
+
+        /// <summary>
+        /// Members who have seen the last message (only when last message is from current user).
+        /// Max 3 entries for sidebar display.
+        /// </summary>
+        public List<SeenByMemberInfo>? LastMessageSeenBy { get; set; }
+    }
+
+    public class SeenByMemberInfo
+    {
+        public Guid AccountId { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? DisplayName { get; set; }
     }
 }
