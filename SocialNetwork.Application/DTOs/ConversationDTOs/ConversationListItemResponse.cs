@@ -18,7 +18,6 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
 
         // Specific for Private
         public OtherMemberInfo? OtherMember { get; set; }
-
         public MessageBasicModel? LastMessage { get; set; }
         public string? LastMessagePreview { get; set; }
         public bool IsRead { get; set; }

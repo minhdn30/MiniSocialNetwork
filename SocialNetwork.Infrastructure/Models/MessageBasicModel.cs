@@ -11,7 +11,7 @@ namespace SocialNetwork.Infrastructure.Models
     public class MessageBasicModel
     {
         public Guid MessageId { get; set; }
-        public AccountBasicInfoModel Sender { get; set; } = null!;
+        public AccountChatInfoModel Sender { get; set; } = null!;
         public string? Content { get; set; }
         public MessageTypeEnum MessageType { get; set; } // Text / Media / System
         public DateTime SentAt { get; set; }
