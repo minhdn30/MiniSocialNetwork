@@ -203,6 +203,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
 
             // Bulk fetch members who have seen the last message (for "seen by" avatars)
             var seenByMembers = new List<(Guid ConvId, SeenByMemberInfo Info)>();
+            var seenCountMap = new Dictionary<Guid, int>();
             if (myLastMsgConvIds.Count > 0)
             {
                 var lastMsgSentAts = lastMessages
@@ -213,12 +214,17 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 {
                     if (!lastMsgSentAts.TryGetValue(convId, out var sentAt)) continue;
 
-                    var seenMembers = await _context.ConversationMembers
+                    var baseSeenQuery = _context.ConversationMembers
                         .Where(cm => cm.ConversationId == convId
                             && cm.AccountId != currentId
                             && !cm.HasLeft
                             && cm.LastSeenAt.HasValue
-                            && cm.LastSeenAt.Value >= sentAt)
+                            && cm.LastSeenAt.Value >= sentAt);
+
+                    var seenCount = await baseSeenQuery.CountAsync();
+                    seenCountMap[convId] = seenCount;
+
+                    var seenMembers = await baseSeenQuery
                         .OrderByDescending(cm => cm.LastSeenAt)
                         .Take(3)
                         .Select(cm => new SeenByMemberInfo
@@ -250,6 +256,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     .Where(s => s.ConvId == item.ConversationId)
                     .Select(s => s.Info)
                     .ToList();
+                var seenCount = seenCountMap.TryGetValue(item.ConversationId, out var count) ? count : 0;
 
                 return new ConversationListModel
                 {
@@ -265,7 +272,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     IsRead = unreadCount == 0,
                     LastMessage = lastMsgEntry.Message,
                     LastMessageSentAt = item.LastMessageSentAt,
-                    LastMessageSeenBy = seenBy.Count > 0 ? seenBy : null
+                    LastMessageSeenBy = seenBy.Count > 0 ? seenBy : null,
+                    LastMessageSeenCount = seenCount
                 };
             }).ToList();
 
