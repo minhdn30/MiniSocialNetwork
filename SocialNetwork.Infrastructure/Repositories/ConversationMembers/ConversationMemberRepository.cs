@@ -52,5 +52,13 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
                 .Select(cm => cm.AccountId)
                 .ToListAsync();
         }
+
+        public async Task<List<ConversationMember>> GetConversationMembersAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Include(cm => cm.Account)
+                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .ToListAsync();
+        }
     }
 }

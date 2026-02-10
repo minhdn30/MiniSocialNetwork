@@ -104,5 +104,17 @@ namespace SocialNetwork.API.Controllers
             var result = await _conversationService.GetConversationMessagesWithMetaDataAsync(conversationId, currentId.Value, page, pageSize);
             return Ok(result);
         }
+
+        [Authorize]
+        [HttpGet("unread-count")]
+        public async Task<IActionResult> GetUnreadCount()
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var count = await _conversationService.GetUnreadConversationCountAsync(currentId.Value);
+            return Ok(new { count });
+        }
     }
 }

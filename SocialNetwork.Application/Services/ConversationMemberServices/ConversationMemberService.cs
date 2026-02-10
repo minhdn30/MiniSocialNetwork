@@ -2,6 +2,7 @@
 using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.Messages;
 using System;
@@ -19,14 +20,17 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
         private readonly IConversationMemberRepository _conversationMemberRepository;
         private readonly IAccountRepository _accountRepository;
         private readonly IMessageRepository _messageRepository;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         public ConversationMemberService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
-            IAccountRepository accountRepository1, IMapper mapper, IAccountRepository accountRepository, IMessageRepository messageRepository)
+            IAccountRepository accountRepository1, IMapper mapper, IAccountRepository accountRepository, IMessageRepository messageRepository,
+            IUnitOfWork unitOfWork)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
             _accountRepository = accountRepository;
             _messageRepository = messageRepository;
+            _unitOfWork = unitOfWork;
             _mapper = mapper;
         }
         public async Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request)
@@ -39,6 +43,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if(request.Nickname != null)
                 member.Nickname = request.Nickname.Trim();
             await _conversationMemberRepository.UpdateConversationMember(member);
+            await _unitOfWork.CommitAsync();
         }
         public async Task SoftDeleteChatHistory(Guid conversationId, Guid currentId)
         {
@@ -47,6 +52,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
                 throw new ForbiddenException($"Account with ID {currentId} is not a member of this conversation.");
             member.ClearedAt = DateTime.UtcNow;
             await _conversationMemberRepository.UpdateConversationMember(member);
+            await _unitOfWork.CommitAsync();
         }
         public async Task MarkSeenAsync(Guid conversationId, Guid currentId, Guid newMessageId)
         {
@@ -56,7 +62,9 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if(member.LastSeenMessageId == null || await _messageRepository.IsMessageNewer(newMessageId, member.LastSeenMessageId.Value))
             {
                 member.LastSeenMessageId = newMessageId;
+                member.LastSeenAt = DateTime.UtcNow;
                 await _conversationMemberRepository.UpdateConversationMember(member);
+                await _unitOfWork.CommitAsync();
             }        
         }
     }

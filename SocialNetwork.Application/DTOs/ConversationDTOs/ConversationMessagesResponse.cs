@@ -22,6 +22,15 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public string? DisplayAvatar { get; set; }
         public int MemberCount { get; set; }
         public OtherMemberInfo? OtherMember { get; set; }
-        public List<string>? SampleMembers { get; set; } // List of member avatars for group
+        public List<string>? SampleMembers { get; set; } 
+        public List<MemberSeenStatus> MemberSeenStatuses { get; set; } = new();
+    }
+
+    public class MemberSeenStatus
+    {
+        public Guid AccountId { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? DisplayName { get; set; }
+        public Guid? LastSeenMessageId { get; set; }
     }
 }
