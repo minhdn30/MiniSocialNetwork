@@ -160,5 +160,15 @@ namespace SocialNetwork.API.Services
                     });
             }
         }
+
+        public async Task NotifyMessageHiddenAsync(Guid accountId, Guid conversationId, Guid messageId)
+        {
+            // notify only the current user's profile group (all their sessions)
+            await _userHubContext.Clients.Group($"Account-{accountId}")
+                .SendAsync("ReceiveMessageHidden", new {
+                    ConversationId = conversationId,
+                    MessageId = messageId
+                });
+        }
     }
 }

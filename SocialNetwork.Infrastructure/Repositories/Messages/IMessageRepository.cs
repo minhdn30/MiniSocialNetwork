@@ -14,5 +14,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         Task AddMessageAsync(Message message);
         Task<bool> IsMessageNewer(Guid newMessageId, Guid? lastSeenMessageId);
         Task<int> CountUnreadMessagesAsync(Guid conversationId, Guid currentId, DateTime? lastSeenAt);
+        Task<Message?> GetMessageByIdAsync(Guid messageId);
     }
 }
