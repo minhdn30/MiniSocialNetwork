@@ -57,7 +57,6 @@ namespace SocialNetwork.Tests.Services
                 _conversationMemberRepositoryMock.Object,
                 _accountRepositoryMock.Object,
                 _mapperMock.Object,
-                _accountRepositoryMock.Object,
                 _cloudinaryServiceMock.Object,
                 _fileTypeDetectorMock.Object,
                 _realtimeServiceMock.Object,

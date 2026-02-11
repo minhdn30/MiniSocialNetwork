@@ -5,6 +5,7 @@ using SocialNetwork.Application.DTOs.MessageDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.ConversationMemberServices;
 using SocialNetwork.Application.Services.ConversationServices;
+using SocialNetwork.Application.Services.MessageHiddenServices;
 using SocialNetwork.Application.Services.MessageServices;
 
 namespace SocialNetwork.API.Controllers
@@ -14,15 +15,18 @@ namespace SocialNetwork.API.Controllers
     public class MessagesController : ControllerBase
     {
         private readonly IMessageService _messageService;
+        private readonly IMessageHiddenService _messageHiddenService;
         private readonly IConversationService _conversationService;
         private readonly IConversationMemberService _conversationMemberService;
 
         public MessagesController(
             IMessageService messageService, 
+            IMessageHiddenService messageHiddenService,
             IConversationService conversationService, 
             IConversationMemberService conversationMemberService)
         {
             _messageService = messageService;
+            _messageHiddenService = messageHiddenService;
             _conversationService = conversationService;
             _conversationMemberService = conversationMemberService;
         }
@@ -66,6 +70,18 @@ namespace SocialNetwork.API.Controllers
             
             var result = await _messageService.SendMessageInGroupAsync(senderId.Value, conversationId, request);
             return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("hide/{messageId}")]
+        public async Task<IActionResult> HideMessage(Guid messageId)
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _messageHiddenService.HideMessageAsync(messageId, accountId.Value);
+            return Ok(new { message = "Message hidden successfully." });
         }
     }
 }
