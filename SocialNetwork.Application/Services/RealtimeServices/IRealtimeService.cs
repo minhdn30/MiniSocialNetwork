@@ -32,6 +32,7 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         // notify when a new comment is created
         Task NotifyCommentCreatedAsync(Guid postId, CommentResponse comment, int? parentReplyCount);
 
+
         // notify when a comment is updated
         Task NotifyCommentUpdatedAsync(Guid postId, CommentResponse comment);
 
@@ -55,6 +56,9 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         Task NotifyAccountSettingsUpdatedAsync(Guid accountId, SocialNetwork.Application.DTOs.AccountSettingDTOs.AccountSettingsResponse settings);
 
         // message notifications
+
+        // notify when a message is hidden (recalled for user only)
+        Task NotifyMessageHiddenAsync(Guid accountId, Guid conversationId, Guid messageId);
 
         // notify when a new message is sent
         Task NotifyNewMessageAsync(Guid conversationId, List<Guid> memberIds, SendMessageResponse message);

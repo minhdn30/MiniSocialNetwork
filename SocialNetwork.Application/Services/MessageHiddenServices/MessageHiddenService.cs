@@ -1,6 +1,8 @@
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.MessageHiddens;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
+using SocialNetwork.Infrastructure.Repositories.Messages;
+using SocialNetwork.Application.Services.RealtimeServices;
 using System;
 using System.Threading.Tasks;
 
@@ -9,11 +11,18 @@ namespace SocialNetwork.Application.Services.MessageHiddenServices
     public class MessageHiddenService : IMessageHiddenService
     {
         private readonly IMessageHiddenRepository _messageHiddenRepository;
+        private readonly IMessageRepository _messageRepository;
+        private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
 
-        public MessageHiddenService(IMessageHiddenRepository messageHiddenRepository, IUnitOfWork unitOfWork)
+        public MessageHiddenService(IMessageHiddenRepository messageHiddenRepository, 
+            IMessageRepository messageRepository,
+            IRealtimeService realtimeService,
+            IUnitOfWork unitOfWork)
         {
             _messageHiddenRepository = messageHiddenRepository;
+            _messageRepository = messageRepository;
+            _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
         }
 
@@ -21,6 +30,9 @@ namespace SocialNetwork.Application.Services.MessageHiddenServices
         {
             if (await _messageHiddenRepository.IsMessageHiddenByAccountAsync(messageId, accountId))
                 return;
+
+            var message = await _messageRepository.GetMessageByIdAsync(messageId);
+            if (message == null) return;
 
             await _messageHiddenRepository.HideMessageAsync(new MessageHidden
             {
@@ -30,6 +42,9 @@ namespace SocialNetwork.Application.Services.MessageHiddenServices
             });
 
             await _unitOfWork.CommitAsync();
+
+            // Notify current user's other devices
+            await _realtimeService.NotifyMessageHiddenAsync(accountId, message.ConversationId, messageId);
         }
     }
 }

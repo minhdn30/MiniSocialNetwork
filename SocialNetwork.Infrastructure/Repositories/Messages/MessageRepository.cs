@@ -109,5 +109,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         }
 
 
+        public async Task<Message?> GetMessageByIdAsync(Guid messageId)
+        {
+            return await _context.Messages.FirstOrDefaultAsync(m => m.MessageId == messageId);
+        }
     }
 }
