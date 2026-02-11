@@ -28,7 +28,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
             var query = _context.Messages
                 .Where(m => m.ConversationId == conversationId && 
                        (clearedAt == null || m.SentAt > clearedAt) &&
-                       m.Account.Status == AccountStatusEnum.Active)
+                       m.Account.Status == AccountStatusEnum.Active &&
+                       !m.HiddenBy.Any(hb => hb.AccountId == currentId))
                 .OrderByDescending(m => m.SentAt);
             var totalItems = await query.CountAsync();
             var messages = await query
@@ -98,7 +99,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 .AsNoTracking()
                 .Where(m =>
                     m.ConversationId == conversationId &&
-                    m.AccountId != currentId);
+                    m.AccountId != currentId &&
+                    !m.HiddenBy.Any(hb => hb.AccountId == currentId));
             if (lastSeenAt.HasValue)
             {
                 query = query.Where(m => m.SentAt > lastSeenAt.Value);

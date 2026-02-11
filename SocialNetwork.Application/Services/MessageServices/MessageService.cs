@@ -39,7 +39,7 @@ namespace SocialNetwork.Application.Services.MessageServices
         private readonly IUnitOfWork _unitOfWork;
 
         public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository, IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
-            IAccountRepository accountRepository1, IMapper mapper, IAccountRepository accountRepository, ICloudinaryService cloudinaryService,
+            IAccountRepository accountRepository, IMapper mapper, ICloudinaryService cloudinaryService,
             IFileTypeDetector fileTypeDetector, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
         {
             _messageRepository = messageRepository;
@@ -182,6 +182,7 @@ namespace SocialNetwork.Application.Services.MessageServices
 
                     // Build response
                     var result = _mapper.Map<SendMessageResponse>(message);
+                    result.TempId = request.TempId;
                     result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
                     if (mediaEntities.Any())
                     {
@@ -309,6 +310,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                     
                     // build response
                     var result = _mapper.Map<SendMessageResponse>(message);
+                    result.TempId = request.TempId;
                     result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
                     if (mediaEntities.Any())
                     {

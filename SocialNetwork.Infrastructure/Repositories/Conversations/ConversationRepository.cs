@@ -77,7 +77,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         public async Task<(List<ConversationListModel> Items, int TotalCount)> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize)
         {
             var baseQuery = _context.ConversationMembers
-                .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted && cm.Conversation.Messages.Any());
+                .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted && cm.Conversation.Messages.Any(m => !m.HiddenBy.Any(hb => hb.AccountId == currentId)));
 
             if (isPrivate.HasValue)
             {
@@ -114,7 +114,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 cm.LastSeenAt,
                 // Correlation subquery for sorting by last message
                 LastMessageSentAt = (DateTime?)_context.Messages
-                    .Where(m => m.ConversationId == cm.ConversationId)
+                    .Where(m => m.ConversationId == cm.ConversationId && !m.HiddenBy.Any(hb => hb.AccountId == currentId))
                     .OrderByDescending(m => m.SentAt)
                     .Select(m => m.SentAt)
                     .FirstOrDefault()
@@ -153,7 +153,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             foreach (var convId in conversationIds)
             {
                 var m = await _context.Messages
-                    .Where(msg => msg.ConversationId == convId)
+                    .Where(msg => msg.ConversationId == convId && !msg.HiddenBy.Any(hb => hb.AccountId == currentId))
                     .OrderByDescending(msg => msg.SentAt)
                     .Select(msg => new MessageBasicModel
                     {
@@ -191,7 +191,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 .Where(cm => cm.AccountId == currentId && conversationIds.Contains(cm.ConversationId))
                 .Select(cm => new {
                     cm.ConversationId,
-                    Count = _context.Messages.Count(m => m.ConversationId == cm.ConversationId && m.AccountId != cm.AccountId && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value))
+                    Count = _context.Messages.Count(m => m.ConversationId == cm.ConversationId && m.AccountId != cm.AccountId && 
+                    !m.HiddenBy.Any(hb => hb.AccountId == currentId) && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value))
                 })
                 .ToListAsync();
 
@@ -306,7 +307,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             }
 
             var unreadCount = await _context.Messages
-                .CountAsync(m => m.ConversationId == conversationId && m.AccountId != currentId && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value));
+                .CountAsync(m => m.ConversationId == conversationId && m.AccountId != currentId && !m.HiddenBy.Any(hb => hb.AccountId == currentId) && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value));
 
             string? displayName = cm.Conversation.IsGroup ? cm.Conversation.ConversationName : (otherMember?.Nickname ?? otherMember?.Username);
             string? displayAvatar = cm.Conversation.IsGroup ? cm.Conversation.ConversationAvatar : otherMember?.AvatarUrl;
@@ -357,6 +358,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     _context.Messages.Any(m =>
                         m.ConversationId == cm.ConversationId
                         && m.AccountId != currentId
+                        && !m.HiddenBy.Any(hb => hb.AccountId == currentId)
                         && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value)
                     )
                 );

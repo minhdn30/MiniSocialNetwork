@@ -23,6 +23,7 @@ using SocialNetwork.Application.Services.EmailVerificationServices;
 using SocialNetwork.Application.Services.FollowServices;
 using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Application.Services.MessageMediaServices;
+using SocialNetwork.Application.Services.MessageHiddenServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
@@ -111,6 +112,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IConversationService, ConversationService>();
             builder.Services.AddScoped<IConversationMemberService, ConversationMemberService>();
             builder.Services.AddScoped<IMessageService, MessageService>();
+            builder.Services.AddScoped<IMessageHiddenService, MessageHiddenService>();
             builder.Services.AddScoped<IMessageMediaService, MessageMediaService>();
 
             // Realtime Services

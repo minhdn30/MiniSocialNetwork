@@ -20,6 +20,7 @@ namespace SocialNetwork.Application.DTOs.MessageDTOs
         public DateTime SentAt { get; set; }
         public bool IsEdited { get; set; }
         public bool IsRecalled { get; set; }
+        public string? TempId { get; set; }
         public List<MessageMediaResponse>? Medias { get; set; }
     }
 }
