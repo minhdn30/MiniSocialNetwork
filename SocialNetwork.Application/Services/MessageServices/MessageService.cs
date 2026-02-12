@@ -190,8 +190,8 @@ namespace SocialNetwork.Application.Services.MessageServices
                     }
 
                     // Send realtime notification (after successful commit)
-                    var memberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(result.ConversationId);
-                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, memberIds, result);
+                    var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(result.ConversationId);
+                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, muteMap, result);
 
                     return result;
                 },
@@ -318,8 +318,8 @@ namespace SocialNetwork.Application.Services.MessageServices
                     }
                     
                     // send realtime notification to conversation members
-                    var memberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(result.ConversationId);
-                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, memberIds, result);
+                    var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(result.ConversationId);
+                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, muteMap, result);
                     
                     return result;
                 },
