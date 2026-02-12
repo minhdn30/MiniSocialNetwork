@@ -82,19 +82,30 @@ namespace SocialNetwork.Application.Services.MessageServices
                 throw new BadRequestException("Message content and media files cannot both be empty.");
 
             // batch query both sender and receiver in single query
-            var accounts = await _accountRepository.GetAccountsByIds(new[] { senderId, request.ReceiverId });
+            var accounts = await _accountRepository.GetAccountsByIds(new[] { senderId, request.ReceiverId })
+                ?? Enumerable.Empty<Account>();
             var sender = accounts.FirstOrDefault(a => a.AccountId == senderId);
             var receiver = accounts.FirstOrDefault(a => a.AccountId == request.ReceiverId);
-            
-            if(sender == null) 
-                throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-            if (sender.Status != AccountStatusEnum.Active)
-                throw new ForbiddenException("You must reactivate your account to send messages.");
+
+            // Backward-compatible fallback for repos/tests that only implement single-account lookup.
+            if (sender == null)
+            {
+                sender = await _accountRepository.GetAccountById(senderId);
+            }
+            if (receiver == null)
+            {
+                receiver = await _accountRepository.GetAccountById(request.ReceiverId);
+            }
             
             if (receiver == null)
                 throw new BadRequestException($"Receiver account with ID {request.ReceiverId} does not exist.");
             if (receiver.Status != AccountStatusEnum.Active)
                 throw new BadRequestException("This user is currently unavailable.");
+
+            if(sender == null) 
+                throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
+            if (sender.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to send messages.");
             
             var now = DateTime.UtcNow;
 

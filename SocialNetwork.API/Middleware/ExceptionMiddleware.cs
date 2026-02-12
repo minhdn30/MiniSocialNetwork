@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Domain.Exceptions;
+﻿using Npgsql;
+using SocialNetwork.Domain.Exceptions;
 using System.Text.Json;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
@@ -53,6 +54,16 @@ namespace SocialNetwork.API.Middleware
                         break;
 
                     default:
+                        if (IsTransientDatabaseFailure(ex))
+                        {
+                            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                            await context.Response.WriteAsync(JsonSerializer.Serialize(new
+                            {
+                                message = "Database is temporarily unavailable. Please try again."
+                            }));
+                            break;
+                        }
+
                         _logger.LogError(ex, "Unhandled exception: {Message}", ex.Message);
                         if (ex.InnerException != null)
                         {
@@ -63,6 +74,35 @@ namespace SocialNetwork.API.Middleware
                         break;
                 }
             }
+        }
+
+        private static bool IsTransientDatabaseFailure(Exception ex)
+        {
+            if (ex is InvalidOperationException &&
+                ex.Message.Contains("transient failure", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var cursor = ex;
+            while (cursor != null)
+            {
+                if (cursor is NpgsqlException)
+                {
+                    return true;
+                }
+
+                if (cursor is TimeoutException ||
+                    cursor is IOException ||
+                    cursor is EndOfStreamException)
+                {
+                    return true;
+                }
+
+                cursor = cursor.InnerException!;
+            }
+
+            return false;
         }
     }
 }

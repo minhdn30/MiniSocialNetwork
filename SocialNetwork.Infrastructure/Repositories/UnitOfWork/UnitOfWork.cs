@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore.Storage;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -33,33 +34,38 @@ namespace SocialNetwork.Infrastructure.Repositories.UnitOfWork
             Func<Task<T>> operation,
             Func<Task>? onRollback = null)
         {
-            using var transaction = await BeginTransactionAsync();
-            try
+            var strategy = _context.Database.CreateExecutionStrategy();
+
+            return await strategy.ExecuteAsync(async () =>
             {
-                var result = await operation();
-                await CommitAsync();
-                await transaction.CommitAsync();
-                return result;
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                
-                // Execute cleanup callback if provided (e.g., delete orphaned cloud resources)
-                if (onRollback != null)
+                await using var transaction = await BeginTransactionAsync();
+                try
                 {
-                    try
-                    {
-                        await onRollback();
-                    }
-                    catch
-                    {
-                        // Swallow cleanup errors to not mask the original exception
-                    }
+                    var result = await operation();
+                    await CommitAsync();
+                    await transaction.CommitAsync();
+                    return result;
                 }
-                
-                throw;
-            }
+                catch
+                {
+                    await transaction.RollbackAsync();
+
+                    // Execute cleanup callback if provided (e.g., delete orphaned cloud resources)
+                    if (onRollback != null)
+                    {
+                        try
+                        {
+                            await onRollback();
+                        }
+                        catch
+                        {
+                            // Swallow cleanup errors to not mask the original exception
+                        }
+                    }
+
+                    throw;
+                }
+            });
         }
 
         protected virtual void Dispose(bool disposing)
