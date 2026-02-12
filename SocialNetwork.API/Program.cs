@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 using SocialNetwork.API.Hubs;
 using SocialNetwork.API.Middleware;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
@@ -48,6 +49,7 @@ using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -62,15 +64,28 @@ namespace SocialNetwork.API
 
             builder.Configuration.AddUserSecrets<Program>();
 
+            var connectionString = BuildConnectionString(builder.Configuration, builder.Environment);
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException("Connection string 'Default' is not configured.");
+            }
 
-            //var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
-            //                       ?? builder.Configuration.GetConnectionString("Default");
-
-            //override connection string for local development
-            var connectionString = "Host=localhost;Port=5432;Database=cloudm;Username=postgres;Password=12345678";
+            try
+            {
+                var dbInfo = new NpgsqlConnectionStringBuilder(connectionString);
+                Console.WriteLine($"[DB] Host={dbInfo.Host};Port={dbInfo.Port};Database={dbInfo.Database};SslMode={dbInfo.SslMode};Pooling={dbInfo.Pooling};Timeout={dbInfo.Timeout};CommandTimeout={dbInfo.CommandTimeout};KeepAlive={dbInfo.KeepAlive}");
+            }
+            catch
+            {
+                Console.WriteLine("[DB] Connection string parse warning: could not print normalized DB info.");
+            }
 
             builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(connectionString)
+                options.UseNpgsql(connectionString, npgsqlOptions =>
+                {
+                    npgsqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(3), null);
+                    npgsqlOptions.CommandTimeout(30);
+                })
             );
 
             // Repositories
@@ -173,16 +188,44 @@ namespace SocialNetwork.API
 
             // AutoMapper
             builder.Services.AddAutoMapper(typeof(MappingProfile));
-            //Cors
+            // Cors
+            var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+            if (allowedOrigins == null || allowedOrigins.Length == 0)
+            {
+                allowedOrigins = new[]
+                {
+                    "http://127.0.0.1:5500",
+                    "http://localhost:5500",
+                    "http://127.0.0.1:5502",
+                    "http://localhost:5502",
+                    "http://127.0.0.1:5503",
+                    "http://localhost:5503",
+                    "https://127.0.0.1:5500",
+                    "https://localhost:5500",
+                    "https://127.0.0.1:5502",
+                    "https://localhost:5502",
+                    "https://127.0.0.1:5503",
+                    "https://localhost:5503"
+                };
+            }
+
+            var normalizedAllowedOrigins = allowedOrigins
+                .Where(origin => !string.IsNullOrWhiteSpace(origin))
+                .Select(origin => origin.Trim().TrimEnd('/'))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var allowLoopbackWildcardInDevelopment = builder.Environment.IsDevelopment();
+
             builder.Services.AddCors(options =>
             {
-                options.AddPolicy("AllowAll", policy =>
+                options.AddPolicy("FrontendPolicy", policy =>
                 {
                     policy
-                        .WithOrigins("http://127.0.0.1:5500")   // FE của bạn
+                        .SetIsOriginAllowed(origin =>
+                            IsAllowedOrigin(origin, normalizedAllowedOrigins, allowLoopbackWildcardInDevelopment))
                         .AllowAnyHeader()
                         .AllowAnyMethod()
-                        .AllowCredentials();                   // Quan trọng cho SignalR
+                        .AllowCredentials();
                 });
             });
 
@@ -225,8 +268,14 @@ namespace SocialNetwork.API
             var app = builder.Build();
             app.UseMiddleware<ExceptionMiddleware>();
 
-            var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
-            app.Urls.Add($"http://*:{port}");
+            // On cloud providers (e.g. Render), bind to PORT over HTTP.
+            // Locally, rely on launchSettings/profile URLs so HTTPS profile works.
+            var port = Environment.GetEnvironmentVariable("PORT");
+            if (!string.IsNullOrWhiteSpace(port))
+            {
+                app.Urls.Clear();
+                app.Urls.Add($"http://*:{port}");
+            }
             app.UseSwagger();
             var swaggerUrl = builder.Environment.IsDevelopment()
                 ? "/swagger/v1/swagger.json"   // relative URL để local dev luôn đúng
@@ -240,7 +289,7 @@ namespace SocialNetwork.API
 
             // app.UseHttpsRedirection();
             app.UseRouting();
-            app.UseCors("AllowAll");
+            app.UseCors("FrontendPolicy");
 
             app.UseAuthentication();
             app.UseAuthorization();
@@ -253,6 +302,240 @@ namespace SocialNetwork.API
 
             app.Run();
 
+        }
+
+        private static string BuildConnectionString(IConfiguration configuration, IHostEnvironment environment)
+        {
+            var configuredConnectionString = configuration.GetConnectionString("Default");
+            var envConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
+            var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+
+            var rawConnectionString = environment.IsDevelopment()
+                ? FirstNonEmpty(configuredConnectionString, envConnectionString, databaseUrl)
+                : FirstNonEmpty(databaseUrl, envConnectionString, configuredConnectionString);
+
+            if (string.IsNullOrWhiteSpace(rawConnectionString))
+            {
+                return string.Empty;
+            }
+
+            var sanitized = rawConnectionString.Trim().Trim('"', '\'');
+
+            NpgsqlConnectionStringBuilder csb;
+            if (sanitized.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
+                sanitized.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+            {
+                csb = BuildFromDatabaseUrl(sanitized);
+            }
+            else
+            {
+                csb = new NpgsqlConnectionStringBuilder(sanitized);
+            }
+
+            NormalizeHost(csb);
+            HardenForTransientNetwork(csb);
+
+            return csb.ToString();
+        }
+
+        private static NpgsqlConnectionStringBuilder BuildFromDatabaseUrl(string databaseUrl)
+        {
+            var uri = new Uri(databaseUrl);
+            var userInfo = uri.UserInfo.Split(':', 2);
+            var username = userInfo.Length > 0 ? Uri.UnescapeDataString(userInfo[0]) : string.Empty;
+            var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty;
+
+            var csb = new NpgsqlConnectionStringBuilder
+            {
+                Host = uri.Host,
+                Port = uri.Port > 0 ? uri.Port : 5432,
+                Database = uri.AbsolutePath.Trim('/'),
+                Username = username,
+                Password = password
+            };
+
+            ApplyDatabaseUrlQuery(csb, uri.Query);
+            return csb;
+        }
+
+        private static void ApplyDatabaseUrlQuery(NpgsqlConnectionStringBuilder csb, string queryString)
+        {
+            if (string.IsNullOrWhiteSpace(queryString))
+            {
+                return;
+            }
+
+            var query = queryString.TrimStart('?');
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return;
+            }
+
+            var pairs = query.Split('&', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var pair in pairs)
+            {
+                var keyValue = pair.Split('=', 2);
+                var key = Uri.UnescapeDataString(keyValue[0]).Trim().ToLowerInvariant();
+                var value = keyValue.Length > 1 ? Uri.UnescapeDataString(keyValue[1]).Trim() : string.Empty;
+
+                switch (key)
+                {
+                    case "sslmode":
+                        if (Enum.TryParse<SslMode>(value, true, out var sslMode))
+                        {
+                            csb.SslMode = sslMode;
+                        }
+                        break;
+                    case "pooling":
+                        if (bool.TryParse(value, out var pooling))
+                        {
+                            csb.Pooling = pooling;
+                        }
+                        break;
+                    case "timeout":
+                    case "connect_timeout":
+                        if (int.TryParse(value, out var timeout))
+                        {
+                            csb.Timeout = timeout;
+                        }
+                        break;
+                    case "commandtimeout":
+                    case "command_timeout":
+                        if (int.TryParse(value, out var commandTimeout))
+                        {
+                            csb.CommandTimeout = commandTimeout;
+                        }
+                        break;
+                    case "keepalive":
+                        if (int.TryParse(value, out var keepAlive))
+                        {
+                            csb.KeepAlive = keepAlive;
+                        }
+                        break;
+                }
+            }
+        }
+
+        private static void NormalizeHost(NpgsqlConnectionStringBuilder csb)
+        {
+            if (string.IsNullOrWhiteSpace(csb.Host))
+            {
+                return;
+            }
+
+            var host = csb.Host.Trim().Trim('"', '\'');
+            if (host.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase))
+            {
+                host = host["tcp://".Length..];
+            }
+            else if (host.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase))
+            {
+                host = host["tcp:".Length..];
+            }
+            host = host.Trim('/');
+
+            // Handle "hostname:5432" format inside Host.
+            var lastColon = host.LastIndexOf(':');
+            var singleColon = lastColon > 0 && host.IndexOf(':') == lastColon;
+            if (singleColon)
+            {
+                var portPart = host[(lastColon + 1)..];
+                if (int.TryParse(portPart, out var parsedPort))
+                {
+                    csb.Port = parsedPort;
+                    host = host[..lastColon];
+                }
+            }
+
+            // Handle "hostname,5432" format sometimes seen in copied cloud connection strings.
+            var commaIndex = host.LastIndexOf(',');
+            if (commaIndex > 0)
+            {
+                var portPart = host[(commaIndex + 1)..];
+                if (int.TryParse(portPart, out var parsedPort))
+                {
+                    csb.Port = parsedPort;
+                    host = host[..commaIndex];
+                }
+            }
+
+            csb.Host = host.Trim();
+        }
+
+        private static void HardenForTransientNetwork(NpgsqlConnectionStringBuilder csb)
+        {
+            if (csb.Timeout <= 0)
+            {
+                csb.Timeout = 15;
+            }
+
+            if (csb.CommandTimeout <= 0)
+            {
+                csb.CommandTimeout = 30;
+            }
+
+            if (csb.KeepAlive <= 0)
+            {
+                csb.KeepAlive = 30;
+            }
+
+            // Render external Postgres requires TLS. Force secure settings if omitted.
+            var host = csb.Host?.ToLowerInvariant() ?? string.Empty;
+            if (host.Contains(".render.com") || host.Contains(".render.internal"))
+            {
+                if (csb.SslMode == SslMode.Disable || csb.SslMode == SslMode.Allow || csb.SslMode == SslMode.Prefer)
+                {
+                    csb.SslMode = SslMode.Require;
+                }
+            }
+        }
+
+        private static bool IsAllowedOrigin(string? origin, string[] allowedOrigins, bool allowLoopbackWildcardInDevelopment)
+        {
+            if (string.IsNullOrWhiteSpace(origin))
+            {
+                return false;
+            }
+
+            var normalizedOrigin = origin.Trim().TrimEnd('/');
+            if (allowedOrigins.Any(o => string.Equals(o, normalizedOrigin, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            if (!allowLoopbackWildcardInDevelopment)
+            {
+                return false;
+            }
+
+            if (!Uri.TryCreate(normalizedOrigin, UriKind.Absolute, out var originUri))
+            {
+                return false;
+            }
+
+            var isHttpScheme =
+                string.Equals(originUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(originUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+            if (!isHttpScheme)
+            {
+                return false;
+            }
+
+            return string.Equals(originUri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(originUri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? FirstNonEmpty(params string?[] values)
+        {
+            foreach (var value in values)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
     }
 }

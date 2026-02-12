@@ -1,10 +1,14 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
+using System;
+using System.Linq;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -12,25 +16,183 @@ namespace SocialNetwork.API.Controllers
     [ApiController]
     public class AuthsController : ControllerBase
     {
+        private static readonly string[] DefaultAllowedOrigins = new[]
+        {
+            "http://127.0.0.1:5500",
+            "http://localhost:5500",
+            "http://127.0.0.1:5502",
+            "http://localhost:5502",
+            "http://127.0.0.1:5503",
+            "http://localhost:5503",
+            "https://127.0.0.1:5500",
+            "https://localhost:5500",
+            "https://127.0.0.1:5502",
+            "https://localhost:5502",
+            "https://127.0.0.1:5503",
+            "https://localhost:5503"
+        };
+
         private readonly IAuthService _authService;
         private readonly IEmailVerificationService _emailVerificationService;
-        public AuthsController(IAuthService authService, IEmailVerificationService emailVerificationService)
+        private readonly IConfiguration _configuration;
+        private readonly IHostEnvironment _environment;
+
+        public AuthsController(
+            IAuthService authService,
+            IEmailVerificationService emailVerificationService,
+            IConfiguration configuration,
+            IHostEnvironment environment)
         {
             _authService = authService;
             _emailVerificationService = emailVerificationService;
+            _configuration = configuration;
+            _environment = environment;
         }
+
+        private string[] GetAllowedOrigins()
+        {
+            var configured = _configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+            if (configured == null || configured.Length == 0)
+            {
+                return DefaultAllowedOrigins;
+            }
+            return configured
+                .Where(origin => !string.IsNullOrWhiteSpace(origin))
+                .Select(origin => origin.Trim().TrimEnd('/'))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private string? GetRequestOrigin()
+        {
+            var origin = Request.Headers["Origin"].ToString();
+            if (!string.IsNullOrWhiteSpace(origin))
+            {
+                return origin.TrimEnd('/');
+            }
+
+            var referer = Request.Headers["Referer"].ToString();
+            if (Uri.TryCreate(referer, UriKind.Absolute, out var refererUri))
+            {
+                return $"{refererUri.Scheme}://{refererUri.Authority}".TrimEnd('/');
+            }
+
+            return null;
+        }
+
+        private bool IsTrustedBrowserOrigin()
+        {
+            var requestOrigin = GetRequestOrigin();
+            if (string.IsNullOrWhiteSpace(requestOrigin))
+            {
+                // Non-browser clients or same-origin requests without Origin header.
+                return true;
+            }
+
+            var normalizedRequestOrigin = requestOrigin.TrimEnd('/');
+            var inAllowList = GetAllowedOrigins().Any(origin =>
+                string.Equals(origin, normalizedRequestOrigin, StringComparison.OrdinalIgnoreCase));
+            if (inAllowList)
+            {
+                return true;
+            }
+
+            return _environment.IsDevelopment() && IsLoopbackOrigin(normalizedRequestOrigin);
+        }
+
+        private static bool IsLoopbackOrigin(string origin)
+        {
+            if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+            {
+                return false;
+            }
+
+            var isHttpScheme =
+                string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+            if (!isHttpScheme)
+            {
+                return false;
+            }
+
+            return string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private IActionResult? RejectIfUntrustedOrigin()
+        {
+            if (IsTrustedBrowserOrigin())
+            {
+                return null;
+            }
+
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Invalid request origin." });
+        }
+
+        private CookieOptions BuildRefreshTokenCookieOptions(DateTime expiresUtc)
+        {
+            var secure = IsSecureRequest();
+            var sameSite = secure ? SameSiteMode.None : SameSiteMode.Lax;
+            return new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = secure,
+                SameSite = sameSite,
+                Expires = expiresUtc,
+                Path = "/",
+                IsEssential = true
+            };
+        }
+
+        private CookieOptions BuildRefreshTokenDeleteCookieOptions()
+        {
+            var secure = IsSecureRequest();
+            var sameSite = secure ? SameSiteMode.None : SameSiteMode.Lax;
+            return new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = secure,
+                SameSite = sameSite,
+                Path = "/",
+                Expires = DateTimeOffset.UnixEpoch,
+                IsEssential = true
+            };
+        }
+
+        private bool IsSecureRequest()
+        {
+            if (Request.IsHttps)
+            {
+                return true;
+            }
+
+            var forwardedProto = Request.Headers["X-Forwarded-Proto"].ToString();
+            if (!string.IsNullOrWhiteSpace(forwardedProto))
+            {
+                var firstProto = forwardedProto.Split(',')[0].Trim();
+                if (string.Equals(firstProto, "https", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDTO registerDTO)
         {
             var result = await _authService.RegisterAsync(registerDTO);
             return Ok(result);
         }
+
         [HttpPost("send-email")]
         public async Task<IActionResult> SendVerificationEmail([FromBody] string email)
         {
             await _emailVerificationService.SendVerificationEmailAsync(email);
             return Ok(new { Message = "Verification email sent." });
         }
+
         [HttpPost("verify-code")]
         public async Task<IActionResult> VerifyCode([FromBody] VerifyCodeRequest request)
         {
@@ -39,6 +201,7 @@ namespace SocialNetwork.API.Controllers
 
             return Ok(new { message = "Email verification successful." });
         }
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
@@ -46,28 +209,40 @@ namespace SocialNetwork.API.Controllers
             if (result == null)
                 return Unauthorized(new { message = "Login failed." });
 
-            // Set refresh token in HttpOnly cookie
             if (!string.IsNullOrEmpty(result.RefreshToken))
             {
-                Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
-                {
-                    HttpOnly = true,
-                    Secure = false, 
-                    SameSite = SameSiteMode.None,
-                    Expires = result.RefreshTokenExpiryTime
-                });
+                Response.Cookies.Append(
+                    "refreshToken",
+                    result.RefreshToken,
+                    BuildRefreshTokenCookieOptions(result.RefreshTokenExpiryTime));
             }
+
             return Ok(result);
         }
+
         [HttpPost("login-with-google")]
         public async Task<ActionResult<LoginResponse>> LoginWithGoogle([FromBody] GoogleLoginRequest request)
         {
             var result = await _authService.LoginWithGoogleAsync(request.IdToken);
+
+            if (!string.IsNullOrEmpty(result.RefreshToken))
+            {
+                Response.Cookies.Append(
+                    "refreshToken",
+                    result.RefreshToken,
+                    BuildRefreshTokenCookieOptions(result.RefreshTokenExpiryTime));
+            }
+
             return Ok(result);
         }
+
         [HttpPost("refresh-token")]
         public async Task<IActionResult> RefreshToken()
         {
+            var originError = RejectIfUntrustedOrigin();
+            if (originError != null)
+                return originError;
+
             var refreshToken = Request.Cookies["refreshToken"];
             if (string.IsNullOrEmpty(refreshToken))
                 return Unauthorized("No refresh token");
@@ -78,18 +253,16 @@ namespace SocialNetwork.API.Controllers
 
             if (!string.IsNullOrEmpty(result.RefreshToken))
             {
-                Response.Cookies.Append("refreshToken", result.RefreshToken, new CookieOptions
-                {
-                    HttpOnly = true,
-                    Secure = false,                 // local
-                    SameSite = SameSiteMode.Lax,    
-                    Expires = result.RefreshTokenExpiryTime
-                });
+                Response.Cookies.Append(
+                    "refreshToken",
+                    result.RefreshToken,
+                    BuildRefreshTokenCookieOptions(result.RefreshTokenExpiryTime));
             }
 
             return Ok(new
             {
                 result.AccessToken,
+                result.AccountId,
                 result.Fullname,
                 result.Username,
                 result.AvatarUrl
@@ -100,11 +273,17 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("logout")]
         public async Task<IActionResult> Logout()
         {
+            var originError = RejectIfUntrustedOrigin();
+            if (originError != null)
+                return originError;
+
             var accountId = User.GetAccountId();
             if (accountId == null) return Unauthorized();
+
             await _authService.LogoutAsync(accountId.Value, Response);
+            Response.Cookies.Delete("refreshToken", BuildRefreshTokenDeleteCookieOptions());
+
             return Ok(new { message = "Logged out successfully." });
         }
-
     }
 }
