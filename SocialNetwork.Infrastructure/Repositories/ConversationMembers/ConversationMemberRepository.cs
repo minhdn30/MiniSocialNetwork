@@ -60,5 +60,12 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
                 .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
                 .ToListAsync();
         }
+
+        public async Task<Dictionary<Guid, bool>> GetMembersWithMuteStatusAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .ToDictionaryAsync(cm => cm.AccountId, cm => cm.IsMuted);
+        }
     }
 }

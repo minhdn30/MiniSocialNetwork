@@ -60,7 +60,7 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         // notify when a message is hidden (recalled for user only)
         Task NotifyMessageHiddenAsync(Guid accountId, Guid conversationId, Guid messageId);
 
-        // notify when a new message is sent
-        Task NotifyNewMessageAsync(Guid conversationId, List<Guid> memberIds, SendMessageResponse message);
+        // notify when a new message is sent (includes per-member mute status)
+        Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message);
     }
 }
