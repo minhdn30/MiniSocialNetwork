@@ -128,6 +128,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 .ToListAsync();
 
             var conversationIds = pagedData.Select(c => c.ConversationId).ToList();
+            if (conversationIds.Count == 0)
+            {
+                return (new List<ConversationListModel>(), totalCount);
+            }
 
             // Fetch OtherMember info separately
             var privateConvIds = pagedData.Where(x => !x.IsGroup).Select(x => x.ConversationId).ToList();
@@ -146,45 +150,67 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     }
                 })
                 .ToListAsync();
+            var otherMemberMap = otherMembers
+                .GroupBy(x => x.ConversationId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.Info).FirstOrDefault());
 
-            // Fetch last messages one by one or using a much safer bulk approach
-            // For 20 items, this is very safe and avoids complex GroupBy translation issues
-            var lastMessages = new List<(Guid ConvId, MessageBasicModel Message)>();
-            foreach (var convId in conversationIds)
-            {
-                var m = await _context.Messages
-                    .Where(msg => msg.ConversationId == convId && !msg.HiddenBy.Any(hb => hb.AccountId == currentId))
-                    .OrderByDescending(msg => msg.SentAt)
-                    .Select(msg => new MessageBasicModel
-                    {
-                        MessageId = msg.MessageId,
-                        Content = msg.Content,
-                        MessageType = msg.MessageType,
-                        SentAt = msg.SentAt,
-                        IsEdited = msg.IsEdited,
-                        IsRecalled = msg.IsRecalled,
-                        Sender = new AccountChatInfoModel
-                        {
-                            AccountId = msg.Account.AccountId,
-                            FullName = msg.Account.FullName,
-                            AvatarUrl = msg.Account.AvatarUrl,
-                            Username = msg.Account.Username,
-                            IsActive = msg.Account.Status == AccountStatusEnum.Active
-                        },
-                        Medias = msg.Medias.Select(med => new MessageMediaBasicModel
-                        {
-                            MessageMediaId = med.MessageMediaId,
-                            MediaUrl = med.MediaUrl,
-                            MediaType = med.MediaType
-                        }).ToList()
-                    })
-                    .FirstOrDefaultAsync();
-
-                if (m != null)
+            // Batch fetch latest message reference per conversation (top 1 by SentAt desc, MessageId desc)
+            var lastMessageRefs = await _context.ConversationMembers
+                .Where(cm => cm.AccountId == currentId && conversationIds.Contains(cm.ConversationId))
+                .Select(cm => new
                 {
-                    lastMessages.Add((convId, m));
-                }
+                    cm.ConversationId,
+                    MessageId = _context.Messages
+                        .Where(m => m.ConversationId == cm.ConversationId
+                            && !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                        .OrderByDescending(m => m.SentAt)
+                        .ThenByDescending(m => m.MessageId)
+                        .Select(m => (Guid?)m.MessageId)
+                        .FirstOrDefault()
+                })
+                .ToListAsync();
+
+            var lastMessageRefMap = lastMessageRefs
+                .Where(x => x.MessageId.HasValue)
+                .ToDictionary(x => x.ConversationId, x => x.MessageId!.Value);
+
+            var lastMessageIds = lastMessageRefMap.Values.Distinct().ToList();
+            var lastMessageRows = new List<(Guid ConversationId, MessageBasicModel Message)>();
+            if (lastMessageIds.Count > 0)
+            {
+                lastMessageRows = await _context.Messages
+                    .Where(msg => lastMessageIds.Contains(msg.MessageId))
+                    .Select(msg => new ValueTuple<Guid, MessageBasicModel>(
+                        msg.ConversationId,
+                        new MessageBasicModel
+                        {
+                            MessageId = msg.MessageId,
+                            Content = msg.Content,
+                            MessageType = msg.MessageType,
+                            SentAt = msg.SentAt,
+                            IsEdited = msg.IsEdited,
+                            IsRecalled = msg.IsRecalled,
+                            Sender = new AccountChatInfoModel
+                            {
+                                AccountId = msg.Account.AccountId,
+                                FullName = msg.Account.FullName,
+                                AvatarUrl = msg.Account.AvatarUrl,
+                                Username = msg.Account.Username,
+                                IsActive = msg.Account.Status == AccountStatusEnum.Active
+                            },
+                            Medias = msg.Medias.Select(med => new MessageMediaBasicModel
+                            {
+                                MessageMediaId = med.MessageMediaId,
+                                MediaUrl = med.MediaUrl,
+                                MediaType = med.MediaType
+                            }).ToList()
+                        }))
+                    .ToListAsync();
             }
+
+            var lastMessageMap = lastMessageRows
+                .GroupBy(x => x.ConversationId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.Message).First());
 
             // Bulk fetch unread counts - Simplified
             var unreadCounts = await _context.ConversationMembers
@@ -195,68 +221,61 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     !m.HiddenBy.Any(hb => hb.AccountId == currentId) && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value))
                 })
                 .ToListAsync();
+            var unreadMap = unreadCounts.ToDictionary(x => x.ConversationId, x => x.Count);
 
             // Identify conversations where last message is from current user (for seen-by display)
-            var myLastMsgConvIds = lastMessages
-                .Where(lm => lm.Message.Sender.AccountId == currentId)
-                .Select(lm => lm.ConvId)
+            var myLastMsgConvIds = lastMessageMap
+                .Where(lm => lm.Value.Sender.AccountId == currentId)
+                .Select(lm => lm.Key)
                 .ToList();
 
-            // Bulk fetch members who have seen the last message (for "seen by" avatars)
-            var seenByMembers = new List<(Guid ConvId, SeenByMemberInfo Info)>();
             var seenCountMap = new Dictionary<Guid, int>();
+            var seenByMap = new Dictionary<Guid, List<SeenByMemberInfo>>();
             if (myLastMsgConvIds.Count > 0)
             {
-                var lastMsgSentAts = lastMessages
-                    .Where(lm => myLastMsgConvIds.Contains(lm.ConvId))
-                    .ToDictionary(lm => lm.ConvId, lm => lm.Message.SentAt);
+                var lastMsgSentAtMap = myLastMsgConvIds
+                    .ToDictionary(convId => convId, convId => lastMessageMap[convId].SentAt);
 
-                foreach (var convId in myLastMsgConvIds)
-                {
-                    if (!lastMsgSentAts.TryGetValue(convId, out var sentAt)) continue;
-
-                    var baseSeenQuery = _context.ConversationMembers
-                        .Where(cm => cm.ConversationId == convId
-                            && cm.AccountId != currentId
-                            && !cm.HasLeft
-                            && cm.LastSeenAt.HasValue
-                            && cm.LastSeenAt.Value >= sentAt);
-
-                    var seenCount = await baseSeenQuery.CountAsync();
-                    seenCountMap[convId] = seenCount;
-
-                    var seenMembers = await baseSeenQuery
-                        .OrderByDescending(cm => cm.LastSeenAt)
-                        .Take(3)
-                        .Select(cm => new SeenByMemberInfo
+                var seenCandidates = await _context.ConversationMembers
+                    .Where(cm => myLastMsgConvIds.Contains(cm.ConversationId)
+                        && cm.AccountId != currentId
+                        && !cm.HasLeft
+                        && cm.LastSeenAt.HasValue)
+                    .Select(cm => new
+                    {
+                        cm.ConversationId,
+                        LastSeenAt = cm.LastSeenAt!.Value,
+                        Info = new SeenByMemberInfo
                         {
                             AccountId = cm.AccountId,
                             AvatarUrl = cm.Account.AvatarUrl,
                             DisplayName = cm.Nickname ?? cm.Account.Username
-                        })
-                        .ToListAsync();
+                        }
+                    })
+                    .ToListAsync();
 
-                    foreach (var m in seenMembers)
-                    {
-                        seenByMembers.Add((convId, m));
-                    }
+                var filteredSeen = seenCandidates
+                    .Where(x => lastMsgSentAtMap.TryGetValue(x.ConversationId, out var sentAt) && x.LastSeenAt >= sentAt)
+                    .ToList();
+
+                foreach (var group in filteredSeen.GroupBy(x => x.ConversationId))
+                {
+                    var ordered = group.OrderByDescending(x => x.LastSeenAt).ToList();
+                    seenCountMap[group.Key] = ordered.Count;
+                    seenByMap[group.Key] = ordered.Take(3).Select(x => x.Info).ToList();
                 }
             }
 
             var result = pagedData.Select(item =>
             {
-                var lastMsgEntry = lastMessages.FirstOrDefault(lm => lm.ConvId == item.ConversationId);
-                var unreadInfo = unreadCounts.FirstOrDefault(uc => uc.ConversationId == item.ConversationId);
-                var unreadCount = unreadInfo?.Count ?? 0;
-                var otherMember = otherMembers.FirstOrDefault(om => om.ConversationId == item.ConversationId)?.Info;
+                lastMessageMap.TryGetValue(item.ConversationId, out var lastMessage);
+                unreadMap.TryGetValue(item.ConversationId, out var unreadCount);
+                otherMemberMap.TryGetValue(item.ConversationId, out var otherMember);
 
                 string? displayName = item.IsGroup ? item.ConversationName : (otherMember?.Nickname ?? otherMember?.Username);
                 string? displayAvatar = item.IsGroup ? item.ConversationAvatar : otherMember?.AvatarUrl;
 
-                var seenBy = seenByMembers
-                    .Where(s => s.ConvId == item.ConversationId)
-                    .Select(s => s.Info)
-                    .ToList();
+                seenByMap.TryGetValue(item.ConversationId, out var seenBy);
                 var seenCount = seenCountMap.TryGetValue(item.ConversationId, out var count) ? count : 0;
 
                 return new ConversationListModel
@@ -271,9 +290,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     LastSeenAt = item.LastSeenAt,
                     UnreadCount = unreadCount,
                     IsRead = unreadCount == 0,
-                    LastMessage = lastMsgEntry.Message,
+                    LastMessage = lastMessage,
                     LastMessageSentAt = item.LastMessageSentAt,
-                    LastMessageSeenBy = seenBy.Count > 0 ? seenBy : null,
+                    LastMessageSeenBy = seenBy != null && seenBy.Count > 0 ? seenBy : null,
                     LastMessageSeenCount = seenCount
                 };
             }).ToList();
