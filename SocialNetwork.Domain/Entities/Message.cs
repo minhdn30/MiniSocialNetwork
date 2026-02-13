@@ -18,8 +18,6 @@ namespace SocialNetwork.Domain.Entities
 
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
         public bool IsEdited { get; set; } = false;
-
-        // Recall message (only the sender can recall within 30 minutes)
         public bool IsRecalled { get; set; } = false;
         public DateTime? RecalledAt { get; set; }
 

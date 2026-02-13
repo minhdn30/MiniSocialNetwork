@@ -173,6 +173,21 @@ namespace SocialNetwork.API.Services
                 });
         }
 
+        public async Task NotifyMessageRecalledAsync(Guid conversationId, Guid messageId, Guid recalledByAccountId, DateTime recalledAt)
+        {
+            var payload = new
+            {
+                ConversationId = conversationId,
+                MessageId = messageId,
+                RecalledByAccountId = recalledByAccountId,
+                RecalledAt = recalledAt
+            };
+
+            // Only active clients that joined this conversation room will receive recall realtime.
+            await _chatHubContext.Clients.Group(conversationId.ToString())
+                .SendAsync("ReceiveMessageRecalled", payload);
+        }
+
         public async Task NotifyConversationMuteUpdatedAsync(Guid accountId, Guid conversationId, bool isMuted)
         {
             await _userHubContext.Clients.Group($"Account-{accountId}")

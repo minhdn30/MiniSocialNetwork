@@ -349,5 +349,43 @@ namespace SocialNetwork.Application.Services.MessageServices
             );
         }
 
+        public async Task<RecallMessageResponse> RecallMessageAsync(Guid messageId, Guid currentId)
+        {
+            var message = await _messageRepository.GetMessageByIdAsync(messageId);
+            if (message == null)
+                throw new NotFoundException("Message not found.");
+
+            if (message.AccountId != currentId)
+                throw new ForbiddenException("You can only recall your own messages.");
+
+            if (message.IsRecalled)
+            {
+                return new RecallMessageResponse
+                {
+                    MessageId = message.MessageId,
+                    ConversationId = message.ConversationId,
+                    RecalledAt = message.RecalledAt ?? DateTime.UtcNow
+                };
+            }
+
+            message.IsRecalled = true;
+            message.RecalledAt = DateTime.UtcNow;
+
+            await _unitOfWork.CommitAsync();
+
+            await _realtimeService.NotifyMessageRecalledAsync(
+                message.ConversationId,
+                message.MessageId,
+                currentId,
+                message.RecalledAt.Value);
+
+            return new RecallMessageResponse
+            {
+                MessageId = message.MessageId,
+                ConversationId = message.ConversationId,
+                RecalledAt = message.RecalledAt.Value
+            };
+        }
+
     }
 }

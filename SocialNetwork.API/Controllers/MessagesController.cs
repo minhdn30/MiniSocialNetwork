@@ -83,5 +83,17 @@ namespace SocialNetwork.API.Controllers
             await _messageHiddenService.HideMessageAsync(messageId, accountId.Value);
             return Ok(new { message = "Message hidden successfully." });
         }
+
+        [Authorize]
+        [HttpPost("recall/{messageId}")]
+        public async Task<IActionResult> RecallMessage(Guid messageId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _messageService.RecallMessageAsync(messageId, currentId.Value);
+            return Ok(result);
+        }
     }
 }

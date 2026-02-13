@@ -2,10 +2,11 @@ namespace SocialNetwork.Domain.Constants
 {
     public static class ChatConstants
     {
-        //Max members in a group chat
+        //max members in a group chat
         public const int MaxGroupMembers = 50;
     
-        //Max time to recall a message
+        //max time to recall a message
+        //no use
         public const int RecallTimeoutMinutes = 30;
     }
 }
