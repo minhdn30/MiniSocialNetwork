@@ -83,6 +83,16 @@ namespace SocialNetwork.API.Controllers
             return NoContent();
         }
         [Authorize]
+        [HttpPatch("{conversationId}/mute")]
+        public async Task<IActionResult> UpdateMuteStatus([FromRoute] Guid conversationId, [FromBody] ConversationMuteUpdateRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            await _conversationMemberService.SetMuteStatusAsync(conversationId, currentId.Value, request.IsMuted);
+            return NoContent();
+        }
+        [Authorize]
         [HttpDelete("{conversationId}/history")]
         public async Task<IActionResult> SoftDeleteChatHistory([FromRoute] Guid conversationId)
         {

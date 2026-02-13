@@ -1,6 +1,7 @@
 using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.MessageDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
+using System.Collections.Generic;
 
 namespace SocialNetwork.Application.Services.RealtimeServices
 {
@@ -62,5 +63,14 @@ namespace SocialNetwork.Application.Services.RealtimeServices
 
         // notify when a new message is sent (includes per-member mute status)
         Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message);
+
+        // notify a specific user that their mute state changed for a conversation
+        Task NotifyConversationMuteUpdatedAsync(Guid accountId, Guid conversationId, bool isMuted);
+
+        // notify conversation participants that a nickname was changed
+        Task NotifyConversationNicknameUpdatedAsync(Guid conversationId, Guid targetAccountId, string? nickname, Guid updatedBy, IEnumerable<Guid> memberIds);
+
+        // notify a specific user that a conversation should be removed from their chat list
+        Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason);
     }
 }

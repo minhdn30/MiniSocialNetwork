@@ -4,6 +4,7 @@ using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.MessageDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.Services.RealtimeServices;
+using System.Linq;
 
 namespace SocialNetwork.API.Services
 {
@@ -169,6 +170,41 @@ namespace SocialNetwork.API.Services
                 .SendAsync("ReceiveMessageHidden", new {
                     ConversationId = conversationId,
                     MessageId = messageId
+                });
+        }
+
+        public async Task NotifyConversationMuteUpdatedAsync(Guid accountId, Guid conversationId, bool isMuted)
+        {
+            await _userHubContext.Clients.Group($"Account-{accountId}")
+                .SendAsync("ReceiveConversationMuteUpdated", new
+                {
+                    ConversationId = conversationId,
+                    IsMuted = isMuted
+                });
+        }
+
+        public async Task NotifyConversationNicknameUpdatedAsync(Guid conversationId, Guid targetAccountId, string? nickname, Guid updatedBy, IEnumerable<Guid> memberIds)
+        {
+            foreach (var memberId in memberIds.Distinct())
+            {
+                await _userHubContext.Clients.Group($"Account-{memberId}")
+                    .SendAsync("ReceiveConversationNicknameUpdated", new
+                    {
+                        ConversationId = conversationId,
+                        AccountId = targetAccountId,
+                        Nickname = nickname,
+                        UpdatedBy = updatedBy
+                    });
+            }
+        }
+
+        public async Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason)
+        {
+            await _userHubContext.Clients.Group($"Account-{accountId}")
+                .SendAsync("ReceiveConversationRemoved", new
+                {
+                    ConversationId = conversationId,
+                    Reason = reason
                 });
         }
     }

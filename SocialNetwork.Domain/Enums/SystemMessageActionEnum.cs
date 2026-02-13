@@ -9,6 +9,7 @@ namespace SocialNetwork.Domain.Enums
         GroupRenamed = 4,     // Rename group
         AdminGranted = 5,     // Grant admin privileges
         AdminRevoked = 6,     // Revoke admin privileges
-        GroupCreated = 7      // Create new group
+        GroupCreated = 7,     // Create new group
+        MemberNicknameUpdated = 8 // Update member nickname
     }
 }
