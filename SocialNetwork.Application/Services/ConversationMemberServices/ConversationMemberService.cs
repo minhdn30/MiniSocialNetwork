@@ -21,6 +21,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 {
     public class ConversationMemberService : IConversationMemberService
     {
+        private const int MaxConversationThemeLength = 32;
         private readonly IConversationRepository _conversationRepository;
         private readonly IConversationMemberRepository _conversationMemberRepository;
         private readonly IAccountRepository _accountRepository;
@@ -55,6 +56,56 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 
             await _realtimeService.NotifyConversationMuteUpdatedAsync(currentId, conversationId, isMuted);
         }
+
+        public async Task SetThemeAsync(Guid conversationId, Guid currentId, ConversationThemeUpdateRequest request)
+        {
+            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
+                throw new ForbiddenException("You are not a member of this conversation.");
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            var actor = await _accountRepository.GetAccountById(currentId);
+            if (actor == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+
+            var oldTheme = conversation.Theme;
+            var normalizedTheme = NormalizeTheme(request?.Theme);
+            if (string.Equals(conversation.Theme, normalizedTheme, StringComparison.Ordinal))
+                return;
+
+            conversation.Theme = normalizedTheme;
+            await _conversationRepository.UpdateConversationAsync(conversation);
+            var systemMessage = new Message
+            {
+                ConversationId = conversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = BuildThemeSystemMessageFallback(actor.Username, normalizedTheme),
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)SystemMessageActionEnum.ConversationThemeUpdated,
+                    actorAccountId = currentId,
+                    actorUsername = actor.Username,
+                    theme = normalizedTheme,
+                    previousTheme = oldTheme
+                }),
+                SentAt = DateTime.UtcNow,
+                IsEdited = false,
+                IsRecalled = false
+            };
+            await _messageRepository.AddMessageAsync(systemMessage);
+            await _unitOfWork.CommitAsync();
+
+            await _realtimeService.NotifyConversationThemeUpdatedAsync(conversationId, normalizedTheme, currentId);
+
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage);
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(actor);
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
+            await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
+        }
+
         public async Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request)
         {
             if(! await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
@@ -169,6 +220,28 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             return normalized.StartsWith("@", StringComparison.Ordinal)
                 ? normalized
                 : $"@{normalized}";
+        }
+
+        private static string BuildThemeSystemMessageFallback(string actorUsername, string? theme)
+        {
+            var actorMention = ToMention(actorUsername);
+            if (string.IsNullOrWhiteSpace(theme))
+            {
+                return $"{actorMention} reset the chat theme.";
+            }
+
+            return $"{actorMention} changed the chat theme to \"{theme}\".";
+        }
+
+        private static string? NormalizeTheme(string? theme)
+        {
+            if (string.IsNullOrWhiteSpace(theme))
+                return null;
+
+            var normalized = theme.Trim().ToLowerInvariant();
+            return normalized.Length > MaxConversationThemeLength
+                ? normalized[..MaxConversationThemeLength]
+                : normalized;
         }
     }
 }

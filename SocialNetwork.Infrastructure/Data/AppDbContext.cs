@@ -272,6 +272,10 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Conversation>()
                 .HasKey(c => c.ConversationId);
 
+            modelBuilder.Entity<Conversation>()
+                .Property(c => c.Theme)
+                .HasMaxLength(32);
+
             // Conversation → Creator (Account)
             modelBuilder.Entity<Conversation>()
                 .HasOne(c => c.CreatedByAccount)

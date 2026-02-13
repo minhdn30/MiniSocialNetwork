@@ -19,6 +19,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public Guid ConversationId { get; set; }
         public bool IsGroup { get; set; }
         public bool IsMuted { get; set; }
+        public string? Theme { get; set; }
         public string? DisplayName { get; set; }
         public string? DisplayAvatar { get; set; }
         public int MemberCount { get; set; }

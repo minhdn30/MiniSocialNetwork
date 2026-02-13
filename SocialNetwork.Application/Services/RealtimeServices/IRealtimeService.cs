@@ -73,6 +73,9 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         // notify conversation participants that a nickname was changed
         Task NotifyConversationNicknameUpdatedAsync(Guid conversationId, Guid targetAccountId, string? nickname, Guid updatedBy, IEnumerable<Guid> memberIds);
 
+        // notify active clients in the conversation room when the conversation theme was changed
+        Task NotifyConversationThemeUpdatedAsync(Guid conversationId, string? theme, Guid updatedBy);
+
         // notify a specific user that a conversation should be removed from their chat list
         Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason);
     }
