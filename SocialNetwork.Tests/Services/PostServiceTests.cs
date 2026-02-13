@@ -13,7 +13,6 @@ using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
-using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.Follows;

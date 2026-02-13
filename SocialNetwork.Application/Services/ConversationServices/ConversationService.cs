@@ -103,6 +103,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     {
                         ConversationId = repoMeta.ConversationId,
                         IsGroup = repoMeta.IsGroup,
+                        IsMuted = repoMeta.IsMuted,
                         DisplayName = repoMeta.DisplayName,
                         DisplayAvatar = repoMeta.DisplayAvatar,
                         OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
@@ -117,6 +118,14 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     };
 
                     var members = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+                    metaData.Members = members.Select(m => new ConversationMemberInfo
+                    {
+                        AccountId = m.AccountId,
+                        AvatarUrl = m.Account.AvatarUrl,
+                        DisplayName = m.Nickname ?? m.Account.Username,
+                        Nickname = m.Nickname,
+                        Role = m.IsAdmin ? 1 : 0
+                    }).ToList();
                     metaData.MemberSeenStatuses = members.Select(m => new MemberSeenStatus
                     {
                         AccountId = m.AccountId,

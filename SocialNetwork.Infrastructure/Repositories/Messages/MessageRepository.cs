@@ -43,6 +43,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     SentAt = m.SentAt,
                     IsEdited = m.IsEdited,
                     IsRecalled = m.IsRecalled,
+                    SystemMessageDataJson = m.SystemMessageDataJson,
 
                     Sender = new AccountChatInfoModel
                     {

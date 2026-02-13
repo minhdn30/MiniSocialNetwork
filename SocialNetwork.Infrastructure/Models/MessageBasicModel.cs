@@ -17,6 +17,7 @@ namespace SocialNetwork.Infrastructure.Models
         public DateTime SentAt { get; set; }
         public bool IsEdited { get; set; }
         public bool IsRecalled { get; set; }
+        public string? SystemMessageDataJson { get; set; }
         public List<MessageMediaBasicModel>? Medias { get; set; }
     }
 }

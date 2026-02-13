@@ -18,12 +18,23 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
     {
         public Guid ConversationId { get; set; }
         public bool IsGroup { get; set; }
+        public bool IsMuted { get; set; }
         public string? DisplayName { get; set; }
         public string? DisplayAvatar { get; set; }
         public int MemberCount { get; set; }
         public OtherMemberInfo? OtherMember { get; set; }
         public List<string>? SampleMembers { get; set; } 
+        public List<ConversationMemberInfo> Members { get; set; } = new();
         public List<MemberSeenStatus> MemberSeenStatuses { get; set; } = new();
+    }
+
+    public class ConversationMemberInfo
+    {
+        public Guid AccountId { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? DisplayName { get; set; }
+        public string? Nickname { get; set; }
+        public int Role { get; set; }
     }
 
     public class MemberSeenStatus
