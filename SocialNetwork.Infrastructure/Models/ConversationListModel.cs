@@ -34,6 +34,7 @@ namespace SocialNetwork.Infrastructure.Models
 
         // Total number of members who have seen the last message (excluding current user)
         public int LastMessageSeenCount { get; set; }
+        public bool IsMuted { get; set; }
     }
 
     public class SeenByMemberInfo

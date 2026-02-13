@@ -76,6 +76,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 IsRead = item.IsRead,
                 UnreadCount = item.UnreadCount,
                 LastMessageSentAt = item.LastMessageSentAt,
+                IsMuted = item.IsMuted,
                 LastMessageSeenBy = item.LastMessageSeenBy,
                 LastMessageSeenCount = item.LastMessageSeenCount
             }).ToList();

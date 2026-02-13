@@ -27,7 +27,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
             var clearedAt = member?.ClearedAt;
             var query = _context.Messages
                 .Where(m => m.ConversationId == conversationId && 
-                       (clearedAt == null || m.SentAt > clearedAt) &&
+                       (clearedAt == null || m.SentAt >= clearedAt) &&
                        m.Account.Status == AccountStatusEnum.Active &&
                        !m.HiddenBy.Any(hb => hb.AccountId == currentId))
                 .OrderByDescending(m => m.SentAt);
@@ -95,17 +95,18 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         }
         public async Task<int> CountUnreadMessagesAsync(Guid conversationId, Guid currentId, DateTime? lastSeenAt)
         {
-            var query = _context.Messages
+            return await _context.Messages
                 .AsNoTracking()
-                .Where(m =>
-                    m.ConversationId == conversationId &&
-                    m.AccountId != currentId &&
-                    !m.HiddenBy.Any(hb => hb.AccountId == currentId));
-            if (lastSeenAt.HasValue)
-            {
-                query = query.Where(m => m.SentAt > lastSeenAt.Value);
-            }
-            return await query.CountAsync();
+                .Where(m => m.ConversationId == conversationId &&
+                            m.AccountId != currentId &&
+                            !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                // Combine with member's ClearedAt in a single query
+                .Where(m => _context.ConversationMembers
+                    .Any(cm => cm.ConversationId == conversationId && 
+                               cm.AccountId == currentId && 
+                               (cm.ClearedAt == null || m.SentAt >= cm.ClearedAt.Value)))
+                .Where(m => !lastSeenAt.HasValue || m.SentAt > lastSeenAt.Value)
+                .CountAsync();
         }
 
 
