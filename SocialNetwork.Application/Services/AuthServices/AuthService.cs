@@ -137,6 +137,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.LastActiveAt = DateTime.UtcNow;
 
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
             var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
@@ -173,6 +174,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.UpdatedAt = DateTime.UtcNow;
 
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
             var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
@@ -197,6 +199,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.RefreshToken = null;
             account.RefreshTokenExpiryTime = null;
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             response.Cookies.Delete("refreshToken");
         }

@@ -221,6 +221,7 @@ namespace SocialNetwork.Tests.Services
             _jwtServiceMock.Setup(x => x.GenerateToken(account)).Returns(newAccessToken);
             _accountSettingRepositoryMock.Setup(x => x.GetGetAccountSettingsByAccountIdAsync(account.AccountId))
                 .ReturnsAsync((AccountSettings?)null);
+            _unitOfWorkMock.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             // Act
             var result = await _authService.RefreshTokenAsync(refreshToken);
@@ -230,6 +231,7 @@ namespace SocialNetwork.Tests.Services
             result!.AccessToken.Should().Be(newAccessToken);
             result.RefreshToken.Should().NotBe(refreshToken);
             _accountRepositoryMock.Verify(x => x.UpdateAccount(account), Times.Once);
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
         }
 
         [Fact]
@@ -296,6 +298,7 @@ namespace SocialNetwork.Tests.Services
             mockResponse.Setup(x => x.Cookies).Returns(mockCookies.Object);
 
             _accountRepositoryMock.Setup(x => x.GetAccountById(accountId)).ReturnsAsync(account);
+            _unitOfWorkMock.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             // Act
             await _authService.LogoutAsync(accountId, mockResponse.Object);
@@ -304,6 +307,7 @@ namespace SocialNetwork.Tests.Services
             account.RefreshToken.Should().BeNull();
             account.RefreshTokenExpiryTime.Should().BeNull();
             _accountRepositoryMock.Verify(x => x.UpdateAccount(account), Times.Once);
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
             mockCookies.Verify(x => x.Delete("refreshToken"), Times.Once);
         }
 
