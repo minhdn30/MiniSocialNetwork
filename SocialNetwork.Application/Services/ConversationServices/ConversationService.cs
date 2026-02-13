@@ -123,6 +123,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         AccountId = m.AccountId,
                         AvatarUrl = m.Account.AvatarUrl,
                         DisplayName = m.Nickname ?? m.Account.Username,
+                        Username = m.Account.Username,
                         Nickname = m.Nickname,
                         Role = m.IsAdmin ? 1 : 0
                     }).ToList();
