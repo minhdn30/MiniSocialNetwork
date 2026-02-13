@@ -144,6 +144,10 @@ namespace SocialNetwork.Application.Services.AuthServices
 
             return new LoginResponse
             {
+                AccountId = account.AccountId,
+                Fullname = account.FullName,
+                Username = account.Username,
+                AvatarUrl = account.AvatarUrl,
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
@@ -181,11 +185,14 @@ namespace SocialNetwork.Application.Services.AuthServices
 
             return new LoginResponse
             {
+                AccountId = account.AccountId,
+                Username = account.Username,
                 AccessToken = newAccessToken,
                 RefreshToken = newRefreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
                 Fullname = account.FullName,
                 AvatarUrl = account.AvatarUrl,
+                Status = account.Status,
                 DefaultPostPrivacy = defaultPostPrivacy
             };
         }

@@ -286,5 +286,106 @@ namespace SocialNetwork.Tests.Services
         }
 
         #endregion
+
+        #region RecallMessageAsync Tests
+
+        [Fact]
+        public async Task RecallMessageAsync_MessageNotFound_ThrowsNotFoundException()
+        {
+            // Arrange
+            var messageId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+
+            _messageRepositoryMock.Setup(x => x.GetMessageByIdAsync(messageId))
+                .ReturnsAsync((Message?)null);
+
+            // Act
+            var act = () => _messageService.RecallMessageAsync(messageId, accountId);
+
+            // Assert
+            await act.Should().ThrowAsync<NotFoundException>()
+                .WithMessage("Message not found.");
+        }
+
+        [Fact]
+        public async Task RecallMessageAsync_NotOwner_ThrowsForbiddenException()
+        {
+            // Arrange
+            var messageId = Guid.NewGuid();
+            var ownerId = Guid.NewGuid();
+            var otherAccountId = Guid.NewGuid();
+            var message = TestDataFactory.CreateMessage(messageId: messageId, senderId: ownerId);
+
+            _messageRepositoryMock.Setup(x => x.GetMessageByIdAsync(messageId))
+                .ReturnsAsync(message);
+
+            // Act
+            var act = () => _messageService.RecallMessageAsync(messageId, otherAccountId);
+
+            // Assert
+            await act.Should().ThrowAsync<ForbiddenException>()
+                .WithMessage("You can only recall your own messages.");
+        }
+
+        [Fact]
+        public async Task RecallMessageAsync_AlreadyRecalled_ReturnsWithoutCommitOrRealtime()
+        {
+            // Arrange
+            var messageId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+            var recalledAt = DateTime.UtcNow.AddMinutes(-1);
+            var message = TestDataFactory.CreateMessage(messageId: messageId, senderId: accountId);
+            message.IsRecalled = true;
+            message.RecalledAt = recalledAt;
+
+            _messageRepositoryMock.Setup(x => x.GetMessageByIdAsync(messageId))
+                .ReturnsAsync(message);
+
+            // Act
+            var result = await _messageService.RecallMessageAsync(messageId, accountId);
+
+            // Assert
+            result.MessageId.Should().Be(messageId);
+            result.ConversationId.Should().Be(message.ConversationId);
+            result.RecalledAt.Should().Be(recalledAt);
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Never);
+            _realtimeServiceMock.Verify(x => x.NotifyMessageRecalledAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RecallMessageAsync_ValidRequest_UpdatesMessageAndNotifiesMembers()
+        {
+            // Arrange
+            var messageId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+            var message = TestDataFactory.CreateMessage(messageId: messageId, senderId: accountId, conversationId: conversationId);
+
+            _messageRepositoryMock.Setup(x => x.GetMessageByIdAsync(messageId))
+                .ReturnsAsync(message);
+
+            // Act
+            var result = await _messageService.RecallMessageAsync(messageId, accountId);
+
+            // Assert
+            result.MessageId.Should().Be(messageId);
+            result.ConversationId.Should().Be(conversationId);
+            result.RecalledAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+            message.IsRecalled.Should().BeTrue();
+            message.RecalledAt.Should().NotBeNull();
+
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
+            _realtimeServiceMock.Verify(x => x.NotifyMessageRecalledAsync(
+                conversationId,
+                messageId,
+                accountId,
+                It.IsAny<DateTime>()), Times.Once);
+        }
+
+        #endregion
     }
 }

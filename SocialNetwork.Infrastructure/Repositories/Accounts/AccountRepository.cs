@@ -68,6 +68,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 return null;
 
             return await _context.Accounts
+                .Include(a => a.Role)
+                .Include(a => a.Settings)
                 .FirstOrDefaultAsync(a => a.RefreshToken == refreshToken);
         }
         // search and filter accounts (admin)
