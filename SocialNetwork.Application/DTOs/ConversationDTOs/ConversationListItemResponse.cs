@@ -24,6 +24,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public int UnreadCount { get; set; }
         public DateTime? LastMessageSentAt { get; set; }
         public bool IsMuted { get; set; }
+        public string? Theme { get; set; }
 
         // Members who seen the last message (only populated when the current user sent the last message).
 

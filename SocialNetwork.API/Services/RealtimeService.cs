@@ -154,22 +154,24 @@ namespace SocialNetwork.API.Services
             // For global notifications (toasts, badges, auto-open) when NOT in this chat
             foreach (var (memberId, isMuted) in memberMuteMap)
             {
-                await _userHubContext.Clients.Group($"Account-{memberId}")
+                await _userHubContext.Clients.User(memberId.ToString())
                     .SendAsync("ReceiveMessageNotification", new {
                         ConversationId = conversationId,
                         Message = message,
-                        IsMuted = isMuted
+                        IsMuted = isMuted,
+                        TargetAccountId = memberId
                     });
             }
         }
 
         public async Task NotifyMessageHiddenAsync(Guid accountId, Guid conversationId, Guid messageId)
         {
-            // notify only the current user's profile group (all their sessions)
-            await _userHubContext.Clients.Group($"Account-{accountId}")
+            // notify only the current user's own sessions
+            await _userHubContext.Clients.User(accountId.ToString())
                 .SendAsync("ReceiveMessageHidden", new {
                     ConversationId = conversationId,
-                    MessageId = messageId
+                    MessageId = messageId,
+                    TargetAccountId = accountId
                 });
         }
 
@@ -190,11 +192,12 @@ namespace SocialNetwork.API.Services
 
         public async Task NotifyConversationMuteUpdatedAsync(Guid accountId, Guid conversationId, bool isMuted)
         {
-            await _userHubContext.Clients.Group($"Account-{accountId}")
+            await _userHubContext.Clients.User(accountId.ToString())
                 .SendAsync("ReceiveConversationMuteUpdated", new
                 {
                     ConversationId = conversationId,
-                    IsMuted = isMuted
+                    IsMuted = isMuted,
+                    TargetAccountId = accountId
                 });
         }
 
@@ -202,24 +205,37 @@ namespace SocialNetwork.API.Services
         {
             foreach (var memberId in memberIds.Distinct())
             {
-                await _userHubContext.Clients.Group($"Account-{memberId}")
+                await _userHubContext.Clients.User(memberId.ToString())
                     .SendAsync("ReceiveConversationNicknameUpdated", new
                     {
                         ConversationId = conversationId,
                         AccountId = targetAccountId,
                         Nickname = nickname,
-                        UpdatedBy = updatedBy
+                        UpdatedBy = updatedBy,
+                        TargetAccountId = memberId
                     });
             }
         }
 
+        public async Task NotifyConversationThemeUpdatedAsync(Guid conversationId, string? theme, Guid updatedBy)
+        {
+            await _chatHubContext.Clients.Group(conversationId.ToString())
+                .SendAsync("ReceiveConversationThemeUpdated", new
+                {
+                    ConversationId = conversationId,
+                    Theme = theme,
+                    UpdatedBy = updatedBy
+                });
+        }
+
         public async Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason)
         {
-            await _userHubContext.Clients.Group($"Account-{accountId}")
+            await _userHubContext.Clients.User(accountId.ToString())
                 .SendAsync("ReceiveConversationRemoved", new
                 {
                     ConversationId = conversationId,
-                    Reason = reason
+                    Reason = reason,
+                    TargetAccountId = accountId
                 });
         }
     }

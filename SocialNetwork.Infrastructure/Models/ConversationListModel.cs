@@ -21,6 +21,7 @@ namespace SocialNetwork.Infrastructure.Models
         // For Group Chat
         public string? ConversationName { get; set; }
         public string? ConversationAvatar { get; set; }
+        public string? Theme { get; set; }
 
         public MessageBasicModel? LastMessage { get; set; }
         public bool IsRead { get; set; }

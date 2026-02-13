@@ -18,6 +18,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         Task<ConversationListModel?> GetConversationMetaDataAsync(Guid conversationId, Guid currentId);
         Task<Guid?> GetPrivateConversationIdAsync(Guid accountId1, Guid accountId2);
         Task<Conversation?> GetConversationByIdAsync(Guid conversationId);
+        Task UpdateConversationAsync(Conversation conversation);
         Task<int> GetUnreadConversationCountAsync(Guid currentId);
     }
 }

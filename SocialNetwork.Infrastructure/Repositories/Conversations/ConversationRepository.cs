@@ -113,6 +113,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 cm.Conversation.IsGroup,
                 cm.Conversation.ConversationName,
                 cm.Conversation.ConversationAvatar,
+                cm.Conversation.Theme,
                 cm.LastSeenAt,
                 cm.IsMuted,
                 // Correlation subquery for sorting by last message
@@ -294,6 +295,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     OtherMember = otherMember,
                     ConversationName = item.ConversationName,
                     ConversationAvatar = item.ConversationAvatar,
+                    Theme = item.Theme,
                     LastSeenAt = item.LastSeenAt,
                     IsMuted = item.IsMuted,
                     UnreadCount = unreadCount,
@@ -350,6 +352,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 OtherMember = otherMember,
                 ConversationName = cm.Conversation.ConversationName,
                 ConversationAvatar = cm.Conversation.ConversationAvatar,
+                Theme = cm.Conversation.Theme,
                 LastSeenAt = cm.LastSeenAt,
                 UnreadCount = unreadCount,
                 IsRead = unreadCount == 0,
@@ -374,6 +377,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             return await _context.Conversations
                 .Where(c => c.ConversationId == conversationId && !c.IsDeleted)
                 .FirstOrDefaultAsync();
+        }
+
+        public Task UpdateConversationAsync(Conversation conversation)
+        {
+            _context.Conversations.Update(conversation);
+            return Task.CompletedTask;
         }
 
         public async Task<int> GetUnreadConversationCountAsync(Guid currentId)

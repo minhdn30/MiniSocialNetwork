@@ -1,6 +1,7 @@
 ﻿
 using Google.Apis.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -231,6 +232,7 @@ namespace SocialNetwork.API
 
             builder.Services.AddControllers();
             builder.Services.AddSignalR();
+            builder.Services.AddSingleton<IUserIdProvider, SignalRAccountIdUserIdProvider>();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
             {

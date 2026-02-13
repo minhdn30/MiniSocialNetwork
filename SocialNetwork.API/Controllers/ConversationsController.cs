@@ -92,6 +92,19 @@ namespace SocialNetwork.API.Controllers
             await _conversationMemberService.SetMuteStatusAsync(conversationId, currentId.Value, request.IsMuted);
             return NoContent();
         }
+
+        [Authorize]
+        [HttpPatch("{conversationId}/theme")]
+        public async Task<IActionResult> UpdateTheme([FromRoute] Guid conversationId, [FromBody] ConversationThemeUpdateRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationMemberService.SetThemeAsync(conversationId, currentId.Value, request);
+            return NoContent();
+        }
+
         [Authorize]
         [HttpDelete("{conversationId}/history")]
         public async Task<IActionResult> SoftDeleteChatHistory([FromRoute] Guid conversationId)

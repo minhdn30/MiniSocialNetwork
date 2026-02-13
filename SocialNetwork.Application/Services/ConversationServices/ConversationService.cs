@@ -77,6 +77,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 UnreadCount = item.UnreadCount,
                 LastMessageSentAt = item.LastMessageSentAt,
                 IsMuted = item.IsMuted,
+                Theme = item.Theme,
                 LastMessageSeenBy = item.LastMessageSeenBy,
                 LastMessageSeenCount = item.LastMessageSeenCount
             }).ToList();
@@ -104,6 +105,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         ConversationId = repoMeta.ConversationId,
                         IsGroup = repoMeta.IsGroup,
                         IsMuted = repoMeta.IsMuted,
+                        Theme = repoMeta.Theme,
                         DisplayName = repoMeta.DisplayName,
                         DisplayAvatar = repoMeta.DisplayAvatar,
                         OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
@@ -180,6 +182,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 {
                     ConversationId = Guid.Empty,
                     IsGroup = false,
+                    Theme = null,
                     DisplayName = otherAccount.Username, // Initial display name
                     DisplayAvatar = otherAccount.AvatarUrl,
                     OtherMember = new OtherMemberInfo
