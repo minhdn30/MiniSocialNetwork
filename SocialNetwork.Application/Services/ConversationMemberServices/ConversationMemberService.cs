@@ -73,11 +73,8 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
                 throw new NotFoundException($"Account with ID {request.AccountId} does not exist.");
 
             var oldNickname = member.Nickname;
-            if (request.Nickname != null)
-            {
-                var trimmed = request.Nickname.Trim();
-                member.Nickname = string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
-            }
+            var trimmed = request.Nickname?.Trim();
+            member.Nickname = string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
 
             var nicknameChanged = !string.Equals(oldNickname, member.Nickname, StringComparison.Ordinal);
             if (!nicknameChanged)
@@ -150,12 +147,28 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 
         private static string BuildNicknameSystemMessageFallback(string actorUsername, string targetUsername, string? nickname)
         {
+            var actorMention = ToMention(actorUsername);
+            var targetMention = ToMention(targetUsername);
+
             if (string.IsNullOrWhiteSpace(nickname))
             {
-                return $"{actorUsername} removed nickname for {targetUsername}.";
+                return $"{actorMention} removed nickname for {targetMention}.";
             }
 
-            return $"{actorUsername} set nickname for {targetUsername} to \"{nickname}\".";
+            return $"{actorMention} set nickname for {targetMention} to \"{nickname}\".";
+        }
+
+        private static string ToMention(string? username)
+        {
+            var normalized = (username ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "@unknown";
+            }
+
+            return normalized.StartsWith("@", StringComparison.Ordinal)
+                ? normalized
+                : $"@{normalized}";
         }
     }
 }

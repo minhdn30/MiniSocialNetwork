@@ -33,6 +33,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public Guid AccountId { get; set; }
         public string? AvatarUrl { get; set; }
         public string? DisplayName { get; set; }
+        public string? Username { get; set; }
         public string? Nickname { get; set; }
         public int Role { get; set; }
     }
