@@ -27,6 +27,7 @@ using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Application.Services.MessageMediaServices;
 using SocialNetwork.Application.Services.MessageHiddenServices;
 using SocialNetwork.Application.Services.MessageServices;
+using SocialNetwork.Application.Services.PinnedMessageServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
@@ -45,6 +46,7 @@ using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Infrastructure.Repositories.MessageHiddens;
 using SocialNetwork.Infrastructure.Repositories.MessageReacts;
+using SocialNetwork.Infrastructure.Repositories.PinnedMessages;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
@@ -105,10 +107,8 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IMessageMediaRepository, MessageMediaRepository>();
             builder.Services.AddScoped<IMessageHiddenRepository, MessageHiddenRepository>();
             builder.Services.AddScoped<IMessageReactRepository, MessageReactRepository>();
+            builder.Services.AddScoped<IPinnedMessageRepository, PinnedMessageRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
-
-
-
 
             // Services
             builder.Services.AddScoped<IAuthService, AuthService>();
@@ -130,6 +130,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IMessageService, MessageService>();
             builder.Services.AddScoped<IMessageHiddenService, MessageHiddenService>();
             builder.Services.AddScoped<IMessageMediaService, MessageMediaService>();
+            builder.Services.AddScoped<IPinnedMessageService, PinnedMessageService>();
 
             // Realtime Services
             builder.Services.AddScoped<IRealtimeService, RealtimeService>();
@@ -280,12 +281,12 @@ namespace SocialNetwork.API
             }
             app.UseSwagger();
             var swaggerUrl = builder.Environment.IsDevelopment()
-                ? "/swagger/v1/swagger.json"   // relative URL để local dev luôn đúng
-                : "/swagger/v1/swagger.json";  // prod
+                ? "/swagger/v1/swagger.json"
+                : "/swagger/v1/swagger.json";
             app.UseSwaggerUI(c =>
             {
                 c.SwaggerEndpoint(swaggerUrl, "MiniSocialNetwork API V1");
-                c.RoutePrefix = "swagger";      // hoặc string.Empty
+                c.RoutePrefix = "swagger";
             });
 
 

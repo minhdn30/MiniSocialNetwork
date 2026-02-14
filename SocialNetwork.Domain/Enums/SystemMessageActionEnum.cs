@@ -11,6 +11,8 @@ namespace SocialNetwork.Domain.Enums
         AdminRevoked = 6,     // Revoke admin privileges
         GroupCreated = 7,     // Create new group
         MemberNicknameUpdated = 8, // Update member nickname
-        ConversationThemeUpdated = 9 // Update conversation theme
+        ConversationThemeUpdated = 9, // Update conversation theme
+        MessagePinned = 10,          // Pin a message
+        MessageUnpinned = 11         // Unpin a message
     }
 }

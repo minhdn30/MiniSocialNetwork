@@ -28,6 +28,7 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<MessageMedia> MessageMedias { get; set; }
         public virtual DbSet<MessageHidden> MessageHiddens { get; set; }
         public virtual DbSet<MessageReact> MessageReacts { get; set; }
+        public virtual DbSet<PinnedMessage> PinnedMessages { get; set; }
         public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
 
 
@@ -290,6 +291,13 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Conversation>()
                 .HasIndex(c => c.CreatedBy);
 
+            // Trigram index for group conversation name search (ILIKE %keyword%)
+            modelBuilder.Entity<Conversation>()
+                .HasIndex(c => c.ConversationName)
+                .HasMethod("GIN")
+                .HasOperators("gin_trgm_ops")
+                .HasDatabaseName("IX_Conversations_Name_Trgm");
+
             // Conversation → Members
             modelBuilder.Entity<Conversation>()
                 .HasMany(c => c.Members)
@@ -315,6 +323,11 @@ namespace SocialNetwork.Infrastructure.Data
             // Index: get conversations by account
             modelBuilder.Entity<ConversationMember>()
                 .HasIndex(cm => cm.AccountId);
+
+            // Index: conversation list/unread queries by account + state
+            modelBuilder.Entity<ConversationMember>()
+                .HasIndex(cm => new { cm.AccountId, cm.HasLeft, cm.IsMuted, cm.ConversationId })
+                .HasDatabaseName("IX_ConversationMember_Account_State_Conversation");
 
             // Index: get members by conversation
             // Redundant with PK but good for clarity if needed, though PK (ConvId, AccId) already covers this
@@ -348,6 +361,11 @@ namespace SocialNetwork.Infrastructure.Data
             // Index for sender-based filtering / audit
             modelBuilder.Entity<Message>()
                 .HasIndex(m => m.AccountId);
+
+            // Index: unread/message-list predicates (conversation + sender + sent time)
+            modelBuilder.Entity<Message>()
+                .HasIndex(m => new { m.ConversationId, m.AccountId, m.SentAt })
+                .HasDatabaseName("IX_Message_Conversation_Account_SentAt");
 
             // Message → Conversation
             modelBuilder.Entity<Message>()
@@ -433,9 +451,37 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasForeignKey(mr => mr.AccountId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // =====================
+            // PINNED MESSAGE
+            // =====================
+            modelBuilder.Entity<PinnedMessage>()
+                .HasKey(pm => new { pm.ConversationId, pm.MessageId });
 
+            // Index: get pinned messages by conversation (sorted by pin time)
+            modelBuilder.Entity<PinnedMessage>()
+                .HasIndex(pm => new { pm.ConversationId, pm.PinnedAt })
+                .HasDatabaseName("IX_PinnedMessage_Conversation_PinnedAt");
 
+            // PinnedMessage → Conversation
+            modelBuilder.Entity<PinnedMessage>()
+                .HasOne(pm => pm.Conversation)
+                .WithMany()  // No navigation from Conversation
+                .HasForeignKey(pm => pm.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
 
+            // PinnedMessage → Message
+            modelBuilder.Entity<PinnedMessage>()
+                .HasOne(pm => pm.Message)
+                .WithMany()  // No navigation from Message
+                .HasForeignKey(pm => pm.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // PinnedMessage → Account (who pinned)
+            modelBuilder.Entity<PinnedMessage>()
+                .HasOne(pm => pm.PinnedByAccount)
+                .WithMany()  // No navigation from Account
+                .HasForeignKey(pm => pm.PinnedBy)
+                .OnDelete(DeleteBehavior.Restrict);
         }
 
     }

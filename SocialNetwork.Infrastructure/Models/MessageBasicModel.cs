@@ -19,5 +19,6 @@ namespace SocialNetwork.Infrastructure.Models
         public bool IsRecalled { get; set; }
         public string? SystemMessageDataJson { get; set; }
         public List<MessageMediaBasicModel>? Medias { get; set; }
+        public bool IsPinned { get; set; }
     }
 }
