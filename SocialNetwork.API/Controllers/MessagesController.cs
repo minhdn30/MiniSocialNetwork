@@ -7,6 +7,7 @@ using SocialNetwork.Application.Services.ConversationMemberServices;
 using SocialNetwork.Application.Services.ConversationServices;
 using SocialNetwork.Application.Services.MessageHiddenServices;
 using SocialNetwork.Application.Services.MessageServices;
+using SocialNetwork.Application.Services.PinnedMessageServices;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -18,17 +19,20 @@ namespace SocialNetwork.API.Controllers
         private readonly IMessageHiddenService _messageHiddenService;
         private readonly IConversationService _conversationService;
         private readonly IConversationMemberService _conversationMemberService;
+        private readonly IPinnedMessageService _pinnedMessageService;
 
         public MessagesController(
             IMessageService messageService, 
             IMessageHiddenService messageHiddenService,
             IConversationService conversationService, 
-            IConversationMemberService conversationMemberService)
+            IConversationMemberService conversationMemberService,
+            IPinnedMessageService pinnedMessageService)
         {
             _messageService = messageService;
             _messageHiddenService = messageHiddenService;
             _conversationService = conversationService;
             _conversationMemberService = conversationMemberService;
+            _pinnedMessageService = pinnedMessageService;
         }
 
         [Authorize]
@@ -94,6 +98,47 @@ namespace SocialNetwork.API.Controllers
 
             var result = await _messageService.RecallMessageAsync(messageId, currentId.Value);
             return Ok(result);
+        }
+
+        // PINNED MESSAGES
+
+        // Get all pinned messages for a conversation
+        [Authorize]
+        [HttpGet("pinned/{conversationId}")]
+        public async Task<IActionResult> GetPinnedMessages(Guid conversationId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _pinnedMessageService.GetPinnedMessagesAsync(conversationId, currentId.Value);
+            return Ok(result);
+        }
+
+        // Pin a message in a conversation
+        [Authorize]
+        [HttpPost("pin/{conversationId}/{messageId}")]
+        public async Task<IActionResult> PinMessage(Guid conversationId, Guid messageId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _pinnedMessageService.PinMessageAsync(conversationId, messageId, currentId.Value);
+            return Ok(new { message = "Message pinned successfully." });
+        }
+
+        // Unpin a message from a conversation
+        [Authorize]
+        [HttpDelete("unpin/{conversationId}/{messageId}")]
+        public async Task<IActionResult> UnpinMessage(Guid conversationId, Guid messageId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _pinnedMessageService.UnpinMessageAsync(conversationId, messageId, currentId.Value);
+            return Ok(new { message = "Message unpinned successfully." });
         }
     }
 }

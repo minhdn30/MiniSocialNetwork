@@ -21,11 +21,13 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         public async Task<(IEnumerable<MessageBasicModel> msg, int TotalItems)> GetMessagesByConversationId(Guid conversationId, Guid currentId, int page, int pageSize)
         {
             var member = await _context.ConversationMembers
+                .AsNoTracking()
                 .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
                             cm.AccountId == currentId &&
                             !cm.HasLeft);
             var clearedAt = member?.ClearedAt;
             var query = _context.Messages
+                .AsNoTracking()
                 .Where(m => m.ConversationId == conversationId && 
                        (clearedAt == null || m.SentAt >= clearedAt) &&
                        m.Account.Status == AccountStatusEnum.Active &&
@@ -44,6 +46,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     IsEdited = m.IsEdited,
                     IsRecalled = m.IsRecalled,
                     SystemMessageDataJson = m.SystemMessageDataJson,
+                    IsPinned = _context.PinnedMessages.Any(pm => pm.ConversationId == conversationId && pm.MessageId == m.MessageId),
 
                     Sender = new AccountChatInfoModel
                     {
@@ -82,6 +85,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 return true;
 
             var times = await _context.Messages
+                .AsNoTracking()
                 .Where(m => m.MessageId == newMessageId || m.MessageId == lastSeenMessageId)
                 .Select(m => new { m.MessageId, m.SentAt })
                 .ToListAsync();

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SocialNetwork.Infrastructure.Data;
@@ -11,9 +12,11 @@ using SocialNetwork.Infrastructure.Data;
 namespace SocialNetwork.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260213230628_AddPinnedMessages")]
+    partial class AddPinnedMessages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -234,12 +237,6 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasKey("ConversationId");
 
-                    b.HasIndex("ConversationName")
-                        .HasDatabaseName("IX_Conversations_Name_Trgm");
-
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("ConversationName"), "GIN");
-                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("ConversationName"), new[] { "gin_trgm_ops" });
-
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("CreatedBy");
@@ -285,9 +282,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasKey("ConversationId", "AccountId");
 
                     b.HasIndex("AccountId");
-
-                    b.HasIndex("AccountId", "HasLeft", "IsMuted", "ConversationId")
-                        .HasDatabaseName("IX_ConversationMember_Account_State_Conversation");
 
                     b.ToTable("ConversationMembers");
                 });
@@ -382,9 +376,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("AccountId");
 
                     b.HasIndex("ConversationId", "SentAt");
-
-                    b.HasIndex("ConversationId", "AccountId", "SentAt")
-                        .HasDatabaseName("IX_Message_Conversation_Account_SentAt");
 
                     b.ToTable("Messages");
                 });

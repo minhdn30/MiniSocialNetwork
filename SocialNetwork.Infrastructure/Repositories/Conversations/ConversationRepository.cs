@@ -22,6 +22,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         public async Task<Conversation?> GetConversationByTwoAccountIdsAsync(Guid accountId1, Guid accountId2)
         {
             return await _context.Conversations
+                .AsNoTracking()
                 .Where(c => !c.IsDeleted && !c.IsGroup)
                 .Where(c => c.Members.Count == 2 
                             && c.Members.Any(m => m.AccountId == accountId1 && m.Account.Status == AccountStatusEnum.Active) 
@@ -39,7 +40,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
 
         public async Task<bool> IsPrivateConversationExistBetweenTwoAccounts(Guid accountId1, Guid accountId2)
         {
-            return await _context.Conversations.AnyAsync(c =>
+            return await _context.Conversations
+                .AsNoTracking()
+                .AnyAsync(c =>
                 !c.IsDeleted &&
                 !c.IsGroup &&
                 c.Members.Count == 2 &&
@@ -77,6 +80,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         public async Task<(List<ConversationListModel> Items, int TotalCount)> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize)
         {
             var baseQuery = _context.ConversationMembers
+                .AsNoTracking()
                 .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted 
                 && cm.Conversation.Messages.Any(m => (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) 
                 && !m.HiddenBy.Any(hb => hb.AccountId == currentId)));
@@ -141,6 +145,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             // Fetch OtherMember info separately
             var privateConvIds = pagedData.Where(x => !x.IsGroup).Select(x => x.ConversationId).ToList();
             var otherMembers = await _context.ConversationMembers
+                .AsNoTracking()
                 .Where(cm => privateConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId)
                 .Select(cm => new {
                     cm.ConversationId,
@@ -161,6 +166,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
 
             // Batch fetch latest message reference per conversation (top 1 by SentAt desc, MessageId desc)
             var lastMessageRefs = await _context.ConversationMembers
+                .AsNoTracking()
                 .Where(cm => cm.AccountId == currentId && conversationIds.Contains(cm.ConversationId))
                 .Select(cm => new
                 {
@@ -185,6 +191,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             if (lastMessageIds.Count > 0)
             {
                 lastMessageRows = await _context.Messages
+                    .AsNoTracking()
                     .Where(msg => lastMessageIds.Contains(msg.MessageId))
                     .Select(msg => new ValueTuple<Guid, MessageBasicModel>(
                         msg.ConversationId,
@@ -221,6 +228,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
 
             // Bulk fetch unread counts - Simplified
             var unreadCounts = await _context.ConversationMembers
+                .AsNoTracking()
                 .Where(cm => cm.AccountId == currentId && conversationIds.Contains(cm.ConversationId))
                 .Select(cm => new {
                     cm.ConversationId,
@@ -245,6 +253,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     .ToDictionary(convId => convId, convId => lastMessageMap[convId].SentAt);
 
                 var seenCandidates = await _context.ConversationMembers
+                    .AsNoTracking()
                     .Where(cm => myLastMsgConvIds.Contains(cm.ConversationId)
                         && cm.AccountId != currentId
                         && !cm.HasLeft
@@ -314,6 +323,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         public async Task<ConversationListModel?> GetConversationMetaDataAsync(Guid conversationId, Guid currentId)
         {
             var cm = await _context.ConversationMembers
+                .AsNoTracking()
                 .Include(x => x.Conversation)
                 .FirstOrDefaultAsync(x => x.ConversationId == conversationId && x.AccountId == currentId && !x.Conversation.IsDeleted);
 
@@ -323,6 +333,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             if (!cm.Conversation.IsGroup)
             {
                 otherMember = await _context.ConversationMembers
+                    .AsNoTracking()
                     .Where(x => x.ConversationId == conversationId && x.AccountId != currentId)
                     .Select(x => new OtherMemberBasicInfo
                     {
@@ -337,6 +348,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             }
 
             var unreadCount = await _context.Messages
+                .AsNoTracking()
                 .CountAsync(m => m.ConversationId == conversationId && m.AccountId != currentId && !m.HiddenBy.Any(hb => hb.AccountId == currentId) 
                 && (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value));
 
@@ -364,6 +376,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         public async Task<Guid?> GetPrivateConversationIdAsync(Guid accountId1, Guid accountId2)
         {
             return await _context.Conversations
+                .AsNoTracking()
                 .Where(c => !c.IsDeleted && !c.IsGroup)
                 .Where(c => c.Members.Count == 2
                             && c.Members.Any(m => m.AccountId == accountId1)
@@ -375,6 +388,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         public async Task<Conversation?> GetConversationByIdAsync(Guid conversationId)
         {
             return await _context.Conversations
+                .AsNoTracking()
                 .Where(c => c.ConversationId == conversationId && !c.IsDeleted)
                 .FirstOrDefaultAsync();
         }
@@ -388,11 +402,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         public async Task<int> GetUnreadConversationCountAsync(Guid currentId)
         {
             return await _context.ConversationMembers
+                .AsNoTracking()
                 .Where(cm => cm.AccountId == currentId
                     && !cm.HasLeft
                     && !cm.IsMuted
-                    && !cm.Conversation.IsDeleted
-                    && cm.Conversation.Messages.Any())
+                    && !cm.Conversation.IsDeleted)
                 .CountAsync(cm =>
                     _context.Messages.Any(m =>
                         m.ConversationId == cm.ConversationId
