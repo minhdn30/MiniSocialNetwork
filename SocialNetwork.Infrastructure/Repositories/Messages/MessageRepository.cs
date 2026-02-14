@@ -119,5 +119,36 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         {
             return await _context.Messages.FirstOrDefaultAsync(m => m.MessageId == messageId);
         }
+
+        public async Task<int> GetMessagePositionAsync(Guid conversationId, Guid currentId, Guid messageId)
+        {
+            var member = await _context.ConversationMembers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
+                            cm.AccountId == currentId &&
+                            !cm.HasLeft);
+            var clearedAt = member?.ClearedAt;
+
+            var targetMessage = await _context.Messages
+                .AsNoTracking()
+                .Where(m => m.MessageId == messageId && m.ConversationId == conversationId)
+                .Select(m => new { m.SentAt })
+                .FirstOrDefaultAsync();
+
+            if (targetMessage == null) return -1;
+
+            // Count messages with SentAt >= target (same ORDER BY DESC logic as main query)
+            // Position 1 = newest message, position N = oldest
+            var position = await _context.Messages
+                .AsNoTracking()
+                .Where(m => m.ConversationId == conversationId &&
+                       (clearedAt == null || m.SentAt >= clearedAt) &&
+                       m.Account.Status == AccountStatusEnum.Active &&
+                       !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                .Where(m => m.SentAt >= targetMessage.SentAt)
+                .CountAsync();
+
+            return position;
+        }
     }
 }

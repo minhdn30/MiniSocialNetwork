@@ -240,5 +240,79 @@ namespace SocialNetwork.Application.Services.ConversationServices
         {
             return await _conversationRepository.GetUnreadConversationCountAsync(currentId);
         }
+
+        public async Task<ConversationMessagesResponse> GetMessageContextAsync(Guid conversationId, Guid currentId, Guid messageId, int pageSize)
+        {
+            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
+            {
+                throw new ForbiddenException("You are not a member of this conversation.");
+            }
+
+            var position = await _messageRepository.GetMessagePositionAsync(conversationId, currentId, messageId);
+            if (position < 0)
+            {
+                throw new NotFoundException("Message not found in this conversation.");
+            }
+
+            var page = (int)Math.Ceiling((double)position / pageSize);
+            if (page < 1) page = 1;
+
+            var (messages, totalItems) = await _messageRepository.GetMessagesByConversationId(conversationId, currentId, page, pageSize);
+
+            // Always include metaData for context loading (frontend needs it when clearing messages)
+            ConversationMetaData? metaData = null;
+            var repoMeta = await _conversationRepository.GetConversationMetaDataAsync(conversationId, currentId);
+            if (repoMeta != null)
+            {
+                metaData = new ConversationMetaData
+                {
+                    ConversationId = repoMeta.ConversationId,
+                    IsGroup = repoMeta.IsGroup,
+                    IsMuted = repoMeta.IsMuted,
+                    Theme = repoMeta.Theme,
+                    DisplayName = repoMeta.DisplayName,
+                    DisplayAvatar = repoMeta.DisplayAvatar,
+                    OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
+                    {
+                        AccountId = repoMeta.OtherMember.AccountId,
+                        Username = repoMeta.OtherMember.Username,
+                        FullName = repoMeta.OtherMember.FullName,
+                        Nickname = repoMeta.OtherMember.Nickname,
+                        AvatarUrl = repoMeta.OtherMember.AvatarUrl,
+                        IsActive = repoMeta.OtherMember.IsActive
+                    } : null
+                };
+
+                var members = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+                metaData.Members = members.Select(m => new ConversationMemberInfo
+                {
+                    AccountId = m.AccountId,
+                    AvatarUrl = m.Account.AvatarUrl,
+                    DisplayName = m.Nickname ?? m.Account.Username,
+                    Username = m.Account.Username,
+                    Nickname = m.Nickname,
+                    Role = m.IsAdmin ? 1 : 0
+                }).ToList();
+                metaData.MemberSeenStatuses = members.Select(m => new MemberSeenStatus
+                {
+                    AccountId = m.AccountId,
+                    AvatarUrl = m.Account.AvatarUrl,
+                    DisplayName = m.Nickname ?? m.Account.Username,
+                    LastSeenMessageId = m.LastSeenMessageId
+                }).ToList();
+            }
+
+            return new ConversationMessagesResponse
+            {
+                MetaData = metaData,
+                Messages = new PagedResponse<MessageBasicModel>
+                {
+                    Items = messages,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalItems = totalItems
+                }
+            };
+        }
     }
 }
