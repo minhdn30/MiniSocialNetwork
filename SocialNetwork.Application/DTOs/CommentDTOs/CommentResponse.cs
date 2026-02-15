@@ -12,7 +12,7 @@ namespace SocialNetwork.Application.DTOs.CommentDTOs
     {
         public Guid CommentId { get; set; }
         public Guid PostId { get; set; }
-        public AccountBasicInfoResponse Owner { get; set; }
+        public AccountBasicInfoResponse Owner { get; set; } = null!;
         public string Content { get; set; } = null!;
         public Guid? ParentCommentId { get; set; }
         public DateTime CreatedAt { get; set; }

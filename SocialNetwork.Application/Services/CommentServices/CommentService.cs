@@ -3,19 +3,23 @@ using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
-using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
-using SocialNetwork.Domain.Enums;
+using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
+using SocialNetwork.Application.Services.RealtimeServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+
+
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.CommentServices
 {
@@ -27,8 +31,12 @@ namespace SocialNetwork.Application.Services.CommentServices
         private readonly IAccountRepository _accountRepository;
         private readonly IFollowRepository _followRepository;
         private readonly IMapper _mapper;
+        private readonly IRealtimeService _realtimeService;
+        private readonly IUnitOfWork _unitOfWork;
+
         public CommentService(ICommentRepository commentRepository, ICommentReactRepository commentReactRepository, IPostRepository postRepository,
-            IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper)
+            IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper, IRealtimeService realtimeService,
+            IUnitOfWork unitOfWork)
         {
             _commentRepository = commentRepository;
             _commentReactRepository = commentReactRepository;
@@ -36,7 +44,10 @@ namespace SocialNetwork.Application.Services.CommentServices
             _accountRepository = accountRepository;
             _followRepository = followRepository;
             _mapper = mapper;
+            _realtimeService = realtimeService;
+            _unitOfWork = unitOfWork;
         }
+
         public async Task<CommentResponse> AddCommentAsync(Guid postId, Guid accountId, CommentCreateRequest request)
         {
             var post = await _postRepository.GetPostBasicInfoById(postId);
@@ -73,24 +84,38 @@ namespace SocialNetwork.Application.Services.CommentServices
             var comment = _mapper.Map<Comment>(request);
             comment.PostId = postId;
             comment.AccountId = accountId;
-            await _commentRepository.AddComment(comment);
-            
-            var result = _mapper.Map<CommentResponse>(comment);
-            
-            // Populate Owner info for realtime rendering
-            if (account != null)
+
+            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
-                result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
-            }
+                await _commentRepository.AddComment(comment);
+                await _unitOfWork.CommitAsync(); // Physical save needed for IDs and Counts
 
-            result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(postId);
+                var result = _mapper.Map<CommentResponse>(comment);
 
-            // Calculate business rules
-            result.CanEdit = true; // Newly created comment by the user
-            result.CanDelete = true; // Owner of the comment can always delete it
+                // Populate Owner info for realtime rendering
+                if (account != null)
+                {
+                    result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+                }
 
-            return result;
+                result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(postId);
+
+                // Calculate business rules
+                result.CanEdit = true; // Newly created comment by the user
+                result.CanDelete = true; // Owner of the comment can always delete it
+
+                // Send realtime notification
+                int? parentReplyCount = null;
+                if (result.ParentCommentId.HasValue)
+                {
+                    parentReplyCount = await _commentRepository.CountCommentRepliesAsync(result.ParentCommentId.Value);
+                }
+                await _realtimeService.NotifyCommentCreatedAsync(postId, result, parentReplyCount);
+
+                return result;
+            });
         }
+
         public async Task<CommentResponse> UpdateCommentAsync(Guid commentId, Guid accountId, CommentUpdateRequest request)
         {
             var comment = await _commentRepository.GetCommentById(commentId);
@@ -120,6 +145,7 @@ namespace SocialNetwork.Application.Services.CommentServices
             comment.UpdatedAt = DateTime.UtcNow;
 
             await _commentRepository.UpdateComment(comment);
+            await _unitOfWork.CommitAsync();
             
             var result = _mapper.Map<CommentResponse>(comment);
             
@@ -138,8 +164,12 @@ namespace SocialNetwork.Application.Services.CommentServices
             result.CanEdit = true;
             result.CanDelete = true;
 
+            // Send realtime notification
+            await _realtimeService.NotifyCommentUpdatedAsync(comment.PostId, result);
+
             return result;
         }
+
         public async Task<CommentDeleteResult> DeleteCommentAsync(Guid commentId,  Guid accountId, bool isAdmin)
         {
             var comment = await _commentRepository.GetCommentById(commentId);
@@ -171,33 +201,41 @@ namespace SocialNetwork.Application.Services.CommentServices
             var postId = comment.PostId;
             var parentId = comment.ParentCommentId;
 
-            await _commentRepository.DeleteCommentWithReplies(commentId);
-            
-            // Get updated counts logic
-            // User requirement: "totalpostcomment will update when deleting a comment, not a reply"
-            
-            int? totalComments = null;
-            int? parentReplyCount = null;
+            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _commentRepository.DeleteCommentWithReplies(commentId);
+                
+                // Commit changes first
+                await _unitOfWork.CommitAsync();
 
-            if (parentId.HasValue)
-            {
-                // Deleting a reply: Update parent's reply count, but NOT total post count
-                parentReplyCount = await _commentRepository.CountCommentRepliesAsync(parentId.Value);
-            }
-            else
-            {
-                // Deleting a main comment: Update total post count
-                totalComments = await _commentRepository.CountCommentsByPostId(postId);
-            }
+                // Get updated counts logic
+                int? totalComments = null;
+                int? parentReplyCount = null;
 
-            return new CommentDeleteResult
-            {
-                PostId = postId,
-                ParentCommentId = parentId,
-                TotalPostComments = totalComments,
-                ParentReplyCount = parentReplyCount
-            };
+                if (parentId.HasValue)
+                {
+                    parentReplyCount = await _commentRepository.CountCommentRepliesAsync(parentId.Value);
+                }
+                else
+                {
+                    totalComments = await _commentRepository.CountCommentsByPostId(postId);
+                }
+
+                var deleteResult = new CommentDeleteResult
+                {
+                    PostId = postId,
+                    ParentCommentId = parentId,
+                    TotalPostComments = totalComments,
+                    ParentReplyCount = parentReplyCount
+                };
+
+                // Send realtime notification
+                await _realtimeService.NotifyCommentDeletedAsync(postId, commentId, parentId, totalComments, parentReplyCount);
+
+                return deleteResult;
+            });
         }
+
         public async Task<PagedResponse<CommentResponse>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize)
         {
             var post = await _postRepository.GetPostBasicInfoById(postId);

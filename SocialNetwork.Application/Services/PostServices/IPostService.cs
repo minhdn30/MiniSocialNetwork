@@ -15,6 +15,7 @@ namespace SocialNetwork.Application.Services.PostServices
     {
         Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId);
         Task<PostDetailModel> GetPostDetailByPostId(Guid postId, Guid currentId);
+        Task<PostDetailModel> GetPostDetailByPostCode(string postCode, Guid currentId);
         Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request);
         Task<PostDetailResponse> UpdatePost(Guid postId, Guid currentId, PostUpdateRequest request);
         Task<PostUpdateContentResponse> UpdatePostContent(Guid postId, Guid currentId, PostUpdateContentRequest request);

@@ -12,6 +12,8 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
     {
         public Guid ConversationId { get; set; }
         public string? ConversationName { get; set; }
+        public string? ConversationAvatar { get; set; }
+        public string? Theme { get; set; }
         public bool IsGroup { get; set; }
         public DateTime CreatedAt { get; set; }
         public Guid CreatedBy { get; set; }

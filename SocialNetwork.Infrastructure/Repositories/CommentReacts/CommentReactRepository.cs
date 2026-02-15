@@ -25,12 +25,11 @@ namespace SocialNetwork.Infrastructure.Repositories.CommentReacts
         public async Task AddCommentReact(CommentReact commentReact)
         {
             await _context.CommentReacts.AddAsync(commentReact);
-            await _context.SaveChangesAsync();
         }
-        public async Task RemoveCommentReact(CommentReact commentReact)
+        public Task RemoveCommentReact(CommentReact commentReact)
         {
             _context.CommentReacts.Remove(commentReact);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<int> GetReactCountByCommentId(Guid commentId)
         {

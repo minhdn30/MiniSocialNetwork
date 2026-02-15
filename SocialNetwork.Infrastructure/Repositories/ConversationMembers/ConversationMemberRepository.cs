@@ -16,20 +16,19 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
         {
             _context = context;
         }
-        public async Task AddConversationMember(ConversationMember member)
+        public Task AddConversationMember(ConversationMember member)
         {
             _context.ConversationMembers.Add(member);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
-        public async Task AddConversationMembers(List<ConversationMember> members)
+        public Task AddConversationMembers(List<ConversationMember> members)
         {
-            await _context.ConversationMembers.AddRangeAsync(members);
-            await _context.SaveChangesAsync();
+            return _context.ConversationMembers.AddRangeAsync(members);
         }
-        public async Task UpdateConversationMember(ConversationMember member)
+        public Task UpdateConversationMember(ConversationMember member)
         {
             _context.ConversationMembers.Update(member);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<bool> IsMemberOfConversation(Guid conversationId, Guid accountId)
         {
@@ -44,6 +43,29 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
                 .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId
                                            && cm.AccountId == accountId 
                                            && !cm.HasLeft);
+        }
+
+        public async Task<List<Guid>> GetMemberIdsByConversationIdAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .Select(cm => cm.AccountId)
+                .ToListAsync();
+        }
+
+        public async Task<List<ConversationMember>> GetConversationMembersAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Include(cm => cm.Account)
+                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .ToListAsync();
+        }
+
+        public async Task<Dictionary<Guid, bool>> GetMembersWithMuteStatusAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .ToDictionaryAsync(cm => cm.AccountId, cm => cm.IsMuted);
         }
     }
 }

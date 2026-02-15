@@ -9,6 +9,7 @@ namespace SocialNetwork.Application.DTOs.AccountSettingDTOs
 {
     public class AccountSettingsResponse
     {
+        public Guid AccountId { get; set; }
         public AccountPrivacyEnum PhonePrivacy { get; set; }
         public AccountPrivacyEnum AddressPrivacy { get; set; }
         public PostPrivacyEnum DefaultPostPrivacy { get; set; }

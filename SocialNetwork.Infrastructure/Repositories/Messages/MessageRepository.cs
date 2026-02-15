@@ -21,14 +21,17 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         public async Task<(IEnumerable<MessageBasicModel> msg, int TotalItems)> GetMessagesByConversationId(Guid conversationId, Guid currentId, int page, int pageSize)
         {
             var member = await _context.ConversationMembers
+                .AsNoTracking()
                 .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
                             cm.AccountId == currentId &&
                             !cm.HasLeft);
             var clearedAt = member?.ClearedAt;
             var query = _context.Messages
+                .AsNoTracking()
                 .Where(m => m.ConversationId == conversationId && 
-                       (clearedAt == null || m.SentAt > clearedAt) &&
-                       m.Account.Status == AccountStatusEnum.Active)
+                       (clearedAt == null || m.SentAt >= clearedAt) &&
+                       m.Account.Status == AccountStatusEnum.Active &&
+                       !m.HiddenBy.Any(hb => hb.AccountId == currentId))
                 .OrderByDescending(m => m.SentAt);
             var totalItems = await query.CountAsync();
             var messages = await query
@@ -41,15 +44,17 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     MessageType = m.MessageType,
                     SentAt = m.SentAt,
                     IsEdited = m.IsEdited,
-                    IsDeleted = m.IsDeleted,
+                    IsRecalled = m.IsRecalled,
+                    SystemMessageDataJson = m.SystemMessageDataJson,
+                    IsPinned = _context.PinnedMessages.Any(pm => pm.ConversationId == conversationId && pm.MessageId == m.MessageId),
 
-                    Sender = new AccountBasicInfoModel
+                    Sender = new AccountChatInfoModel
                     {
                         AccountId = m.Account.AccountId,
                         Username = m.Account.Username,
                         FullName = m.Account.FullName,
                         AvatarUrl = m.Account.AvatarUrl,
-                        Status = m.Account.Status
+                        IsActive = m.Account.Status == AccountStatusEnum.Active
                     },
 
                     Medias = m.Medias
@@ -69,10 +74,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 .ToListAsync();
             return (messages, totalItems);
         }
-        public async Task AddMessageAsync(Message message)
+        public Task AddMessageAsync(Message message)
         {
             _context.Messages.Add(message);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<bool> IsMessageNewer(Guid newMessageId, Guid? lastSeenMessageId)
         {
@@ -80,6 +85,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 return true;
 
             var times = await _context.Messages
+                .AsNoTracking()
                 .Where(m => m.MessageId == newMessageId || m.MessageId == lastSeenMessageId)
                 .Select(m => new { m.MessageId, m.SentAt })
                 .ToListAsync();
@@ -94,18 +100,129 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         }
         public async Task<int> CountUnreadMessagesAsync(Guid conversationId, Guid currentId, DateTime? lastSeenAt)
         {
-            var query = _context.Messages
+            return await _context.Messages
                 .AsNoTracking()
-                .Where(m =>
-                    m.ConversationId == conversationId &&
-                    m.AccountId != currentId);
-            if (lastSeenAt.HasValue)
-            {
-                query = query.Where(m => m.SentAt > lastSeenAt.Value);
-            }
-            return await query.CountAsync();
+                .Where(m => m.ConversationId == conversationId &&
+                            m.AccountId != currentId &&
+                            !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                // Combine with member's ClearedAt in a single query
+                .Where(m => _context.ConversationMembers
+                    .Any(cm => cm.ConversationId == conversationId && 
+                               cm.AccountId == currentId && 
+                               (cm.ClearedAt == null || m.SentAt >= cm.ClearedAt.Value)))
+                .Where(m => !lastSeenAt.HasValue || m.SentAt > lastSeenAt.Value)
+                .CountAsync();
         }
 
 
+        public async Task<Message?> GetMessageByIdAsync(Guid messageId)
+        {
+            return await _context.Messages.FirstOrDefaultAsync(m => m.MessageId == messageId);
+        }
+
+        public async Task<int> GetMessagePositionAsync(Guid conversationId, Guid currentId, Guid messageId)
+        {
+            var member = await _context.ConversationMembers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
+                            cm.AccountId == currentId &&
+                            !cm.HasLeft);
+            var clearedAt = member?.ClearedAt;
+
+            var targetMessage = await _context.Messages
+                .AsNoTracking()
+                .Where(m => m.MessageId == messageId && m.ConversationId == conversationId)
+                .Select(m => new { m.SentAt })
+                .FirstOrDefaultAsync();
+
+            if (targetMessage == null) return -1;
+
+            // Count messages with SentAt >= target (same ORDER BY DESC logic as main query)
+            // Position 1 = newest message, position N = oldest
+            var position = await _context.Messages
+                .AsNoTracking()
+                .Where(m => m.ConversationId == conversationId &&
+                       (clearedAt == null || m.SentAt >= clearedAt) &&
+                       m.Account.Status == AccountStatusEnum.Active &&
+                       !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                .Where(m => m.SentAt >= targetMessage.SentAt)
+                .CountAsync();
+
+            return position;
+        }
+
+        public async Task<(IEnumerable<MessageBasicModel> items, int totalItems)> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize)
+        {
+            var member = await _context.ConversationMembers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
+                            cm.AccountId == currentId &&
+                            !cm.HasLeft);
+            var clearedAt = member?.ClearedAt;
+
+            var query = _context.Messages
+                .AsNoTracking()
+                .Where(m => m.ConversationId == conversationId &&
+                       (clearedAt == null || m.SentAt >= clearedAt) &&
+                       m.Account.Status == AccountStatusEnum.Active &&
+                       !m.HiddenBy.Any(hb => hb.AccountId == currentId) &&
+                       !m.IsRecalled &&
+                       m.MessageType != MessageTypeEnum.System &&
+                       m.Content != null && m.Content != "")
+                .AsQueryable();
+
+            // Split keyword into words, each word must match (fuzzy, accent-insensitive)
+            var words = keyword.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var word in words)
+            {
+                var pattern = $"%{word}%";
+                query = query.Where(m => EF.Functions.ILike(
+                    AppDbContext.Unaccent(m.Content!), AppDbContext.Unaccent(pattern)));
+            }
+
+            query = query.OrderByDescending(m => m.SentAt);
+
+            var totalItems = await query.CountAsync();
+            var messages = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(m => new MessageBasicModel
+                {
+                    MessageId = m.MessageId,
+                    Content = m.Content,
+                    MessageType = m.MessageType,
+                    SentAt = m.SentAt,
+                    IsEdited = m.IsEdited,
+                    IsRecalled = m.IsRecalled,
+                    SystemMessageDataJson = m.SystemMessageDataJson,
+                    IsPinned = false,
+
+                    Sender = new AccountChatInfoModel
+                    {
+                        AccountId = m.Account.AccountId,
+                        Username = m.Account.Username,
+                        FullName = m.Account.FullName,
+                        AvatarUrl = m.Account.AvatarUrl,
+                        IsActive = m.Account.Status == AccountStatusEnum.Active
+                    },
+
+                    Medias = m.Medias
+                        .OrderBy(mm => mm.CreatedAt)
+                        .Select(mm => new MessageMediaBasicModel
+                        {
+                            MessageMediaId = mm.MessageMediaId,
+                            MediaUrl = mm.MediaUrl,
+                            ThumbnailUrl = mm.ThumbnailUrl,
+                            MediaType = mm.MediaType,
+                            FileName = mm.FileName,
+                            FileSize = mm.FileSize,
+                            CreatedAt = mm.CreatedAt,
+                        })
+                        .ToList()
+                })
+                .ToListAsync();
+
+            return (messages, totalItems);
+        }
     }
 }

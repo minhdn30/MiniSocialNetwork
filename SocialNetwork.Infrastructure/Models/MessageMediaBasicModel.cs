@@ -14,7 +14,7 @@ namespace SocialNetwork.Infrastructure.Models
         public string MediaUrl { get; set; } = null!;
         public string? ThumbnailUrl { get; set; }
         public MediaTypeEnum MediaType { get; set; }
-        public string? FileName { get; set; } // hiển thị & download
+        public string? FileName { get; set; } // display & download
         public long? FileSize { get; set; }   // byte
         public DateTime CreatedAt { get; set; }
     }

@@ -16,12 +16,20 @@ namespace SocialNetwork.Domain.Entities
         public MessageTypeEnum MessageType { get; set; }
         // Text / Media / System
 
-        public DateTime SentAt { get; set; } = DateTime.Now;
+        public DateTime SentAt { get; set; } = DateTime.UtcNow;
         public bool IsEdited { get; set; } = false;
-        public bool IsDeleted { get; set; } = false;
+        public bool IsRecalled { get; set; } = false;
+        public DateTime? RecalledAt { get; set; }
+
+        // Data for System Messages (JSON)
+        // VD: {"action": 1, "targetAccountId": "...", "targetUsername": "..."}
+        public string? SystemMessageDataJson { get; set; }
+        
+        // Navigation properties
         public Conversation Conversation { get; set; } = null!;
-        public ICollection<MessageMedia> Medias { get; set; } = new List<MessageMedia>();
         public Account Account { get; set; } = null!;
+        public ICollection<MessageMedia> Medias { get; set; } = new List<MessageMedia>();
+        public ICollection<MessageReact> Reacts { get; set; } = new List<MessageReact>();
+        public ICollection<MessageHidden> HiddenBy { get; set; } = new List<MessageHidden>();
     }
 }
- 

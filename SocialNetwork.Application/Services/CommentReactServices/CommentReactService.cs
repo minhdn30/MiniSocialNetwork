@@ -1,7 +1,7 @@
 ﻿using AutoMapper;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.PostReactDTOs;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -10,6 +10,8 @@ using SocialNetwork.Infrastructure.Repositories.CommentReacts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.Follows;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
+using SocialNetwork.Application.Services.RealtimeServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,9 +27,13 @@ namespace SocialNetwork.Application.Services.CommentReactServices
         private readonly IPostRepository _postRepository;
         private readonly IAccountRepository _accountRepository;
         private readonly IFollowRepository _followRepository;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly IRealtimeService _realtimeService;
+
         public CommentReactService(ICommentRepository commentRepository, ICommentReactRepository commentReactRepository, IPostRepository postRepository,
-            IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper)
+            IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper, 
+            IRealtimeService realtimeService, IUnitOfWork unitOfWork)
         {
             _commentRepository = commentRepository;
             _commentReactRepository = commentReactRepository;
@@ -35,6 +41,8 @@ namespace SocialNetwork.Application.Services.CommentReactServices
             _accountRepository = accountRepository;
             _followRepository = followRepository;
             _mapper = mapper;
+            _realtimeService = realtimeService;
+            _unitOfWork = unitOfWork;
         }
         public async Task<ReactToggleResponse> ToggleReactOnComment(Guid commentId, Guid accountId)
         {
@@ -71,7 +79,15 @@ namespace SocialNetwork.Application.Services.CommentReactServices
                 await _commentReactRepository.AddCommentReact(newReact);
                 isReactedByCurrentUser = true;
             }
+
+            // Must commit before counting
+            await _unitOfWork.CommitAsync();
+
             var reactCount = await _commentReactRepository.GetReactCountByCommentId(commentId);
+
+            // Send realtime notification
+            await _realtimeService.NotifyCommentReactUpdatedAsync(comment.PostId, commentId, reactCount);
+
             return new ReactToggleResponse
             {
                 ReactCount = reactCount,

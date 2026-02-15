@@ -4,19 +4,20 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity.Data;
 using SocialNetwork.Application.DTOs.AuthDTOs;
-using SocialNetwork.Application.Exceptions;
+using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 using LoginRequest = SocialNetwork.Application.DTOs.AuthDTOs.LoginRequest;
 
 namespace SocialNetwork.Application.Services.AuthServices
@@ -27,14 +28,17 @@ namespace SocialNetwork.Application.Services.AuthServices
         private readonly IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
         private readonly IJwtService _jwtService;
+        private readonly IUnitOfWork _unitOfWork;
+
         public AuthService(IAccountRepository accountRepository, 
             IAccountSettingRepository accountSettingRepository,
-            IMapper mapper, IJwtService jwtService)
+            IMapper mapper, IJwtService jwtService, IUnitOfWork unitOfWork)
         {
             _accountRepository = accountRepository;
             _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
             _jwtService = jwtService;
+            _unitOfWork = unitOfWork;
         }
         public async Task<RegisterResponse> RegisterAsync(RegisterDTO registerRequest)
         {
@@ -53,6 +57,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.RoleId = (int)RoleEnum.User;
             account.IsEmailVerified = false;
             await _accountRepository.AddAccount(account);
+            await _unitOfWork.CommitAsync();
 
             var accountMapped = _mapper.Map<RegisterResponse>(account);
             return accountMapped;
@@ -86,6 +91,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
 
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
             var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
@@ -131,12 +137,17 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.LastActiveAt = DateTime.UtcNow;
 
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
             var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
 
             return new LoginResponse
             {
+                AccountId = account.AccountId,
+                Fullname = account.FullName,
+                Username = account.Username,
+                AvatarUrl = account.AvatarUrl,
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
@@ -144,7 +155,7 @@ namespace SocialNetwork.Application.Services.AuthServices
                 DefaultPostPrivacy = defaultPostPrivacy
             };
         }
-        public async Task<LoginResponse> RefreshTokenAsync(string refreshToken)
+        public async Task<LoginResponse?> RefreshTokenAsync(string refreshToken)
         {
             if (string.IsNullOrEmpty(refreshToken))
                 throw new UnauthorizedException("No refresh token provided.");
@@ -167,17 +178,21 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.UpdatedAt = DateTime.UtcNow;
 
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
             var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
 
             return new LoginResponse
             {
+                AccountId = account.AccountId,
+                Username = account.Username,
                 AccessToken = newAccessToken,
                 RefreshToken = newRefreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
                 Fullname = account.FullName,
                 AvatarUrl = account.AvatarUrl,
+                Status = account.Status,
                 DefaultPostPrivacy = defaultPostPrivacy
             };
         }
@@ -191,6 +206,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             account.RefreshToken = null;
             account.RefreshTokenExpiryTime = null;
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             response.Cookies.Delete("refreshToken");
         }

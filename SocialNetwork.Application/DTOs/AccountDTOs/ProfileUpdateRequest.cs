@@ -13,8 +13,10 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
     {
         [StringLength(100, ErrorMessage = "Fullname cannot be longer than 100 characters.")]
         public string? FullName { get; set; }
-        public IFormFile? Image { get; set; }
-        public IFormFile? CoverImage { get; set; }
+        public IFormFile? AvatarFile { get; set; }
+        public bool? DeleteAvatar { get; set; }
+        public IFormFile? CoverFile { get; set; }
+        public bool? DeleteCover { get; set; }
         [StringLength(15, ErrorMessage = "Phone cannot be longer than 15 characters.")]
         [Phone(ErrorMessage = "Phone is invalid.")]
         public string? Phone { get; set; }
@@ -23,5 +25,7 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public string? Bio { get; set; }
         [StringLength(255, ErrorMessage = "Address cannot be longer than 255 characters.")]
         public string? Address { get; set; }
+        public AccountPrivacyEnum? PhonePrivacy { get; set; }
+        public AccountPrivacyEnum? AddressPrivacy { get; set; }
     }
 }

@@ -14,12 +14,14 @@ namespace SocialNetwork.Application.DTOs.MessageDTOs
     {
         public Guid MessageId { get; set; }
         public Guid ConversationId { get; set; }
-        public AccountBasicInfoResponse Sender { get; set; } = null!;
+        public AccountChatInfoResponse Sender { get; set; } = null!;
         public string? Content { get; set; }
         public MessageTypeEnum MessageType { get; set; } // Text / Media / System
         public DateTime SentAt { get; set; }
         public bool IsEdited { get; set; }
-        public bool IsDeleted { get; set; }
+        public bool IsRecalled { get; set; }
+        public string? SystemMessageDataJson { get; set; }
+        public string? TempId { get; set; }
         public List<MessageMediaResponse>? Medias { get; set; }
     }
 }

@@ -15,7 +15,15 @@ namespace SocialNetwork.Application.DTOs.CommonDTOs
         public int TotalPages => (int)Math.Ceiling((double)TotalItems / PageSize);
         public bool HasNextPage => Page < TotalPages;
         public bool HasPreviousPage => Page > 1;
-        //public string? SortBy { get; set; }
-        //public string? SortOrder { get; set; }
+
+        public PagedResponse() { }
+
+        public PagedResponse(IEnumerable<T> items, int page, int pageSize, int totalItems)
+        {
+            Items = items;
+            Page = page;
+            PageSize = pageSize;
+            TotalItems = totalItems;
+        }
     }
 }

@@ -12,6 +12,7 @@ namespace SocialNetwork.Application.DTOs.PostDTOs
     public class PostDetailResponse
     {
         public Guid PostId { get; set; }
+        public string PostCode { get; set; } = string.Empty;
         public AccountBasicInfoResponse Owner { get; set; } = null!;
         public int Privacy { get; set; }
         public int FeedAspectRatio { get; set; }

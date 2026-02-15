@@ -31,3 +31,19 @@ packages/
 # Others
 *.db
 *.DS_Store
+
+# AI Agent & Skills
+.agent/
+.gemini/
+.claude/
+.codex/
+.cursor/
+.windsurfrules
+project_rules.md
+
+# Sensitive Files
+SocialNetwork.API/appsettings.Development.json
+SocialNetwork.API/appsettings.Local.json
+*.txt
+!README.md
+!SocialNetwork.API/SocialNetwork.API.http
