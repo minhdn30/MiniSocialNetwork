@@ -156,6 +156,18 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
+        [HttpGet("{conversationId}/media")]
+        public async Task<IActionResult> GetConversationMedia([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _conversationService.GetConversationMediaAsync(conversationId, currentId.Value, page, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
         [HttpGet("unread-count")]
         public async Task<IActionResult> GetUnreadCount()
         {
