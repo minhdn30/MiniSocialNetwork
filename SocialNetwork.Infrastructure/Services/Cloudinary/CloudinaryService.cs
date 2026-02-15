@@ -62,6 +62,26 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
             return result.SecureUrl?.ToString();
         }
 
+        public async Task<string?> UploadRawFileAsync(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return null;
+
+            await using var stream = file.OpenReadStream();
+
+            var uploadParams = new RawUploadParams
+            {
+                File = new FileDescription(file.FileName, stream),
+                Folder = "cloudmsocialnetwork/files",
+                UseFilename = true,
+                UniqueFilename = true,
+                Overwrite = false
+            };
+
+            var result = await _cloudinary.UploadAsync(uploadParams);
+            return result.SecureUrl?.ToString();
+        }
+
         public string? GetPublicIdFromUrl(string url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -79,7 +99,10 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
                 var pathAfterUpload = string.Join("/", segments.Skip(uploadIndex + 1));
 
                 pathAfterUpload = Regex.Replace(pathAfterUpload, @"^v\d+/", "");
-                var publicId = Path.ChangeExtension(pathAfterUpload, null);
+                var isRawResource = segments.Any(s => s.Equals("raw", StringComparison.OrdinalIgnoreCase));
+                var publicId = isRawResource
+                    ? pathAfterUpload
+                    : Path.ChangeExtension(pathAfterUpload, null);
                 //decode
                 return Uri.UnescapeDataString(publicId);
             }
@@ -87,6 +110,30 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
             {
                 return null;
             }
+        }
+
+        public string? GetDownloadUrl(string mediaUrl, MediaTypeEnum type, string? fileName = null)
+        {
+            var publicId = GetPublicIdFromUrl(mediaUrl);
+            if (string.IsNullOrWhiteSpace(publicId))
+                return null;
+
+            var resourceType = type switch
+            {
+                MediaTypeEnum.Video => "video",
+                MediaTypeEnum.Document => "raw",
+                _ => "image"
+            };
+
+            var expiresAt = DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds();
+
+            return _cloudinary.DownloadPrivate(
+                publicId: publicId,
+                attachment: true,
+                format: null,
+                type: "upload",
+                expiresAt: expiresAt,
+                resourceType: resourceType);
         }
 
 
@@ -98,6 +145,10 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
             if (type == MediaTypeEnum.Video)
             {
                 deletionParams.ResourceType = ResourceType.Video;
+            }
+            else if (type == MediaTypeEnum.Document)
+            {
+                deletionParams.ResourceType = ResourceType.Raw;
             }
 
             var result = await _cloudinary.DestroyAsync(deletionParams);

@@ -100,6 +100,18 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
 
+        [Authorize]
+        [HttpGet("media/{messageMediaId}/download-url")]
+        public async Task<IActionResult> GetMediaDownloadUrl(Guid messageMediaId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var downloadUrl = await _messageService.GetMediaDownloadUrlAsync(messageMediaId, currentId.Value);
+            return Ok(new { url = downloadUrl });
+        }
+
         // PINNED MESSAGES
 
         // Get all pinned messages for a conversation

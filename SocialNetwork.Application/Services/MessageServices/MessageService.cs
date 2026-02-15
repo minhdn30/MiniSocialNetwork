@@ -129,6 +129,9 @@ namespace SocialNetwork.Application.Services.MessageServices
                         case MediaTypeEnum.Video:
                             url = await _cloudinaryService.UploadVideoAsync(file);
                             break;
+                        case MediaTypeEnum.Document:
+                            url = await _cloudinaryService.UploadRawFileAsync(file);
+                            break;
                         default:
                             continue; 
                     };
@@ -273,6 +276,9 @@ namespace SocialNetwork.Application.Services.MessageServices
                         case MediaTypeEnum.Video:
                             url = await _cloudinaryService.UploadVideoAsync(file);
                             break;
+                        case MediaTypeEnum.Document:
+                            url = await _cloudinaryService.UploadRawFileAsync(file);
+                            break;
                         default:
                             continue; 
                     };
@@ -347,6 +353,27 @@ namespace SocialNetwork.Application.Services.MessageServices
                     await Task.WhenAll(cleanupTasks);
                 }
             );
+        }
+
+        public async Task<string> GetMediaDownloadUrlAsync(Guid messageMediaId, Guid accountId)
+        {
+            var media = await _messageMediaRepository.GetByIdWithMessageAsync(messageMediaId);
+            if (media == null)
+                throw new NotFoundException("Attachment not found.");
+
+            var conversationId = media.Message?.ConversationId ?? Guid.Empty;
+            if (conversationId == Guid.Empty)
+                throw new NotFoundException("Conversation not found.");
+
+            var isMember = await _conversationMemberRepository.IsMemberOfConversation(conversationId, accountId);
+            if (!isMember)
+                throw new ForbiddenException("You are not allowed to access this attachment.");
+
+            var signedUrl = _cloudinaryService.GetDownloadUrl(media.MediaUrl, media.MediaType, media.FileName);
+            if (string.IsNullOrWhiteSpace(signedUrl))
+                throw new BadRequestException("Could not generate attachment download URL.");
+
+            return signedUrl;
         }
 
         public async Task<RecallMessageResponse> RecallMessageAsync(Guid messageId, Guid currentId)

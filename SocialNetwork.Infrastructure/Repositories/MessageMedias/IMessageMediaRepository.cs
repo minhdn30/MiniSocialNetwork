@@ -10,5 +10,6 @@ namespace SocialNetwork.Infrastructure.Repositories.MessageMedias
     public interface IMessageMediaRepository
     {
         Task AddMessageMediasAsync(List<MessageMedia> medias);
+        Task<MessageMedia?> GetByIdWithMessageAsync(Guid messageMediaId);
     }
 }
