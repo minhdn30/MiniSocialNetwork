@@ -13,6 +13,9 @@ namespace SocialNetwork.Domain.Entities
     {
         public Guid PostId { get; set; }
         public Guid AccountId { get; set; }
+        [Required]
+        [StringLength(12)]
+        public string PostCode { get; set; } = string.Empty;
         public string? Content { get; set; }
         public PostPrivacyEnum Privacy { get; set; } = PostPrivacyEnum.Public; // 0=Public, 1=FollowOnly, 2=Private
         public AspectRatioEnum FeedAspectRatio { get; set; } = AspectRatioEnum.Original; // 0=Original, 1=Square, 2=Portrait, 3=Landscape

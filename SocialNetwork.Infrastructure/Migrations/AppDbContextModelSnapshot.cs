@@ -21,6 +21,7 @@ namespace SocialNetwork.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "unaccent");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Account", b =>
@@ -108,6 +109,9 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("RoleId");
 
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Accounts_Status");
+
                     b.HasIndex("Username")
                         .IsUnique();
 
@@ -167,7 +171,8 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasKey("CommentId");
 
-                    b.HasIndex("AccountId");
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("IX_Comment_AccountId");
 
                     b.HasIndex("ParentCommentId", "CreatedAt")
                         .HasDatabaseName("IX_Comment_Parent_Created");
@@ -205,6 +210,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ConversationAvatar")
+                        .HasColumnType("text");
+
                     b.Property<string>("ConversationName")
                         .HasColumnType("text");
 
@@ -220,7 +228,17 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<bool>("IsGroup")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Theme")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.HasKey("ConversationId");
+
+                    b.HasIndex("ConversationName")
+                        .HasDatabaseName("IX_Conversations_Name_Trgm");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("ConversationName"), "GIN");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("ConversationName"), new[] { "gin_trgm_ops" });
 
                     b.HasIndex("CreatedAt");
 
@@ -255,6 +273,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<DateTime>("JoinedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("LastSeenMessageId")
                         .HasColumnType("uuid");
 
@@ -265,7 +286,8 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.HasIndex("ConversationId");
+                    b.HasIndex("AccountId", "HasLeft", "IsMuted", "ConversationId")
+                        .HasDatabaseName("IX_ConversationMember_Account_State_Conversation");
 
                     b.ToTable("ConversationMembers");
                 });
@@ -316,6 +338,9 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("FollowerId", "CreatedAt");
 
+                    b.HasIndex("FollowerId", "FollowedId")
+                        .HasDatabaseName("IX_Follow_Follower_Followed");
+
                     b.ToTable("Follows");
                 });
 
@@ -334,17 +359,23 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("IsDeleted")
+                    b.Property<bool>("IsEdited")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsEdited")
+                    b.Property<bool>("IsRecalled")
                         .HasColumnType("boolean");
 
                     b.Property<int>("MessageType")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("RecalledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("SentAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SystemMessageDataJson")
+                        .HasColumnType("text");
 
                     b.HasKey("MessageId");
 
@@ -352,7 +383,28 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("ConversationId", "SentAt");
 
+                    b.HasIndex("ConversationId", "AccountId", "SentAt")
+                        .HasDatabaseName("IX_Message_Conversation_Account_SentAt");
+
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageHidden", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("HiddenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("MessageId", "AccountId");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("MessageHiddens");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageMedia", b =>
@@ -390,6 +442,55 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.ToTable("MessageMedias");
                 });
 
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageReact", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ReactType")
+                        .HasColumnType("integer");
+
+                    b.HasKey("MessageId", "AccountId");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("MessageId");
+
+                    b.ToTable("MessageReacts");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.PinnedMessage", b =>
+                {
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("PinnedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PinnedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ConversationId", "MessageId");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("PinnedBy");
+
+                    b.HasIndex("ConversationId", "PinnedAt")
+                        .HasDatabaseName("IX_PinnedMessage_Conversation_PinnedAt");
+
+                    b.ToTable("PinnedMessages");
+                });
+
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Post", b =>
                 {
                     b.Property<Guid>("PostId")
@@ -412,6 +513,11 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("PostCode")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
                     b.Property<int>("Privacy")
                         .HasColumnType("integer");
 
@@ -420,7 +526,10 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasKey("PostId");
 
-                    b.HasIndex("AccountId", "CreatedAt")
+                    b.HasIndex("PostCode")
+                        .IsUnique();
+
+                    b.HasIndex("AccountId", "IsDeleted", "CreatedAt")
                         .HasDatabaseName("IX_Posts_Account_CreatedAt");
 
                     b.HasIndex("IsDeleted", "Privacy", "CreatedAt")
@@ -437,18 +546,6 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<float?>("CropHeight")
-                        .HasColumnType("real");
-
-                    b.Property<float?>("CropWidth")
-                        .HasColumnType("real");
-
-                    b.Property<float?>("CropX")
-                        .HasColumnType("real");
-
-                    b.Property<float?>("CropY")
-                        .HasColumnType("real");
 
                     b.Property<string>("MediaUrl")
                         .IsRequired()
@@ -484,6 +581,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasKey("PostId", "AccountId");
 
                     b.HasIndex("AccountId");
+
+                    b.HasIndex("PostId")
+                        .HasDatabaseName("IX_PostReact_PostId_Covering");
 
                     b.ToTable("PostReacts");
                 });
@@ -644,6 +744,25 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Navigation("Conversation");
                 });
 
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageHidden", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SocialNetwork.Domain.Entities.Message", "Message")
+                        .WithMany("HiddenBy")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Message");
+                });
+
             modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageMedia", b =>
                 {
                     b.HasOne("SocialNetwork.Domain.Entities.Message", "Message")
@@ -653,6 +772,52 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Message");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageReact", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SocialNetwork.Domain.Entities.Message", "Message")
+                        .WithMany("Reacts")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Message");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.PinnedMessage", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Conversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SocialNetwork.Domain.Entities.Message", "Message")
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "PinnedByAccount")
+                        .WithMany()
+                        .HasForeignKey("PinnedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("Message");
+
+                    b.Navigation("PinnedByAccount");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Post", b =>
@@ -736,7 +901,11 @@ namespace SocialNetwork.Infrastructure.Migrations
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Message", b =>
                 {
+                    b.Navigation("HiddenBy");
+
                     b.Navigation("Medias");
+
+                    b.Navigation("Reacts");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Post", b =>

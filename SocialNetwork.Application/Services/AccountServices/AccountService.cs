@@ -6,7 +6,10 @@ using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
-using SocialNetwork.Application.Services.CloudinaryServices;
+using SocialNetwork.Application.Helpers.ValidationHelpers;
+using SocialNetwork.Application.Services.AuthServices;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
+using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -14,12 +17,13 @@ using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.AccountServices
 {
@@ -31,6 +35,8 @@ namespace SocialNetwork.Application.Services.AccountServices
         private readonly ICloudinaryService _cloudinary;
         private readonly IFollowRepository _followRepository;
         private readonly IPostRepository _postRepository;
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly IRealtimeService _realtimeService;
 
         public AccountService(
             IAccountRepository accountRepository, 
@@ -38,7 +44,9 @@ namespace SocialNetwork.Application.Services.AccountServices
             IMapper mapper, 
             ICloudinaryService cloudinary, 
             IFollowRepository followRepository, 
-            IPostRepository postRepository)
+            IPostRepository postRepository,
+            IUnitOfWork unitOfWork,
+            IRealtimeService realtimeService)
         {
             _accountRepository = accountRepository;
             _accountSettingRepository = accountSettingRepository;
@@ -46,6 +54,8 @@ namespace SocialNetwork.Application.Services.AccountServices
             _cloudinary = cloudinary;
             _followRepository = followRepository;
             _postRepository = postRepository;
+            _unitOfWork = unitOfWork;
+            _realtimeService = realtimeService;
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {
@@ -96,21 +106,16 @@ namespace SocialNetwork.Application.Services.AccountServices
             {
                 throw new BadRequestException("Email already exists.");
             }
-            if(!Enum.IsDefined(typeof(RoleEnum), request.RoleId))
-            {
-                throw new BadRequestException("Role not found.");
-            }
+            EnumValidator.ValidateEnum<RoleEnum>(request.RoleId);
             var account = _mapper.Map<Account>(request);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             await _accountRepository.AddAccount(account);
+            await _unitOfWork.CommitAsync();
             return _mapper.Map<AccountDetailResponse>(account);
         }
         public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request)
         {
-            if (request.RoleId.HasValue && !Enum.IsDefined(typeof(RoleEnum), request.RoleId.Value))
-            {
-                throw new BadRequestException("Role not found.");
-            }
+            EnumValidator.ValidateEnumIfHasValue<RoleEnum>(request.RoleId);
 
             var account = await _accountRepository.GetAccountById(accountId);
             if(account  == null)
@@ -121,58 +126,165 @@ namespace SocialNetwork.Application.Services.AccountServices
             _mapper.Map(request, account);
             account.UpdatedAt = DateTime.UtcNow;
             await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
+
             return _mapper.Map<AccountDetailResponse>(account);
         }
         public async Task<AccountDetailResponse> UpdateAccountProfile(Guid accountId, ProfileUpdateRequest request)
         {
+            // fetch account early
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
             {
                 throw new NotFoundException($"Account with ID {accountId} not found.");
             }
 
-            if (request.Image != null)
+            string? oldAvatarPublicId = null;
+            string? oldCoverPublicId = null;
+            string? newAvatarUrl = null;
+            string? newCoverUrl = null;
+
+            // prepare cloudinary upload tasks
+            var uploadTasks = new List<Task>();
+
+            if (request.DeleteAvatar == true)
             {
                 if (!string.IsNullOrEmpty(account.AvatarUrl))
-                {
-                    var publicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
-                    if (!string.IsNullOrEmpty(publicId))
-                    {
-                        await _cloudinary.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
-                    }
-                }
-                var imageURL = await _cloudinary.UploadImageAsync(request.Image);
-                if (string.IsNullOrEmpty(imageURL))
-                {
-                    throw new InternalServerException("Image upload failed.");
-                }
-                account.AvatarUrl = imageURL;
-                
+                    oldAvatarPublicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
             }
-            if (request.CoverImage != null)
+            else if (request.AvatarFile != null)
             {
-                if (!string.IsNullOrEmpty(account.CoverUrl))
-                {
-                    var publicId = _cloudinary.GetPublicIdFromUrl(account.CoverUrl);
-                    if (!string.IsNullOrEmpty(publicId))
-                    {
-                        await _cloudinary.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
-                    }
-                }
-                var coverURL = await _cloudinary.UploadImageAsync(request.CoverImage);
-                if (string.IsNullOrEmpty(coverURL))
-                {
-                    throw new InternalServerException("Cover image upload failed.");
-                }
-                account.CoverUrl = coverURL;
+                if (!string.IsNullOrEmpty(account.AvatarUrl))
+                    oldAvatarPublicId = _cloudinary.GetPublicIdFromUrl(account.AvatarUrl);
+
+                uploadTasks.Add(Task.Run(async () => {
+                    newAvatarUrl = await _cloudinary.UploadImageAsync(request.AvatarFile);
+                }));
             }
 
-            // Map standard profile fields
-            _mapper.Map(request, account);
+            if (request.DeleteCover == true)
+            {
+                if (!string.IsNullOrEmpty(account.CoverUrl))
+                    oldCoverPublicId = _cloudinary.GetPublicIdFromUrl(account.CoverUrl);
+            }
+            else if (request.CoverFile != null)
+            {
+                if (!string.IsNullOrEmpty(account.CoverUrl))
+                    oldCoverPublicId = _cloudinary.GetPublicIdFromUrl(account.CoverUrl);
+
+                uploadTasks.Add(Task.Run(async () => {
+                    newCoverUrl = await _cloudinary.UploadImageAsync(request.CoverFile);
+                }));
+            }
+
+            // sync point
+            if (uploadTasks.Any())
+            {
+                await Task.WhenAll(uploadTasks);
+                
+                // verify results
+                if (request.AvatarFile != null && string.IsNullOrEmpty(newAvatarUrl))
+                    throw new InternalServerException("Avatar upload failed.");
+                if (request.CoverFile != null && string.IsNullOrEmpty(newCoverUrl))
+                    throw new InternalServerException("Cover image upload failed.");
+            }
+
+            // start db transaction
+            var result = await _unitOfWork.ExecuteInTransactionAsync(
+                async () =>
+                {
+                    // assign new urls
+                    if (request.DeleteAvatar == true) account.AvatarUrl = null;
+                    else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
+
+                    if (request.DeleteCover == true) account.CoverUrl = null;
+                    else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
+
+                    // normalize fields
+                    if (string.IsNullOrWhiteSpace(request.Bio)) request.Bio = null;
+                    if (string.IsNullOrWhiteSpace(request.Phone)) request.Phone = null;
+                    if (string.IsNullOrWhiteSpace(request.Address)) request.Address = null;
+
+                    // bulk map standard fields
+                    _mapper.Map(request, account);
+                    
+                    // re-enforce urls
+                    if (request.DeleteAvatar == true) account.AvatarUrl = null;
+                    else if (newAvatarUrl != null) account.AvatarUrl = newAvatarUrl;
+                    
+                    if (request.DeleteCover == true) account.CoverUrl = null;
+                    else if (newCoverUrl != null) account.CoverUrl = newCoverUrl;
+
+                    account.UpdatedAt = DateTime.UtcNow;
+                    await _accountRepository.UpdateAccount(account);
+
+                    // update privacy settings if provided
+                    if (request.PhonePrivacy.HasValue || request.AddressPrivacy.HasValue)
+                    {
+                        var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(accountId);
+                        bool isNewSettings = false;
+
+                        if (settings == null)
+                        {
+                            settings = new AccountSettings { AccountId = accountId };
+                            isNewSettings = true;
+                        }
+
+                        if (request.PhonePrivacy.HasValue)
+                        {
+                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.PhonePrivacy.Value);
+                            settings.PhonePrivacy = request.PhonePrivacy.Value;
+                        }
+
+                        if (request.AddressPrivacy.HasValue)
+                        {
+                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.AddressPrivacy.Value);
+                            settings.AddressPrivacy = request.AddressPrivacy.Value;
+                        }
+
+                        if (isNewSettings)
+                        {
+                            await _accountSettingRepository.AddAccountSettingsAsync(settings);
+                        }
+                        else
+                        {
+                            await _accountSettingRepository.UpdateAccountSettingsAsync(settings);
+                        }
+                    }
+
+                    return _mapper.Map<AccountDetailResponse>(account);
+                },
+                // rollback cleanup for new images
+                async () =>
+                {
+                    var orphanTasks = new List<Task>();
+                    if (!string.IsNullOrEmpty(newAvatarUrl))
+                    {
+                        var pid = _cloudinary.GetPublicIdFromUrl(newAvatarUrl);
+                        if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
+                    }
+                    if (!string.IsNullOrEmpty(newCoverUrl))
+                    {
+                        var pid = _cloudinary.GetPublicIdFromUrl(newCoverUrl);
+                        if (!string.IsNullOrEmpty(pid)) orphanTasks.Add(_cloudinary.DeleteMediaAsync(pid, MediaTypeEnum.Image));
+                    }
+                    if (orphanTasks.Any()) await Task.WhenAll(orphanTasks);
+                }
+            );
+
+            // post commit cleanup old images
+            var cleanupTasks = new List<Task>();
+            if (!string.IsNullOrEmpty(oldAvatarPublicId))
+                cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldAvatarPublicId, MediaTypeEnum.Image));
+            if (!string.IsNullOrEmpty(oldCoverPublicId))
+                cleanupTasks.Add(_cloudinary.DeleteMediaAsync(oldCoverPublicId, MediaTypeEnum.Image));
             
-            account.UpdatedAt = DateTime.UtcNow;
-            await _accountRepository.UpdateAccount(account);
-            return _mapper.Map<AccountDetailResponse>(account);
+            if (cleanupTasks.Any()) await Task.WhenAll(cleanupTasks);
+            
+            // real-time notification
+            _ = _realtimeService.NotifyProfileUpdatedAsync(accountId, result);
+
+            return result;
         }
         public async Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId)
         {
@@ -209,7 +321,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                 IsCurrentUser = profileModel.IsCurrentUser
             };
             
-            // Map the privacy settings into a DTO
+            // map the privacy settings into a dto
             var currentSettings = new AccountSettingsResponse
             {
                 PhonePrivacy = profileModel.PhonePrivacy,
@@ -219,19 +331,19 @@ namespace SocialNetwork.Application.Services.AccountServices
                 FollowingPrivacy = profileModel.FollowingPrivacy
             };
 
-            // Enforce privacy logic
+            // enforce privacy logic
             if (!result.IsCurrentUser)
             {
-                // Always hide Email
+                // always hide email
                 result.AccountInfo.Email = null;
 
-                // Check Phone Privacy
+                // check phone privacy
                 if (!IsDataVisible(profileModel.PhonePrivacy, profileModel.IsFollowedByCurrentUser))
                 {
                     result.AccountInfo.Phone = null;
                 }
 
-                // Check Address Privacy
+                // check address privacy
                 if (!IsDataVisible(profileModel.AddressPrivacy, profileModel.IsFollowedByCurrentUser))
                 {
                     result.AccountInfo.Address = null;
@@ -239,13 +351,12 @@ namespace SocialNetwork.Application.Services.AccountServices
             }
             else
             {
-                // Only return settings values if it's the current user viewing their own profile
+                // only return settings values if it's the current user viewing their own profile
                 result.Settings = currentSettings;
             }
 
             return result;
         }
-
         public async Task<ProfileInfoResponse?> GetAccountProfileByUsername(string username, Guid? currentId)
         {
             var profileModel = await _accountRepository.GetProfileInfoByUsernameAsync(username, currentId);
@@ -351,6 +462,11 @@ namespace SocialNetwork.Application.Services.AccountServices
                 account.Status = AccountStatusEnum.Active;
                 account.UpdatedAt = DateTime.UtcNow;
                 await _accountRepository.UpdateAccount(account);
+                await _unitOfWork.CommitAsync();
+            }
+            else if (account.Status == AccountStatusEnum.Active)
+            {
+                throw new BadRequestException("Account is already active.");
             }
         }
     }

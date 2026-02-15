@@ -11,6 +11,7 @@ namespace SocialNetwork.Application.DTOs.PostMediaDTOs
     {
         public Guid MediaId { get; set; }
         public Guid PostId { get; set; }
+        public string? PostCode { get; set; }
         public string MediaUrl { get; set; } = null!;
         public MediaTypeEnum MediaType { get; set; }
     }

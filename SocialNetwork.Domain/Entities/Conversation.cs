@@ -10,6 +10,8 @@ namespace SocialNetwork.Domain.Entities
     {
         public Guid ConversationId { get; set; }
         public string? ConversationName { get; set; }
+        public string? ConversationAvatar { get; set; }
+        public string? Theme { get; set; }
         public bool IsGroup { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid CreatedBy { get; set; }

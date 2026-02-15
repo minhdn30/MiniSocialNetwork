@@ -12,7 +12,7 @@ namespace SocialNetwork.Infrastructure.Data
     public class AppDbContext : DbContext
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
-
+        public static string Unaccent(string text) => throw new NotSupportedException();
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
@@ -26,6 +26,9 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<ConversationMember> ConversationMembers { get; set; }
         public virtual DbSet<Message> Messages { get; set; }
         public virtual DbSet<MessageMedia> MessageMedias { get; set; }
+        public virtual DbSet<MessageHidden> MessageHiddens { get; set; }
+        public virtual DbSet<MessageReact> MessageReacts { get; set; }
+        public virtual DbSet<PinnedMessage> PinnedMessages { get; set; }
         public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
 
 
@@ -46,6 +49,15 @@ namespace SocialNetwork.Infrastructure.Data
                       .HasMethod("GIN")
                       .HasOperators("gin_trgm_ops");
 
+                // Expression indexes for unaccent(FullName) and unaccent(Username) 
+                // will be created manually via raw SQL in migration
+                // EF Core doesn't support functional indexes via Fluent API
+
+
+                // Index for Status filter (used in many joins)
+                entity.HasIndex(e => e.Status)
+                      .HasDatabaseName("IX_Accounts_Status");
+
                 entity.HasOne(a => a.Role)
                       .WithMany(r => r.Accounts)
                       .HasForeignKey(a => a.RoleId)
@@ -58,8 +70,16 @@ namespace SocialNetwork.Infrastructure.Data
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Enable pg_trgm extension
+            // Enable extensions
             modelBuilder.HasPostgresExtension("pg_trgm");
+            modelBuilder.HasPostgresExtension("unaccent");
+
+            // Map to immutable_unaccent wrapper function (created in migration)
+            // Required for functional indexes - PostgreSQL requires IMMUTABLE functions for indexes
+            modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(Unaccent), new[] { typeof(string) })!)
+                .HasName("immutable_unaccent");
+
+
 
             modelBuilder.Entity<Role>(entity =>
             {
@@ -81,6 +101,11 @@ namespace SocialNetwork.Infrastructure.Data
             // Index for FollowerId + CreatedAt for efficient sorting of "Following" list
             modelBuilder.Entity<Follow>()
                 .HasIndex(f => new { f.FollowerId, f.CreatedAt });
+
+            // Composite index for fast relationship checks
+            modelBuilder.Entity<Follow>()
+                .HasIndex(f => new { f.FollowerId, f.FollowedId })
+                .HasDatabaseName("IX_Follow_Follower_Followed");
 
             modelBuilder.Entity<Follow>()
                 .HasOne(f => f.Follower)
@@ -111,6 +136,15 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Post>()
                 .Property(p => p.Content)
                 .HasMaxLength(5000);
+
+            modelBuilder.Entity<Post>()
+                .Property(p => p.PostCode)
+                .IsRequired()
+                .HasMaxLength(12);
+
+            modelBuilder.Entity<Post>()
+                .HasIndex(p => p.PostCode)
+                .IsUnique();
 
             // Post → Account
             modelBuilder.Entity<Post>()
@@ -155,7 +189,10 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<PostReact>()
                 .HasKey(r => new { r.PostId, r.AccountId });
 
-            // IX_PostReact_PostId is redundant because PostId is the leading column of the PK
+            // Covering index for post detail queries (count reacts, check if reacted)
+            modelBuilder.Entity<PostReact>()
+                .HasIndex(r => r.PostId)
+                .HasDatabaseName("IX_PostReact_PostId_Covering");
 
             // PostReact → Account
             modelBuilder.Entity<PostReact>()
@@ -185,6 +222,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Comment>()
                 .HasIndex(c => new { c.ParentCommentId, c.CreatedAt })
                 .HasDatabaseName("IX_Comment_Parent_Created");
+
+            // Index for querying comments by account
+            modelBuilder.Entity<Comment>()
+                .HasIndex(c => c.AccountId)
+                .HasDatabaseName("IX_Comment_AccountId");
 
             // Comment → Account
             modelBuilder.Entity<Comment>()
@@ -231,6 +273,10 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Conversation>()
                 .HasKey(c => c.ConversationId);
 
+            modelBuilder.Entity<Conversation>()
+                .Property(c => c.Theme)
+                .HasMaxLength(32);
+
             // Conversation → Creator (Account)
             modelBuilder.Entity<Conversation>()
                 .HasOne(c => c.CreatedByAccount)
@@ -244,6 +290,13 @@ namespace SocialNetwork.Infrastructure.Data
 
             modelBuilder.Entity<Conversation>()
                 .HasIndex(c => c.CreatedBy);
+
+            // Trigram index for group conversation name search (ILIKE %keyword%)
+            modelBuilder.Entity<Conversation>()
+                .HasIndex(c => c.ConversationName)
+                .HasMethod("GIN")
+                .HasOperators("gin_trgm_ops")
+                .HasDatabaseName("IX_Conversations_Name_Trgm");
 
             // Conversation → Members
             modelBuilder.Entity<Conversation>()
@@ -270,6 +323,11 @@ namespace SocialNetwork.Infrastructure.Data
             // Index: get conversations by account
             modelBuilder.Entity<ConversationMember>()
                 .HasIndex(cm => cm.AccountId);
+
+            // Index: conversation list/unread queries by account + state
+            modelBuilder.Entity<ConversationMember>()
+                .HasIndex(cm => new { cm.AccountId, cm.HasLeft, cm.IsMuted, cm.ConversationId })
+                .HasDatabaseName("IX_ConversationMember_Account_State_Conversation");
 
             // Index: get members by conversation
             // Redundant with PK but good for clarity if needed, though PK (ConvId, AccId) already covers this
@@ -304,6 +362,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Message>()
                 .HasIndex(m => m.AccountId);
 
+            // Index: unread/message-list predicates (conversation + sender + sent time)
+            modelBuilder.Entity<Message>()
+                .HasIndex(m => new { m.ConversationId, m.AccountId, m.SentAt })
+                .HasDatabaseName("IX_Message_Conversation_Account_SentAt");
+
             // Message → Conversation
             modelBuilder.Entity<Message>()
                 .HasOne(m => m.Conversation)
@@ -336,9 +399,89 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasForeignKey(mm => mm.MessageId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // =====================
+            // MESSAGE HIDDEN
+            // =====================
+            modelBuilder.Entity<MessageHidden>()
+                .HasKey(mh => new { mh.MessageId, mh.AccountId });
 
+            // Index: get hidden messages by account
+            modelBuilder.Entity<MessageHidden>()
+                .HasIndex(mh => mh.AccountId);
 
+            // MessageHidden → Message
+            modelBuilder.Entity<MessageHidden>()
+                .HasOne(mh => mh.Message)
+                .WithMany(m => m.HiddenBy)
+                .HasForeignKey(mh => mh.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
 
+            // MessageHidden → Account
+            modelBuilder.Entity<MessageHidden>()
+                .HasOne(mh => mh.Account)
+                .WithMany()  // No navigation from Account
+                .HasForeignKey(mh => mh.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // MESSAGE REACT
+            // =====================
+            modelBuilder.Entity<MessageReact>()
+                .HasKey(mr => new { mr.MessageId, mr.AccountId });
+
+            // Index: count reactions by message
+            modelBuilder.Entity<MessageReact>()
+                .HasIndex(mr => mr.MessageId);
+
+            // Index: get reactions by account
+            modelBuilder.Entity<MessageReact>()
+                .HasIndex(mr => mr.AccountId);
+
+            // MessageReact → Message
+            modelBuilder.Entity<MessageReact>()
+                .HasOne(mr => mr.Message)
+                .WithMany(m => m.Reacts)
+                .HasForeignKey(mr => mr.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // MessageReact → Account
+            modelBuilder.Entity<MessageReact>()
+                .HasOne(mr => mr.Account)
+                .WithMany()  // No navigation from Account
+                .HasForeignKey(mr => mr.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // PINNED MESSAGE
+            // =====================
+            modelBuilder.Entity<PinnedMessage>()
+                .HasKey(pm => new { pm.ConversationId, pm.MessageId });
+
+            // Index: get pinned messages by conversation (sorted by pin time)
+            modelBuilder.Entity<PinnedMessage>()
+                .HasIndex(pm => new { pm.ConversationId, pm.PinnedAt })
+                .HasDatabaseName("IX_PinnedMessage_Conversation_PinnedAt");
+
+            // PinnedMessage → Conversation
+            modelBuilder.Entity<PinnedMessage>()
+                .HasOne(pm => pm.Conversation)
+                .WithMany()  // No navigation from Conversation
+                .HasForeignKey(pm => pm.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // PinnedMessage → Message
+            modelBuilder.Entity<PinnedMessage>()
+                .HasOne(pm => pm.Message)
+                .WithMany()  // No navigation from Message
+                .HasForeignKey(pm => pm.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // PinnedMessage → Account (who pinned)
+            modelBuilder.Entity<PinnedMessage>()
+                .HasOne(pm => pm.PinnedByAccount)
+                .WithMany()  // No navigation from Account
+                .HasForeignKey(pm => pm.PinnedBy)
+                .OnDelete(DeleteBehavior.Restrict);
         }
 
     }

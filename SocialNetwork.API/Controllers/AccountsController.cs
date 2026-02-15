@@ -59,6 +59,17 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
 
+
+        [Authorize]
+        [HttpGet("settings")]
+        public async Task<ActionResult<AccountSettingsResponse>> GetAccountSettings()
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+            var result = await _accountSettingService.GetSettingsByAccountIdAsync(accountId.Value);
+            return Ok(result);
+        }
+
         [Authorize]
         [HttpPatch("settings")]
         public async Task<ActionResult<AccountSettingsResponse>> PatchAccountSettings([FromBody] AccountSettingsUpdateRequest request)

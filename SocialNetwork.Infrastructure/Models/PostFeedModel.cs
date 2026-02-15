@@ -10,6 +10,7 @@ namespace SocialNetwork.Infrastructure.Models
     public class PostFeedModel
     {
         public Guid PostId { get; set; }
+        public string PostCode { get; set; } = string.Empty;
         public AccountOnFeedModel Author { get; set; } = null!;
         public string? Content { get; set; }
         public PostPrivacyEnum Privacy { get; set; }

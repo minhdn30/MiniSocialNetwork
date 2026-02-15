@@ -1,6 +1,7 @@
-﻿using SocialNetwork.Application.Exceptions;
+﻿using Npgsql;
+using SocialNetwork.Domain.Exceptions;
 using System.Text.Json;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.API.Middleware
 {
@@ -53,12 +54,55 @@ namespace SocialNetwork.API.Middleware
                         break;
 
                     default:
-                        _logger.LogError(ex, "Unhandled exception");
+                        if (IsTransientDatabaseFailure(ex))
+                        {
+                            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                            await context.Response.WriteAsync(JsonSerializer.Serialize(new
+                            {
+                                message = "Database is temporarily unavailable. Please try again."
+                            }));
+                            break;
+                        }
+
+                        _logger.LogError(ex, "Unhandled exception: {Message}", ex.Message);
+                        if (ex.InnerException != null)
+                        {
+                            _logger.LogError(ex.InnerException, "Inner exception: {Message}", ex.InnerException.Message);
+                        }
                         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-                        await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Internal server error." }));
+                        await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Internal server error.", details = ex.Message }));
                         break;
                 }
             }
+        }
+
+        private static bool IsTransientDatabaseFailure(Exception ex)
+        {
+            if (ex is InvalidOperationException &&
+                ex.Message.Contains("transient failure", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var cursor = ex;
+            while (cursor != null)
+            {
+                if (cursor is NpgsqlException)
+                {
+                    return true;
+                }
+
+                if (cursor is TimeoutException ||
+                    cursor is IOException ||
+                    cursor is EndOfStreamException)
+                {
+                    return true;
+                }
+
+                cursor = cursor.InnerException!;
+            }
+
+            return false;
         }
     }
 }

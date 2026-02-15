@@ -5,7 +5,7 @@ namespace SocialNetwork.API.Hubs
 {
     public class PostHub : Hub
     {
-        // Detail view group
+        // detail view group
         public async Task JoinPostGroup(Guid postId)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"Post-{postId}");
@@ -16,7 +16,7 @@ namespace SocialNetwork.API.Hubs
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Post-{postId}");
         }
 
-        // List view / personal feed group
+        // list view / personal feed group
         public async Task JoinPostListGroup(Guid accountId)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"PostList-{accountId}");

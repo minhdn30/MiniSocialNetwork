@@ -42,13 +42,12 @@ namespace SocialNetwork.Infrastructure.Repositories.PostMedias
             if (media != null)
             {
                 _context.PostMedias.Remove(media);
-                await _context.SaveChangesAsync();
             }
         }
-        public async Task DeletePostMedias(IEnumerable<PostMedia> postMedias)
+        public Task DeletePostMedias(IEnumerable<PostMedia> postMedias)
         { 
             _context.PostMedias.RemoveRange(postMedias);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
 
     }

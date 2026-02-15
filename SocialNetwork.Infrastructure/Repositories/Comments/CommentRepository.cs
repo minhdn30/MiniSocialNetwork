@@ -64,16 +64,14 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
         {
             return await _context.Comments.Include(c => c.Account).FirstOrDefaultAsync(c => c.CommentId == commentId && c.Account.Status == AccountStatusEnum.Active);
         }
-        public async Task<Comment?> AddComment(Comment comment)
+        public async Task AddComment(Comment comment)
         {
             await _context.Comments.AddAsync(comment);
-            await _context.SaveChangesAsync();
-            return await _context.Comments.Include(c => c.Account).FirstOrDefaultAsync(c => c.CommentId == comment.CommentId);
         }
-        public async Task UpdateComment(Comment comment)
+        public Task UpdateComment(Comment comment)
         {
             _context.Comments.Update(comment);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<bool> IsCommentExist(Guid commentId)
         {
@@ -95,8 +93,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Comments
                 return;
 
             _context.Comments.RemoveRange(commentsToDelete);
-            await _context.SaveChangesAsync();
         }
+
         public async Task<bool> IsCommentCanReply(Guid commentId)
         {
             return await _context.Comments.AnyAsync(c => c.CommentId == commentId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using System.Security.Claims;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.API.Middleware
 {

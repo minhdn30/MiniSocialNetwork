@@ -35,24 +35,32 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         public async Task AddAccount(Account account)
         {
             await _context.Accounts.AddAsync(account);
-            await _context.SaveChangesAsync();
         }
         public async Task<Account?> GetAccountById(Guid accountId)
         {
-            return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.AccountId == accountId);
+            return await _context.Accounts
+                .Include(a => a.Role)
+                .Include(a => a.Settings)
+                .FirstOrDefaultAsync(a => a.AccountId == accountId);
         }
         public async Task<Account?> GetAccountByEmail(string email)
         {
-            return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.Email.ToLower() == email.ToLower());
+            return await _context.Accounts
+                .Include(a => a.Role)
+                .Include(a => a.Settings)
+                .FirstOrDefaultAsync(a => a.Email.ToLower() == email.ToLower());
         }
-        public async Task UpdateAccount(Account account)
+        public Task UpdateAccount(Account account)
         {
             _context.Accounts.Update(account);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<Account?> GetAccountByUsername(string username)
         {
-            return await _context.Accounts.Include(a => a.Role).FirstOrDefaultAsync(a => a.Username.ToLower() == username.ToLower());
+            return await _context.Accounts
+                .Include(a => a.Role)
+                .Include(a => a.Settings)
+                .FirstOrDefaultAsync(a => a.Username.ToLower() == username.ToLower());
         }
         public async Task<Account?> GetByRefreshToken(string refreshToken)
         {
@@ -60,9 +68,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 return null;
 
             return await _context.Accounts
+                .Include(a => a.Role)
+                .Include(a => a.Settings)
                 .FirstOrDefaultAsync(a => a.RefreshToken == refreshToken);
         }
-        //search and filter accounts (admin)
+        // search and filter accounts (admin)
         public async Task<(List<Account> Items, int TotalItems)> GetAccountsAsync(Guid? id, string? username, string? email,
             string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, bool? isEmailVerified, int page, int pageSize)
         {
@@ -81,8 +91,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
             }
             if (!string.IsNullOrWhiteSpace(fullname))
             {
-                var searchKeyword = $"%{fullname.Trim()}%";
-                query = query.Where(a => EF.Functions.ILike(a.FullName, searchKeyword));
+                var words = fullname.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var word in words)
+                {
+                    var searchPattern = $"%{word}%";
+                    query = query.Where(a => EF.Functions.ILike(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(searchPattern)));
+                }
             }
             if (!string.IsNullOrWhiteSpace(phone))
             {
@@ -153,6 +167,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                             {
                                 MediaId = m.MediaId,
                                 PostId = p.PostId,
+                                PostCode = p.PostCode,
                                 MediaUrl = m.MediaUrl,
                                 MediaType = m.Type
                             })
@@ -226,7 +241,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 IsCurrentUser = currentId.HasValue && data.AccountId == currentId.Value,
                 IsFollowedByCurrentUser = data.IsFollowedByCurrentUser,
 
-                // Virtual Defaults - Check once here
+                // virtual defaults
                 PhonePrivacy = s?.PhonePrivacy ?? AccountPrivacyEnum.Private,
                 AddressPrivacy = s?.AddressPrivacy ?? AccountPrivacyEnum.Private,
                 DefaultPostPrivacy = s?.DefaultPostPrivacy ?? PostPrivacyEnum.Public,
@@ -283,13 +298,20 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 IsCurrentUser = currentId.HasValue && data.AccountId == currentId.Value,
                 IsFollowedByCurrentUser = data.IsFollowedByCurrentUser,
 
-                // Virtual Defaults - Check once here
+                // virtual defaults
                 PhonePrivacy = s?.PhonePrivacy ?? AccountPrivacyEnum.Private,
                 AddressPrivacy = s?.AddressPrivacy ?? AccountPrivacyEnum.Private,
                 DefaultPostPrivacy = s?.DefaultPostPrivacy ?? PostPrivacyEnum.Public,
                 FollowerPrivacy = s?.FollowerPrivacy ?? AccountPrivacyEnum.Public,
                 FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public
             };
+        }
+
+        public async Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds)
+        {
+            return await _context.Accounts
+                .Where(a => accountIds.Contains(a.AccountId))
+                .ToListAsync();
         }
     }
 }

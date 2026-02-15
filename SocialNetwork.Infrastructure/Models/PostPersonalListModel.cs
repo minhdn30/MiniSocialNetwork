@@ -10,6 +10,7 @@ namespace SocialNetwork.Infrastructure.Models
     public class PostPersonalListModel
     {
         public Guid PostId { get; set; }
+        public string PostCode { get; set; } = string.Empty;
         public List<MediaPostPersonalListModel>? Medias { get; set; } = new();
         public int MediaCount { get; set; }
         public int ReactCount { get; set; }

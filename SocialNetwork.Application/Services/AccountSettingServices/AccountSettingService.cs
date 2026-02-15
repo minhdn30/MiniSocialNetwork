@@ -1,13 +1,15 @@
 using AutoMapper;
 using SocialNetwork.Application.DTOs.AccountSettingDTOs;
+using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static SocialNetwork.Application.Exceptions.CustomExceptions;
+using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.AccountSettingServices
 {
@@ -15,11 +17,19 @@ namespace SocialNetwork.Application.Services.AccountSettingServices
     {
         private readonly IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly IRealtimeService _realtimeService;
 
-        public AccountSettingService(IAccountSettingRepository accountSettingRepository, IMapper mapper)
+        public AccountSettingService(
+            IAccountSettingRepository accountSettingRepository, 
+            IMapper mapper, 
+            IUnitOfWork unitOfWork,
+            IRealtimeService realtimeService)
         {
             _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
+            _unitOfWork = unitOfWork;
+            _realtimeService = realtimeService;
         }
 
         public async Task<AccountSettingsResponse> GetSettingsByAccountIdAsync(Guid accountId)
@@ -48,7 +58,15 @@ namespace SocialNetwork.Application.Services.AccountSettingServices
                 _mapper.Map(request, settings);
                 await _accountSettingRepository.UpdateAccountSettingsAsync(settings);
             }
-            return _mapper.Map<AccountSettingsResponse>(settings);
+
+            await _unitOfWork.CommitAsync();
+            var response = _mapper.Map<AccountSettingsResponse>(settings);
+
+            // Trigger real-time notification
+            _ = _realtimeService.NotifyAccountSettingsUpdatedAsync(accountId, response);
+
+            return response;
         }
     }
 }
+

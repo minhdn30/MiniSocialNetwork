@@ -25,12 +25,11 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
         public async Task AddEmailVerificationAsync(EmailVerification emailVerification)
         {
             await _context.EmailVerifications.AddAsync(emailVerification);
-            await  _context.SaveChangesAsync();
         }
-        public async Task UpdateEmailVerificationAsync(EmailVerification emailVerification)
+        public Task UpdateEmailVerificationAsync(EmailVerification emailVerification)
         {
             _context.EmailVerifications.Update(emailVerification);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
         public async Task<bool> IsEmailExist(string email)
         {
@@ -56,7 +55,6 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
             if (verification != null)
             {
                 _context.EmailVerifications.Remove(verification);
-                await _context.SaveChangesAsync();
             }
         }
     }
