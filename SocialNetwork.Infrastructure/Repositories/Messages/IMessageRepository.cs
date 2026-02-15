@@ -17,5 +17,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         Task<Message?> GetMessageByIdAsync(Guid messageId);
         Task<int> GetMessagePositionAsync(Guid conversationId, Guid currentId, Guid messageId);
         Task<(IEnumerable<MessageBasicModel> items, int totalItems)> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize);
+        Task<(IEnumerable<ConversationMediaItemModel> items, int totalItems)> GetConversationMediaAsync(Guid conversationId, Guid currentId, int page, int pageSize);
     }
 }

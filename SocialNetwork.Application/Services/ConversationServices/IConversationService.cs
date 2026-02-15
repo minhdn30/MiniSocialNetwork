@@ -19,5 +19,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
         Task<int> GetUnreadConversationCountAsync(Guid currentId);
         Task<ConversationMessagesResponse> GetMessageContextAsync(Guid conversationId, Guid currentId, Guid messageId, int pageSize);
         Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize);
+        Task<PagedResponse<ConversationMediaItemModel>> GetConversationMediaAsync(Guid conversationId, Guid currentId, int page, int pageSize);
     }
 }
