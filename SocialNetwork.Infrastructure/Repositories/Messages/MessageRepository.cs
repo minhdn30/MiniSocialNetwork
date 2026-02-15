@@ -193,6 +193,48 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
             return (items, totalItems);
         }
 
+        public async Task<(IEnumerable<ConversationMediaItemModel> items, int totalItems)> GetConversationFilesAsync(Guid conversationId, Guid currentId, int page, int pageSize)
+        {
+            var member = await _context.ConversationMembers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
+                            cm.AccountId == currentId &&
+                            !cm.HasLeft);
+            var clearedAt = member?.ClearedAt;
+
+            var query = _context.MessageMedias
+                .AsNoTracking()
+                .Where(mm => mm.Message.ConversationId == conversationId &&
+                            (clearedAt == null || mm.Message.SentAt >= clearedAt) &&
+                            mm.Message.Account.Status == AccountStatusEnum.Active &&
+                            !mm.Message.IsRecalled &&
+                            !mm.Message.HiddenBy.Any(hb => hb.AccountId == currentId) &&
+                            mm.MediaType == MediaTypeEnum.Document)
+                .OrderByDescending(mm => mm.Message.SentAt)
+                .ThenByDescending(mm => mm.CreatedAt)
+                .ThenByDescending(mm => mm.MessageMediaId);
+
+            var totalItems = await query.CountAsync();
+            var items = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(mm => new ConversationMediaItemModel
+                {
+                    MessageId = mm.MessageId,
+                    MessageMediaId = mm.MessageMediaId,
+                    MediaUrl = mm.MediaUrl,
+                    ThumbnailUrl = mm.ThumbnailUrl,
+                    MediaType = mm.MediaType,
+                    FileName = mm.FileName,
+                    FileSize = mm.FileSize,
+                    SentAt = mm.Message.SentAt,
+                    CreatedAt = mm.CreatedAt
+                })
+                .ToListAsync();
+
+            return (items, totalItems);
+        }
+
         public async Task<(IEnumerable<MessageBasicModel> items, int totalItems)> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize)
         {
             var member = await _context.ConversationMembers
