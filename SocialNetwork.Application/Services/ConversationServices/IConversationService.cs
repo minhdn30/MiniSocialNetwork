@@ -1,5 +1,6 @@
 ﻿using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.ConversationDTOs;
+using SocialNetwork.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,5 +18,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
         Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, int page, int pageSize);
         Task<int> GetUnreadConversationCountAsync(Guid currentId);
         Task<ConversationMessagesResponse> GetMessageContextAsync(Guid conversationId, Guid currentId, Guid messageId, int pageSize);
+        Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize);
     }
 }

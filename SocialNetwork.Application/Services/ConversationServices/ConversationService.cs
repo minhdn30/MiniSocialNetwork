@@ -314,5 +314,17 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 }
             };
         }
+
+        public async Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize)
+        {
+            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
+            {
+                throw new ForbiddenException("You are not a member of this conversation.");
+            }
+
+            var (items, totalItems) = await _messageRepository.SearchMessagesAsync(conversationId, currentId, keyword, page, pageSize);
+
+            return new PagedResponse<MessageBasicModel>(items, page, pageSize, totalItems);
+        }
     }
 }
