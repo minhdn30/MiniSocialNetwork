@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Domain.Entities;
+﻿using Microsoft.EntityFrameworkCore;
+using SocialNetwork.Domain.Entities;
 using SocialNetwork.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -18,6 +19,13 @@ namespace SocialNetwork.Infrastructure.Repositories.MessageMedias
         public Task AddMessageMediasAsync(List<MessageMedia> medias)
         {
             return _context.MessageMedias.AddRangeAsync(medias);
+        }
+
+        public Task<MessageMedia?> GetByIdWithMessageAsync(Guid messageMediaId)
+        {
+            return _context.MessageMedias
+                .Include(mm => mm.Message)
+                .FirstOrDefaultAsync(mm => mm.MessageMediaId == messageMediaId);
         }
     }
 }
