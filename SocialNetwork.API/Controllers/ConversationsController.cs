@@ -141,6 +141,21 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
+        [HttpGet("{conversationId}/messages/search")]
+        public async Task<IActionResult> SearchMessages([FromRoute] Guid conversationId, [FromQuery] string keyword, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (string.IsNullOrWhiteSpace(keyword) || keyword.Trim().Length < 2)
+                return BadRequest(new { message = "Keyword must be at least 2 characters." });
+
+            var result = await _conversationService.SearchMessagesAsync(conversationId, currentId.Value, keyword, page, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
         [HttpGet("unread-count")]
         public async Task<IActionResult> GetUnreadCount()
         {

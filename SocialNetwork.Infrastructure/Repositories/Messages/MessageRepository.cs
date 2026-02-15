@@ -150,5 +150,79 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
 
             return position;
         }
+
+        public async Task<(IEnumerable<MessageBasicModel> items, int totalItems)> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize)
+        {
+            var member = await _context.ConversationMembers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
+                            cm.AccountId == currentId &&
+                            !cm.HasLeft);
+            var clearedAt = member?.ClearedAt;
+
+            var query = _context.Messages
+                .AsNoTracking()
+                .Where(m => m.ConversationId == conversationId &&
+                       (clearedAt == null || m.SentAt >= clearedAt) &&
+                       m.Account.Status == AccountStatusEnum.Active &&
+                       !m.HiddenBy.Any(hb => hb.AccountId == currentId) &&
+                       !m.IsRecalled &&
+                       m.MessageType != MessageTypeEnum.System &&
+                       m.Content != null && m.Content != "")
+                .AsQueryable();
+
+            // Split keyword into words, each word must match (fuzzy, accent-insensitive)
+            var words = keyword.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var word in words)
+            {
+                var pattern = $"%{word}%";
+                query = query.Where(m => EF.Functions.ILike(
+                    AppDbContext.Unaccent(m.Content!), AppDbContext.Unaccent(pattern)));
+            }
+
+            query = query.OrderByDescending(m => m.SentAt);
+
+            var totalItems = await query.CountAsync();
+            var messages = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(m => new MessageBasicModel
+                {
+                    MessageId = m.MessageId,
+                    Content = m.Content,
+                    MessageType = m.MessageType,
+                    SentAt = m.SentAt,
+                    IsEdited = m.IsEdited,
+                    IsRecalled = m.IsRecalled,
+                    SystemMessageDataJson = m.SystemMessageDataJson,
+                    IsPinned = false,
+
+                    Sender = new AccountChatInfoModel
+                    {
+                        AccountId = m.Account.AccountId,
+                        Username = m.Account.Username,
+                        FullName = m.Account.FullName,
+                        AvatarUrl = m.Account.AvatarUrl,
+                        IsActive = m.Account.Status == AccountStatusEnum.Active
+                    },
+
+                    Medias = m.Medias
+                        .OrderBy(mm => mm.CreatedAt)
+                        .Select(mm => new MessageMediaBasicModel
+                        {
+                            MessageMediaId = mm.MessageMediaId,
+                            MediaUrl = mm.MediaUrl,
+                            ThumbnailUrl = mm.ThumbnailUrl,
+                            MediaType = mm.MediaType,
+                            FileName = mm.FileName,
+                            FileSize = mm.FileSize,
+                            CreatedAt = mm.CreatedAt,
+                        })
+                        .ToList()
+                })
+                .ToListAsync();
+
+            return (messages, totalItems);
+        }
     }
 }
