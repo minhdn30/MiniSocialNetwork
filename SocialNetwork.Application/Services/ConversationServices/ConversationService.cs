@@ -337,5 +337,16 @@ namespace SocialNetwork.Application.Services.ConversationServices
             var (items, totalItems) = await _messageRepository.GetConversationMediaAsync(conversationId, currentId, page, pageSize);
             return new PagedResponse<ConversationMediaItemModel>(items, page, pageSize, totalItems);
         }
+
+        public async Task<PagedResponse<ConversationMediaItemModel>> GetConversationFilesAsync(Guid conversationId, Guid currentId, int page, int pageSize)
+        {
+            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
+            {
+                throw new ForbiddenException("You are not a member of this conversation.");
+            }
+
+            var (items, totalItems) = await _messageRepository.GetConversationFilesAsync(conversationId, currentId, page, pageSize);
+            return new PagedResponse<ConversationMediaItemModel>(items, page, pageSize, totalItems);
+        }
     }
 }
