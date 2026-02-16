@@ -28,7 +28,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
             var clearedAt = member?.ClearedAt;
             var query = _context.Messages
                 .AsNoTracking()
-                .Where(m => m.ConversationId == conversationId && 
+                .Where(m => m.ConversationId == conversationId &&
                        (clearedAt == null || m.SentAt >= clearedAt) &&
                        m.Account.Status == AccountStatusEnum.Active &&
                        !m.HiddenBy.Any(hb => hb.AccountId == currentId))
@@ -72,6 +72,77 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 .ToList()
                 })
                 .ToListAsync();
+
+            if (messages.Count > 0)
+            {
+                var pageMessageIds = messages.Select(m => m.MessageId).ToList();
+                var conversationMembers = _context.ConversationMembers
+                    .AsNoTracking()
+                    .Where(cm => cm.ConversationId == conversationId);
+
+                var reactedByRows = await (
+                    from mr in _context.MessageReacts.AsNoTracking()
+                    join cm in conversationMembers
+                        on mr.AccountId equals cm.AccountId into cmGroup
+                    from cm in cmGroup.DefaultIfEmpty()
+                    where pageMessageIds.Contains(mr.MessageId) &&
+                          mr.Account.Status == AccountStatusEnum.Active
+                    select new
+                    {
+                        mr.MessageId,
+                        mr.AccountId,
+                        mr.ReactType,
+                        mr.CreatedAt,
+                        Username = mr.Account.Username,
+                        FullName = mr.Account.FullName,
+                        AvatarUrl = mr.Account.AvatarUrl,
+                        Nickname = cm == null ? null : cm.Nickname
+                    })
+                    .ToListAsync();
+
+                var reactLookup = reactedByRows
+                    .GroupBy(x => x.MessageId)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+
+                foreach (var message in messages)
+                {
+                    if (!reactLookup.TryGetValue(message.MessageId, out var messageReactRows))
+                    {
+                        continue;
+                    }
+
+                    var reactedBy = messageReactRows
+                        .Select(x => new MessageReactAccountModel
+                        {
+                            AccountId = x.AccountId,
+                            Username = x.Username,
+                            FullName = x.FullName,
+                            AvatarUrl = x.AvatarUrl,
+                            Nickname = x.Nickname,
+                            ReactType = x.ReactType,
+                            CreatedAt = x.CreatedAt
+                        })
+                        .OrderByDescending(x => x.AccountId == currentId)
+                        .ThenBy(x => x.CreatedAt)
+                        .ToList();
+
+                    message.ReactedBy = reactedBy;
+                    message.Reacts = reactedBy
+                        .GroupBy(x => x.ReactType)
+                        .Select(g => new MessageReactSummaryModel
+                        {
+                            ReactType = g.Key,
+                            Count = g.Count()
+                        })
+                        .OrderBy(x => x.ReactType)
+                        .ToList();
+
+                    message.CurrentUserReactType = reactedBy
+                        .FirstOrDefault(x => x.AccountId == currentId)
+                        ?.ReactType;
+                }
+            }
+
             return (messages, totalItems);
         }
         public Task AddMessageAsync(Message message)
