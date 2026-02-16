@@ -26,6 +26,7 @@ using SocialNetwork.Application.Services.FollowServices;
 using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Application.Services.MessageMediaServices;
 using SocialNetwork.Application.Services.MessageHiddenServices;
+using SocialNetwork.Application.Services.MessageReactServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PinnedMessageServices;
 using SocialNetwork.Application.Services.PostReactServices;
@@ -128,6 +129,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IConversationService, ConversationService>();
             builder.Services.AddScoped<IConversationMemberService, ConversationMemberService>();
             builder.Services.AddScoped<IMessageService, MessageService>();
+            builder.Services.AddScoped<IMessageReactService, MessageReactService>();
             builder.Services.AddScoped<IMessageHiddenService, MessageHiddenService>();
             builder.Services.AddScoped<IMessageMediaService, MessageMediaService>();
             builder.Services.AddScoped<IPinnedMessageService, PinnedMessageService>();

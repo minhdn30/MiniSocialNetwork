@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.PinnedMessageDTOs;
 using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
@@ -106,6 +107,8 @@ namespace SocialNetwork.Application.Mapping
             // Infrastructure model mappings
             CreateMap<AccountBasicInfoModel, AccountBasicInfoResponse>();
             CreateMap<AccountChatInfoModel, AccountChatInfoResponse>();
+            CreateMap<MessageMediaBasicModel, MessageMediaResponse>();
+            CreateMap<PinnedMessageModel, PinnedMessageResponse>();
             CreateMap<CommentWithReplyCountModel, CommentResponse>();
             CreateMap<ReplyCommentModel, CommentResponse>();
         }

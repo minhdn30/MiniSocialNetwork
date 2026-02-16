@@ -429,9 +429,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<MessageReact>()
                 .HasKey(mr => new { mr.MessageId, mr.AccountId });
 
-            // Index: count reactions by message
+            // Composite index for reaction stats by message/type.
+            // PK (MessageId, AccountId) already covers lookups by MessageId.
             modelBuilder.Entity<MessageReact>()
-                .HasIndex(mr => mr.MessageId);
+                .HasIndex(mr => new { mr.MessageId, mr.ReactType })
+                .HasDatabaseName("IX_MessageReacts_MessageId_ReactType");
 
             // Index: get reactions by account
             modelBuilder.Entity<MessageReact>()

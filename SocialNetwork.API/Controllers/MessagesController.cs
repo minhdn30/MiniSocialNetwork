@@ -6,6 +6,7 @@ using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.ConversationMemberServices;
 using SocialNetwork.Application.Services.ConversationServices;
 using SocialNetwork.Application.Services.MessageHiddenServices;
+using SocialNetwork.Application.Services.MessageReactServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PinnedMessageServices;
 
@@ -16,6 +17,7 @@ namespace SocialNetwork.API.Controllers
     public class MessagesController : ControllerBase
     {
         private readonly IMessageService _messageService;
+        private readonly IMessageReactService _messageReactService;
         private readonly IMessageHiddenService _messageHiddenService;
         private readonly IConversationService _conversationService;
         private readonly IConversationMemberService _conversationMemberService;
@@ -23,12 +25,14 @@ namespace SocialNetwork.API.Controllers
 
         public MessagesController(
             IMessageService messageService, 
+            IMessageReactService messageReactService,
             IMessageHiddenService messageHiddenService,
             IConversationService conversationService, 
             IConversationMemberService conversationMemberService,
             IPinnedMessageService pinnedMessageService)
         {
             _messageService = messageService;
+            _messageReactService = messageReactService;
             _messageHiddenService = messageHiddenService;
             _conversationService = conversationService;
             _conversationMemberService = conversationMemberService;
@@ -152,5 +156,43 @@ namespace SocialNetwork.API.Controllers
             await _pinnedMessageService.UnpinMessageAsync(conversationId, messageId, currentId.Value);
             return Ok(new { message = "Message unpinned successfully." });
         }
+        [Authorize]
+        [HttpGet("{messageId}/react")]
+        public async Task<IActionResult> GetMessageReact(Guid messageId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _messageReactService.GetMessageReactStateAsync(messageId, currentId.Value);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPut("{messageId}/react")]
+        public async Task<IActionResult> SetMessageReact(Guid messageId, [FromBody] SetMessageReactRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (request == null)
+                return BadRequest(new { message = "React payload is required." });
+
+            var result = await _messageReactService.SetMessageReactAsync(messageId, currentId.Value, request.ReactType);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpDelete("{messageId}/react")]
+        public async Task<IActionResult> RemoveMessageReact(Guid messageId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _messageReactService.RemoveMessageReactAsync(messageId, currentId.Value);
+            return Ok(result);
+        }
+
     }
 }
