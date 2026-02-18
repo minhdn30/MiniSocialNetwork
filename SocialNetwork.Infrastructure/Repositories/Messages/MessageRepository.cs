@@ -69,7 +69,21 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     FileSize = mm.FileSize,
                     CreatedAt = mm.CreatedAt,
                 })
-                .ToList()
+                .ToList(),
+
+                    ReplyTo = m.ReplyToMessageId != null ? new ReplyInfoModel
+                    {
+                        MessageId = m.ReplyToMessage!.MessageId,
+                        Content = m.ReplyToMessage.IsRecalled ? null : m.ReplyToMessage.Content,
+                        IsRecalled = m.ReplyToMessage.IsRecalled,
+                        MessageType = m.ReplyToMessage.MessageType,
+                        ReplySenderId = m.ReplyToMessage.AccountId, // For nickname lookup
+                        Sender = new ReplySenderInfoModel
+                        {
+                            Username = m.ReplyToMessage.Account.Username,
+                            DisplayName = m.ReplyToMessage.Account.Username // Will be updated in post-processing
+                        }
+                    } : null
                 })
                 .ToListAsync();
 
@@ -79,6 +93,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 var conversationMembers = _context.ConversationMembers
                     .AsNoTracking()
                     .Where(cm => cm.ConversationId == conversationId);
+
+                // Build nickname lookup for reply senders
+                var memberNicknames = await conversationMembers
+                    .Select(cm => new { cm.AccountId, cm.Nickname })
+                    .ToDictionaryAsync(x => x.AccountId, x => x.Nickname);
 
                 var reactedByRows = await (
                     from mr in _context.MessageReacts.AsNoTracking()
@@ -141,6 +160,15 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                         .FirstOrDefault(x => x.AccountId == currentId)
                         ?.ReactType;
                 }
+
+                // Post-process: populate DisplayName for reply senders with nicknames
+                foreach (var message in messages)
+                {
+                    if (message.ReplyTo?.Sender != null && memberNicknames.TryGetValue(message.ReplyTo.ReplySenderId, out var nickname) && !string.IsNullOrEmpty(nickname))
+                    {
+                        message.ReplyTo.Sender.DisplayName = nickname;
+                    }
+                }
             }
 
             return (messages, totalItems);
@@ -188,7 +216,9 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
 
         public async Task<Message?> GetMessageByIdAsync(Guid messageId)
         {
-            return await _context.Messages.FirstOrDefaultAsync(m => m.MessageId == messageId);
+            return await _context.Messages
+                .Include(m => m.Account)
+                .FirstOrDefaultAsync(m => m.MessageId == messageId);
         }
 
         public async Task<int> GetMessagePositionAsync(Guid conversationId, Guid currentId, Guid messageId)
@@ -373,9 +403,41 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                             FileSize = mm.FileSize,
                             CreatedAt = mm.CreatedAt,
                         })
-                        .ToList()
+                        .ToList(),
+
+                    ReplyTo = m.ReplyToMessageId != null ? new ReplyInfoModel
+                    {
+                        MessageId = m.ReplyToMessage!.MessageId,
+                        Content = m.ReplyToMessage.IsRecalled ? null : m.ReplyToMessage.Content,
+                        IsRecalled = m.ReplyToMessage.IsRecalled,
+                        MessageType = m.ReplyToMessage.MessageType,
+                        ReplySenderId = m.ReplyToMessage.AccountId, // For nickname lookup
+                        Sender = new ReplySenderInfoModel
+                        {
+                            Username = m.ReplyToMessage.Account.Username,
+                            DisplayName = m.ReplyToMessage.Account.Username // Will be updated in post-processing
+                        }
+                    } : null
                 })
                 .ToListAsync();
+
+            // Post-process: populate DisplayName for reply senders with nicknames
+            if (messages.Count > 0)
+            {
+                var memberNicknames = await _context.ConversationMembers
+                    .AsNoTracking()
+                    .Where(cm => cm.ConversationId == conversationId)
+                    .Select(cm => new { cm.AccountId, cm.Nickname })
+                    .ToDictionaryAsync(x => x.AccountId, x => x.Nickname);
+
+                foreach (var message in messages)
+                {
+                    if (message.ReplyTo?.Sender != null && memberNicknames.TryGetValue(message.ReplyTo.ReplySenderId, out var nickname) && !string.IsNullOrEmpty(nickname))
+                    {
+                        message.ReplyTo.Sender.DisplayName = nickname;
+                    }
+                }
+            }
 
             return (messages, totalItems);
         }

@@ -21,6 +21,9 @@ namespace SocialNetwork.Domain.Entities
         public bool IsRecalled { get; set; } = false;
         public DateTime? RecalledAt { get; set; }
 
+        // Reply
+        public Guid? ReplyToMessageId { get; set; }
+
         // Data for System Messages (JSON)
         // VD: {"action": 1, "targetAccountId": "...", "targetUsername": "..."}
         public string? SystemMessageDataJson { get; set; }
@@ -28,6 +31,7 @@ namespace SocialNetwork.Domain.Entities
         // Navigation properties
         public Conversation Conversation { get; set; } = null!;
         public Account Account { get; set; } = null!;
+        public Message? ReplyToMessage { get; set; }
         public ICollection<MessageMedia> Medias { get; set; } = new List<MessageMedia>();
         public ICollection<MessageReact> Reacts { get; set; } = new List<MessageReact>();
         public ICollection<MessageHidden> HiddenBy { get; set; } = new List<MessageHidden>();

@@ -12,5 +12,6 @@ namespace SocialNetwork.Application.DTOs.MessageDTOs
         public string? Content { get; set; }
         public string? TempId { get; set; }
         public List<IFormFile>? MediaFiles { get; set; }
+        public Guid? ReplyToMessageId { get; set; }
     }
 }

@@ -381,6 +381,13 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasForeignKey(m => m.AccountId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Message Reply (Self-Reference)
+            modelBuilder.Entity<Message>()
+                .HasOne(m => m.ReplyToMessage)
+                .WithMany()
+                .HasForeignKey(m => m.ReplyToMessageId)
+                .OnDelete(DeleteBehavior.SetNull);
+
 
 
             // =====================

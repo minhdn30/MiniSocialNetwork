@@ -171,6 +171,36 @@ namespace SocialNetwork.Application.Services.MessageServices
                         actualConversationId = conversationId.Value;
                     }
 
+                    // Validate reply target
+                    ReplyInfoModel? replyInfo = null;
+                    if (request.ReplyToMessageId.HasValue)
+                    {
+                        var replyTarget = await _messageRepository.GetMessageByIdAsync(request.ReplyToMessageId.Value);
+                        if (replyTarget == null)
+                            throw new BadRequestException("Reply target message not found.");
+                        if (replyTarget.ConversationId != actualConversationId)
+                            throw new BadRequestException("Reply target message does not belong to this conversation.");
+                        if (replyTarget.MessageType == MessageTypeEnum.System)
+                            throw new BadRequestException("Cannot reply to a system message.");
+
+                        var replySenderMember = await _conversationMemberRepository
+                            .GetConversationMemberAsync(actualConversationId, replyTarget.AccountId);
+
+                        replyInfo = new ReplyInfoModel
+                        {
+                            MessageId = replyTarget.MessageId,
+                            Content = replyTarget.IsRecalled ? null : replyTarget.Content,
+                            IsRecalled = replyTarget.IsRecalled,
+                            MessageType = replyTarget.MessageType,
+                            ReplySenderId = replyTarget.AccountId,
+                            Sender = new ReplySenderInfoModel
+                            {
+                                Username = replyTarget.Account?.Username ?? "",
+                                DisplayName = replySenderMember?.Nickname ?? replyTarget.Account?.Username ?? ""
+                            }
+                        };
+                    }
+
                     // Create message
                     var message = new Message
                     {
@@ -180,7 +210,8 @@ namespace SocialNetwork.Application.Services.MessageServices
                         MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
                         SentAt = now,
                         IsEdited = false,
-                        IsRecalled = false
+                        IsRecalled = false,
+                        ReplyToMessageId = request.ReplyToMessageId
                     };
                     await _messageRepository.AddMessageAsync(message);
 
@@ -198,6 +229,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                     var result = _mapper.Map<SendMessageResponse>(message);
                     result.TempId = request.TempId;
                     result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
+                    result.ReplyTo = replyInfo;
                     if (mediaEntities.Any())
                     {
                         result.Medias = _mapper.Map<List<MessageMediaResponse>>(mediaEntities);
@@ -302,6 +334,36 @@ namespace SocialNetwork.Application.Services.MessageServices
             return await _unitOfWork.ExecuteInTransactionAsync(
                 async () =>
                 {
+                    // Validate reply target
+                    ReplyInfoModel? replyInfo = null;
+                    if (request.ReplyToMessageId.HasValue)
+                    {
+                        var replyTarget = await _messageRepository.GetMessageByIdAsync(request.ReplyToMessageId.Value);
+                        if (replyTarget == null)
+                            throw new BadRequestException("Reply target message not found.");
+                        if (replyTarget.ConversationId != conversationId)
+                            throw new BadRequestException("Reply target message does not belong to this conversation.");
+                        if (replyTarget.MessageType == MessageTypeEnum.System)
+                            throw new BadRequestException("Cannot reply to a system message.");
+
+                        var replySenderMember = await _conversationMemberRepository
+                            .GetConversationMemberAsync(conversationId, replyTarget.AccountId);
+
+                        replyInfo = new ReplyInfoModel
+                        {
+                            MessageId = replyTarget.MessageId,
+                            Content = replyTarget.IsRecalled ? null : replyTarget.Content,
+                            IsRecalled = replyTarget.IsRecalled,
+                            MessageType = replyTarget.MessageType,
+                            ReplySenderId = replyTarget.AccountId,
+                            Sender = new ReplySenderInfoModel
+                            {
+                                Username = replyTarget.Account?.Username ?? "",
+                                DisplayName = replySenderMember?.Nickname ?? replyTarget.Account?.Username ?? ""
+                            }
+                        };
+                    }
+
                     // create message in existing conversation
                     var message = new Message
                     {
@@ -311,7 +373,8 @@ namespace SocialNetwork.Application.Services.MessageServices
                         MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
                         SentAt = now,
                         IsEdited = false,
-                        IsRecalled = false
+                        IsRecalled = false,
+                        ReplyToMessageId = request.ReplyToMessageId
                     };
                     await _messageRepository.AddMessageAsync(message);
                     
@@ -329,6 +392,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                     var result = _mapper.Map<SendMessageResponse>(message);
                     result.TempId = request.TempId;
                     result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
+                    result.ReplyTo = replyInfo;
                     if (mediaEntities.Any())
                     {
                         result.Medias = _mapper.Map<List<MessageMediaResponse>>(mediaEntities);

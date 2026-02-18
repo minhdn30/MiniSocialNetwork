@@ -23,5 +23,6 @@ namespace SocialNetwork.Infrastructure.Models
         public List<MessageReactAccountModel> ReactedBy { get; set; } = new();
         public bool IsPinned { get; set; }
         public ReactEnum? CurrentUserReactType { get; set; }
+        public ReplyInfoModel? ReplyTo { get; set; }
     }
 }
