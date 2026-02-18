@@ -18,8 +18,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
         {
             _context = context;
         }
-        public async Task<(IEnumerable<MessageBasicModel> msg, int TotalItems)> GetMessagesByConversationId(Guid conversationId, Guid currentId, int page, int pageSize)
+        public async Task<(IReadOnlyList<MessageBasicModel> Items, string? OlderCursor, string? NewerCursor, bool HasMoreOlder, bool HasMoreNewer)>
+            GetMessagesByConversationId(Guid conversationId, Guid currentId, string? cursor, int pageSize)
         {
+            if (pageSize <= 0) pageSize = 20;
+
             var member = await _context.ConversationMembers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
@@ -33,9 +36,21 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                        m.Account.Status == AccountStatusEnum.Active &&
                        !m.HiddenBy.Any(hb => hb.AccountId == currentId))
                 .OrderByDescending(m => m.SentAt);
+
             var totalItems = await query.CountAsync();
+
+            var offset = 0;
+            if (!string.IsNullOrWhiteSpace(cursor) && int.TryParse(cursor, out var parsedOffset) && parsedOffset > 0)
+            {
+                offset = parsedOffset;
+            }
+            if (offset > totalItems)
+            {
+                offset = totalItems;
+            }
+
             var messages = await query
-                .Skip((page - 1) * pageSize)
+                .Skip(offset)
                 .Take(pageSize)
                 .Select(m => new MessageBasicModel
                 {
@@ -46,7 +61,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     IsEdited = m.IsEdited,
                     IsRecalled = m.IsRecalled,
                     SystemMessageDataJson = m.SystemMessageDataJson,
-                    IsPinned = _context.PinnedMessages.Any(pm => pm.ConversationId == conversationId && pm.MessageId == m.MessageId),
+                    IsPinned = false,
 
                     Sender = new AccountChatInfoModel
                     {
@@ -57,25 +72,17 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                         IsActive = m.Account.Status == AccountStatusEnum.Active
                     },
 
-                    Medias = m.Medias
-                .OrderBy(mm => mm.CreatedAt)
-                .Select(mm => new MessageMediaBasicModel
-                {
-                    MessageMediaId = mm.MessageMediaId,
-                    MediaUrl = mm.MediaUrl,
-                    ThumbnailUrl = mm.ThumbnailUrl,
-                    MediaType = mm.MediaType,
-                    FileName = mm.FileName,
-                    FileSize = mm.FileSize,
-                    CreatedAt = mm.CreatedAt,
-                })
-                .ToList(),
+                    Medias = new List<MessageMediaBasicModel>(),
 
                     ReplyTo = m.ReplyToMessageId != null ? new ReplyInfoModel
                     {
                         MessageId = m.ReplyToMessage!.MessageId,
-                        Content = m.ReplyToMessage.IsRecalled ? null : m.ReplyToMessage.Content,
+                        Content = (m.ReplyToMessage.IsRecalled ||
+                                   m.ReplyToMessage.HiddenBy.Any(hb => hb.AccountId == currentId))
+                            ? null
+                            : m.ReplyToMessage.Content,
                         IsRecalled = m.ReplyToMessage.IsRecalled,
+                        IsHidden = m.ReplyToMessage.HiddenBy.Any(hb => hb.AccountId == currentId),
                         MessageType = m.ReplyToMessage.MessageType,
                         ReplySenderId = m.ReplyToMessage.AccountId, // For nickname lookup
                         Sender = new ReplySenderInfoModel
@@ -93,6 +100,38 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 var conversationMembers = _context.ConversationMembers
                     .AsNoTracking()
                     .Where(cm => cm.ConversationId == conversationId);
+
+                // Batch-load medias for all messages in the current slice to avoid per-message subqueries
+                var pageMedias = await _context.MessageMedias
+                    .AsNoTracking()
+                    .Where(mm => pageMessageIds.Contains(mm.MessageId))
+                    .OrderBy(mm => mm.CreatedAt)
+                    .Select(mm => new
+                    {
+                        mm.MessageId,
+                        Media = new MessageMediaBasicModel
+                        {
+                            MessageMediaId = mm.MessageMediaId,
+                            MediaUrl = mm.MediaUrl,
+                            ThumbnailUrl = mm.ThumbnailUrl,
+                            MediaType = mm.MediaType,
+                            FileName = mm.FileName,
+                            FileSize = mm.FileSize,
+                            CreatedAt = mm.CreatedAt
+                        }
+                    })
+                    .ToListAsync();
+                var mediaLookup = pageMedias
+                    .GroupBy(x => x.MessageId)
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.Media).ToList());
+
+                // Batch-load pinned messages for this page
+                var pinnedMessageIds = await _context.PinnedMessages
+                    .AsNoTracking()
+                    .Where(pm => pm.ConversationId == conversationId && pageMessageIds.Contains(pm.MessageId))
+                    .Select(pm => pm.MessageId)
+                    .ToListAsync();
+                var pinnedSet = pinnedMessageIds.ToHashSet();
 
                 // Build nickname lookup for reply senders
                 var memberNicknames = await conversationMembers
@@ -125,6 +164,13 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
 
                 foreach (var message in messages)
                 {
+                    if (mediaLookup.TryGetValue(message.MessageId, out var medias))
+                    {
+                        message.Medias = medias;
+                    }
+
+                    message.IsPinned = pinnedSet.Contains(message.MessageId);
+
                     if (!reactLookup.TryGetValue(message.MessageId, out var messageReactRows))
                     {
                         continue;
@@ -171,7 +217,12 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 }
             }
 
-            return (messages, totalItems);
+            var hasMoreOlder = offset + messages.Count < totalItems;
+            var hasMoreNewer = offset > 0;
+            var olderCursor = hasMoreOlder ? (offset + messages.Count).ToString() : null;
+            var newerCursor = hasMoreNewer ? Math.Max(0, offset - pageSize).ToString() : null;
+
+            return (messages, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer);
         }
         public Task AddMessageAsync(Message message)
         {
@@ -391,25 +442,17 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                         IsActive = m.Account.Status == AccountStatusEnum.Active
                     },
 
-                    Medias = m.Medias
-                        .OrderBy(mm => mm.CreatedAt)
-                        .Select(mm => new MessageMediaBasicModel
-                        {
-                            MessageMediaId = mm.MessageMediaId,
-                            MediaUrl = mm.MediaUrl,
-                            ThumbnailUrl = mm.ThumbnailUrl,
-                            MediaType = mm.MediaType,
-                            FileName = mm.FileName,
-                            FileSize = mm.FileSize,
-                            CreatedAt = mm.CreatedAt,
-                        })
-                        .ToList(),
+                    Medias = new List<MessageMediaBasicModel>(),
 
                     ReplyTo = m.ReplyToMessageId != null ? new ReplyInfoModel
                     {
                         MessageId = m.ReplyToMessage!.MessageId,
-                        Content = m.ReplyToMessage.IsRecalled ? null : m.ReplyToMessage.Content,
+                        Content = (m.ReplyToMessage.IsRecalled ||
+                                   m.ReplyToMessage.HiddenBy.Any(hb => hb.AccountId == currentId))
+                            ? null
+                            : m.ReplyToMessage.Content,
                         IsRecalled = m.ReplyToMessage.IsRecalled,
+                        IsHidden = m.ReplyToMessage.HiddenBy.Any(hb => hb.AccountId == currentId),
                         MessageType = m.ReplyToMessage.MessageType,
                         ReplySenderId = m.ReplyToMessage.AccountId, // For nickname lookup
                         Sender = new ReplySenderInfoModel
@@ -421,9 +464,33 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                 })
                 .ToListAsync();
 
-            // Post-process: populate DisplayName for reply senders with nicknames
+            // Post-process: populate medias + DisplayName for reply senders with nicknames
             if (messages.Count > 0)
             {
+                var messageIds = messages.Select(m => m.MessageId).ToList();
+                var mediaRows = await _context.MessageMedias
+                    .AsNoTracking()
+                    .Where(mm => messageIds.Contains(mm.MessageId))
+                    .OrderBy(mm => mm.CreatedAt)
+                    .Select(mm => new
+                    {
+                        mm.MessageId,
+                        Media = new MessageMediaBasicModel
+                        {
+                            MessageMediaId = mm.MessageMediaId,
+                            MediaUrl = mm.MediaUrl,
+                            ThumbnailUrl = mm.ThumbnailUrl,
+                            MediaType = mm.MediaType,
+                            FileName = mm.FileName,
+                            FileSize = mm.FileSize,
+                            CreatedAt = mm.CreatedAt
+                        }
+                    })
+                    .ToListAsync();
+                var mediaLookup = mediaRows
+                    .GroupBy(x => x.MessageId)
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.Media).ToList());
+
                 var memberNicknames = await _context.ConversationMembers
                     .AsNoTracking()
                     .Where(cm => cm.ConversationId == conversationId)
@@ -432,6 +499,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
 
                 foreach (var message in messages)
                 {
+                    if (mediaLookup.TryGetValue(message.MessageId, out var medias))
+                    {
+                        message.Medias = medias;
+                    }
+
                     if (message.ReplyTo?.Sender != null && memberNicknames.TryGetValue(message.ReplyTo.ReplySenderId, out var nickname) && !string.IsNullOrEmpty(nickname))
                     {
                         message.ReplyTo.Sender.DisplayName = nickname;

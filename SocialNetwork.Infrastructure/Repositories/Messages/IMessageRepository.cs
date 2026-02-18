@@ -10,7 +10,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
 {
     public interface IMessageRepository
     {
-        Task<(IEnumerable<MessageBasicModel> msg, int TotalItems)> GetMessagesByConversationId(Guid conversationId, Guid currentId, int page, int pageSize);
+        Task<(IReadOnlyList<MessageBasicModel> Items, string? OlderCursor, string? NewerCursor, bool HasMoreOlder, bool HasMoreNewer)>
+            GetMessagesByConversationId(Guid conversationId, Guid currentId, string? cursor, int pageSize);
         Task AddMessageAsync(Message message);
         Task<bool> IsMessageNewer(Guid newMessageId, Guid? lastSeenMessageId);
         Task<int> CountUnreadMessagesAsync(Guid conversationId, Guid currentId, DateTime? lastSeenAt);

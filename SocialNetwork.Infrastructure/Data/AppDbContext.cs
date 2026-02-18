@@ -329,6 +329,11 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasIndex(cm => new { cm.AccountId, cm.HasLeft, cm.IsMuted, cm.ConversationId })
                 .HasDatabaseName("IX_ConversationMember_Account_State_Conversation");
 
+            // Index: member list / seen-status queries by conversation + active-state
+            modelBuilder.Entity<ConversationMember>()
+                .HasIndex(cm => new { cm.ConversationId, cm.HasLeft, cm.AccountId })
+                .HasDatabaseName("IX_ConversationMember_Conversation_HasLeft_Account");
+
             // Index: get members by conversation
             // Redundant with PK but good for clarity if needed, though PK (ConvId, AccId) already covers this
 
@@ -399,6 +404,11 @@ namespace SocialNetwork.Infrastructure.Data
             // Index: load media by message
             modelBuilder.Entity<MessageMedia>()
                 .HasIndex(mm => mm.MessageId);
+
+            // Index: media/files panel filtering by type and ordering by media created time
+            modelBuilder.Entity<MessageMedia>()
+                .HasIndex(mm => new { mm.MediaType, mm.CreatedAt, mm.MessageId })
+                .HasDatabaseName("IX_MessageMedia_Type_Created_Message");
 
             modelBuilder.Entity<MessageMedia>()
                 .HasOne(mm => mm.Message)

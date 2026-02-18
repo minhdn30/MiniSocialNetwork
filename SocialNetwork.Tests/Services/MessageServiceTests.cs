@@ -67,7 +67,7 @@ namespace SocialNetwork.Tests.Services
         #region GetMessagesByConversationIdAsync Tests
 
         [Fact]
-        public async Task GetMessagesByConversationIdAsync_ValidMember_ReturnsPagedResponse()
+        public async Task GetMessagesByConversationIdAsync_ValidMember_ReturnsCursorResponse()
         {
             // Arrange
             var conversationId = Guid.NewGuid();
@@ -79,18 +79,25 @@ namespace SocialNetwork.Tests.Services
 
             _conversationMemberRepositoryMock.Setup(x => x.IsMemberOfConversation(conversationId, currentId))
                 .ReturnsAsync(true);
-            _messageRepositoryMock.Setup(x => x.GetMessagesByConversationId(conversationId, currentId, 1, 20))
-                .Returns(Task.FromResult((messages.AsEnumerable(), 1)));
+            _messageRepositoryMock.Setup(x => x.GetMessagesByConversationId(conversationId, currentId, null, 20))
+                .Returns(Task.FromResult((
+                    (IReadOnlyList<MessageBasicModel>)messages,
+                    (string?)"1",
+                    (string?)null,
+                    true,
+                    false
+                )));
 
             // Act
-            var result = await _messageService.GetMessagesByConversationIdAsync(conversationId, currentId, 1, 20);
+            var result = await _messageService.GetMessagesByConversationIdAsync(conversationId, currentId, null, 20);
 
             // Assert
             result.Should().NotBeNull();
             result.Items.Should().HaveCount(1);
-            result.TotalItems.Should().Be(1);
-            result.Page.Should().Be(1);
-            result.PageSize.Should().Be(20);
+            result.HasMoreOlder.Should().BeTrue();
+            result.HasMoreNewer.Should().BeFalse();
+            result.OlderCursor.Should().Be("1");
+            result.NewerCursor.Should().BeNull();
         }
 
         [Fact]
@@ -104,7 +111,7 @@ namespace SocialNetwork.Tests.Services
                 .ReturnsAsync(false);
 
             // Act
-            var act = () => _messageService.GetMessagesByConversationIdAsync(conversationId, currentId, 1, 20);
+            var act = () => _messageService.GetMessagesByConversationIdAsync(conversationId, currentId, null, 20);
 
             // Assert
             await act.Should().ThrowAsync<ForbiddenException>()
