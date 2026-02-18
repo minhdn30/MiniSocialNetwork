@@ -11,7 +11,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
     public class ConversationMessagesResponse
     {
         public ConversationMetaData? MetaData { get; set; }
-        public PagedResponse<MessageBasicModel> Messages { get; set; } = null!;
+        public CursorResponse<MessageBasicModel> Messages { get; set; } = null!;
     }
 
     public class ConversationMetaData

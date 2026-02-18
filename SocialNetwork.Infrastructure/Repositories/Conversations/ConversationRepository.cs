@@ -212,14 +212,38 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                                 Username = msg.Account.Username,
                                 IsActive = msg.Account.Status == AccountStatusEnum.Active
                             },
-                            Medias = msg.Medias.Select(med => new MessageMediaBasicModel
-                            {
-                                MessageMediaId = med.MessageMediaId,
-                                MediaUrl = med.MediaUrl,
-                                MediaType = med.MediaType
-                            }).ToList()
+                            Medias = new List<MessageMediaBasicModel>()
                         }))
                     .ToListAsync();
+
+                // Batch-load medias for last messages to avoid per-message correlated subqueries
+                var mediaRows = await _context.MessageMedias
+                    .AsNoTracking()
+                    .Where(med => lastMessageIds.Contains(med.MessageId))
+                    .Select(med => new
+                    {
+                        med.MessageId,
+                        Media = new MessageMediaBasicModel
+                        {
+                            MessageMediaId = med.MessageMediaId,
+                            MediaUrl = med.MediaUrl,
+                            MediaType = med.MediaType
+                        }
+                    })
+                    .ToListAsync();
+                var mediaLookup = mediaRows
+                    .GroupBy(x => x.MessageId)
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.Media).ToList());
+
+                for (var i = 0; i < lastMessageRows.Count; i++)
+                {
+                    var row = lastMessageRows[i];
+                    if (mediaLookup.TryGetValue(row.Message.MessageId, out var medias))
+                    {
+                        row.Message.Medias = medias;
+                        lastMessageRows[i] = row;
+                    }
+                }
             }
 
             var lastMessageMap = lastMessageRows

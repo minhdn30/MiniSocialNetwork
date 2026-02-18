@@ -85,17 +85,20 @@ namespace SocialNetwork.Application.Services.ConversationServices
             return new PagedResponse<ConversationListItemResponse>(responseItems, page, pageSize, totalCount);
         }
 
-        public async Task<ConversationMessagesResponse> GetConversationMessagesWithMetaDataAsync(Guid conversationId, Guid currentId, int page, int pageSize)
+        public async Task<ConversationMessagesResponse> GetConversationMessagesWithMetaDataAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize)
         {
+            if (pageSize <= 0) pageSize = 20;
+
             if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
             {
                 throw new ForbiddenException("You are not a member of this conversation.");
             }
 
-            var (messages, totalItems) = await _messageRepository.GetMessagesByConversationId(conversationId, currentId, page, pageSize);
+            var (items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer) =
+                await _messageRepository.GetMessagesByConversationId(conversationId, currentId, cursor, pageSize);
 
             ConversationMetaData? metaData = null;
-            if (page == 1)
+            if (string.IsNullOrWhiteSpace(cursor))
             {
                 var repoMeta = await _conversationRepository.GetConversationMetaDataAsync(conversationId, currentId);
                 if (repoMeta != null)
@@ -142,18 +145,14 @@ namespace SocialNetwork.Application.Services.ConversationServices
             return new ConversationMessagesResponse
             {
                 MetaData = metaData,
-                Messages = new PagedResponse<MessageBasicModel>
-                {
-                    Items = messages,
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalItems = totalItems
-                }
+                Messages = new CursorResponse<MessageBasicModel>(items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer)
             };
         }
 
-        public async Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, int page, int pageSize)
+        public async Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, string? cursor, int pageSize)
         {
+            if (pageSize <= 0) pageSize = 20;
+
             if (currentId == otherId)
                 throw new BadRequestException("You cannot chat with yourself.");
 
@@ -161,7 +160,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
             if (conversation != null)
             {
-                var response = await GetConversationMessagesWithMetaDataAsync(conversation.ConversationId, currentId, page, pageSize);
+                var response = await GetConversationMessagesWithMetaDataAsync(conversation.ConversationId, currentId, cursor, pageSize);
                 return new PrivateConversationIncludeMessagesResponse
                 {
                     IsNew = false,
@@ -194,13 +193,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         IsActive = true
                     }
                 },
-                Messages = new PagedResponse<MessageBasicModel>
-                {
-                    Items = new List<MessageBasicModel>(),
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalItems = 0
-                }
+                Messages = new CursorResponse<MessageBasicModel>(new List<MessageBasicModel>(), null, null, false, false)
             };
         }
 
@@ -243,6 +236,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
         public async Task<ConversationMessagesResponse> GetMessageContextAsync(Guid conversationId, Guid currentId, Guid messageId, int pageSize)
         {
+            if (pageSize <= 0) pageSize = 20;
+
             if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
             {
                 throw new ForbiddenException("You are not a member of this conversation.");
@@ -256,8 +251,9 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
             var page = (int)Math.Ceiling((double)position / pageSize);
             if (page < 1) page = 1;
-
-            var (messages, totalItems) = await _messageRepository.GetMessagesByConversationId(conversationId, currentId, page, pageSize);
+            var contextOffsetCursor = ((page - 1) * pageSize).ToString();
+            var (items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer) =
+                await _messageRepository.GetMessagesByConversationId(conversationId, currentId, contextOffsetCursor, pageSize);
 
             // Always include metaData for context loading (frontend needs it when clearing messages)
             ConversationMetaData? metaData = null;
@@ -305,13 +301,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
             return new ConversationMessagesResponse
             {
                 MetaData = metaData,
-                Messages = new PagedResponse<MessageBasicModel>
-                {
-                    Items = messages,
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalItems = totalItems
-                }
+                Messages = new CursorResponse<MessageBasicModel>(items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer)
             };
         }
 

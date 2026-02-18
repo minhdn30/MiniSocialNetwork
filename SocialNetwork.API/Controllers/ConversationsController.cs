@@ -51,14 +51,14 @@ namespace SocialNetwork.API.Controllers
         }
         [Authorize]
         [HttpGet("private/{otherId}")]
-        public async Task<IActionResult> GetPrivateConversationIncludeMessages([FromRoute] Guid otherId, [FromQuery] int page = 1, 
+        public async Task<IActionResult> GetPrivateConversationIncludeMessages([FromRoute] Guid otherId, [FromQuery] string? cursor = null,
             [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            var result = await _conversationService.GetPrivateConversationWithMessagesByOtherIdAsync(currentId.Value, otherId, page, pageSize);
+            var result = await _conversationService.GetPrivateConversationWithMessagesByOtherIdAsync(currentId.Value, otherId, cursor, pageSize);
             return Ok(result);
         }
 
@@ -118,13 +118,13 @@ namespace SocialNetwork.API.Controllers
 
         [Authorize]
         [HttpGet("{conversationId}/messages")]
-        public async Task<IActionResult> GetConversationMessages([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> GetConversationMessages([FromRoute] Guid conversationId, [FromQuery] string? cursor = null, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            var result = await _conversationService.GetConversationMessagesWithMetaDataAsync(conversationId, currentId.Value, page, pageSize);
+            var result = await _conversationService.GetConversationMessagesWithMetaDataAsync(conversationId, currentId.Value, cursor, pageSize);
             return Ok(result);
         }
 

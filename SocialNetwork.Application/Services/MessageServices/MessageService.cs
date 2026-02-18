@@ -54,20 +54,17 @@ namespace SocialNetwork.Application.Services.MessageServices
             _unitOfWork = unitOfWork;
         }
 
-        public async Task<PagedResponse<MessageBasicModel>> GetMessagesByConversationIdAsync(Guid conversationId, Guid currentId, int page, int pageSize)
+        public async Task<CursorResponse<MessageBasicModel>> GetMessagesByConversationIdAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize)
         {
+            if (pageSize <= 0) pageSize = 20;
+
             if(! await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
             {
                 throw new ForbiddenException("You are not a member of this conversation.");
             }
-            var (messages, totalItems) = await _messageRepository.GetMessagesByConversationId(conversationId, currentId, page, pageSize);
-            return new PagedResponse<MessageBasicModel>
-            {
-                Items = messages,
-                Page = page,
-                PageSize = pageSize,
-                TotalItems = totalItems
-            };
+            var (items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer) =
+                await _messageRepository.GetMessagesByConversationId(conversationId, currentId, cursor, pageSize);
+            return new CursorResponse<MessageBasicModel>(items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer);
         }
         public async Task<SendMessageResponse> SendMessageInPrivateChatAsync(Guid senderId, SendMessageInPrivateChatRequest request)
         {
@@ -191,6 +188,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                             MessageId = replyTarget.MessageId,
                             Content = replyTarget.IsRecalled ? null : replyTarget.Content,
                             IsRecalled = replyTarget.IsRecalled,
+                            IsHidden = false,
                             MessageType = replyTarget.MessageType,
                             ReplySenderId = replyTarget.AccountId,
                             Sender = new ReplySenderInfoModel
@@ -354,6 +352,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                             MessageId = replyTarget.MessageId,
                             Content = replyTarget.IsRecalled ? null : replyTarget.Content,
                             IsRecalled = replyTarget.IsRecalled,
+                            IsHidden = false,
                             MessageType = replyTarget.MessageType,
                             ReplySenderId = replyTarget.AccountId,
                             Sender = new ReplySenderInfoModel

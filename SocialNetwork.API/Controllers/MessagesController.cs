@@ -41,12 +41,12 @@ namespace SocialNetwork.API.Controllers
 
         [Authorize]
         [HttpGet("{conversationId}")]
-        public async Task<IActionResult> GetMessagesByConversationId(Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> GetMessagesByConversationId(Guid conversationId, [FromQuery] string? cursor = null, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            var result = await _messageService.GetMessagesByConversationIdAsync(conversationId, currentId.Value, page, pageSize);
+            var result = await _messageService.GetMessagesByConversationIdAsync(conversationId, currentId.Value, cursor, pageSize);
             return Ok(result);
         }
 
