@@ -328,7 +328,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                 AddressPrivacy = profileModel.AddressPrivacy,
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
-                FollowingPrivacy = profileModel.FollowingPrivacy
+                FollowingPrivacy = profileModel.FollowingPrivacy,
+                GroupChatInvitePermission = profileModel.GroupChatInvitePermission
             };
 
             // enforce privacy logic
@@ -399,7 +400,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                 AddressPrivacy = profileModel.AddressPrivacy,
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
-                FollowingPrivacy = profileModel.FollowingPrivacy
+                FollowingPrivacy = profileModel.FollowingPrivacy,
+                GroupChatInvitePermission = profileModel.GroupChatInvitePermission
             };
 
             // Enforce privacy logic

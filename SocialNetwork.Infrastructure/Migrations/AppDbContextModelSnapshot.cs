@@ -135,6 +135,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<int>("FollowingPrivacy")
                         .HasColumnType("integer");
 
+                    b.Property<int>("GroupChatInvitePermission")
+                        .HasColumnType("integer");
+
                     b.Property<int>("PhonePrivacy")
                         .HasColumnType("integer");
 
