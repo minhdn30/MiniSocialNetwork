@@ -73,7 +73,7 @@ namespace SocialNetwork.API.Controllers
             return CreatedAtAction(nameof(GetPrivateConversation), new { otherId = request.OtherId }, conversation);
         }
         [Authorize]
-        [HttpPatch("{conversationId}/members/nickname")]
+        [HttpPatch("{conversationId:guid}/members/nickname")]
         public async Task<IActionResult> UpdateMemberNickname([FromRoute] Guid conversationId, [FromBody] ConversationMemberNicknameUpdateRequest request)
         {
             var currentId = User.GetAccountId();
@@ -83,7 +83,7 @@ namespace SocialNetwork.API.Controllers
             return NoContent();
         }
         [Authorize]
-        [HttpPatch("{conversationId}/mute")]
+        [HttpPatch("{conversationId:guid}/mute")]
         public async Task<IActionResult> UpdateMuteStatus([FromRoute] Guid conversationId, [FromBody] ConversationMuteUpdateRequest request)
         {
             var currentId = User.GetAccountId();
@@ -94,7 +94,7 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
-        [HttpPatch("{conversationId}/theme")]
+        [HttpPatch("{conversationId:guid}/theme")]
         public async Task<IActionResult> UpdateTheme([FromRoute] Guid conversationId, [FromBody] ConversationThemeUpdateRequest request)
         {
             var currentId = User.GetAccountId();
@@ -106,7 +106,7 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
-        [HttpDelete("{conversationId}/history")]
+        [HttpDelete("{conversationId:guid}/history")]
         public async Task<IActionResult> SoftDeleteChatHistory([FromRoute] Guid conversationId)
         {
             var currentId = User.GetAccountId();
@@ -117,7 +117,7 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
-        [HttpGet("{conversationId}/messages")]
+        [HttpGet("{conversationId:guid}/messages")]
         public async Task<IActionResult> GetConversationMessages([FromRoute] Guid conversationId, [FromQuery] string? cursor = null, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
@@ -129,7 +129,7 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
-        [HttpGet("{conversationId}/messages/context")]
+        [HttpGet("{conversationId:guid}/messages/context")]
         public async Task<IActionResult> GetMessageContext([FromRoute] Guid conversationId, [FromQuery] Guid messageId, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
@@ -141,7 +141,7 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
-        [HttpGet("{conversationId}/messages/search")]
+        [HttpGet("{conversationId:guid}/messages/search")]
         public async Task<IActionResult> SearchMessages([FromRoute] Guid conversationId, [FromQuery] string keyword, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
@@ -156,7 +156,28 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
-        [HttpGet("{conversationId}/media")]
+        [HttpGet("accounts/search")]
+        public async Task<IActionResult> SearchAccountsForGroupInvite([FromQuery] SearchGroupInviteAccountsRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var normalizedKeyword = request.Keyword?.Trim() ?? string.Empty;
+            if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
+                return BadRequest(new { message = "Keyword must be empty or at least 2 characters." });
+
+            var result = await _conversationService.SearchAccountsForGroupInviteAsync(
+                currentId.Value,
+                normalizedKeyword,
+                request.ExcludeAccountIds,
+                request.Limit);
+
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/media")]
         public async Task<IActionResult> GetConversationMedia([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
@@ -168,7 +189,7 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
-        [HttpGet("{conversationId}/files")]
+        [HttpGet("{conversationId:guid}/files")]
         public async Task<IActionResult> GetConversationFiles([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();

@@ -22,6 +22,7 @@ namespace SocialNetwork.Domain.Entities
         
         public AccountPrivacyEnum FollowerPrivacy { get; set; } = AccountPrivacyEnum.Public;
         public AccountPrivacyEnum FollowingPrivacy { get; set; } = AccountPrivacyEnum.Public;
+        public GroupChatInvitePermissionEnum GroupChatInvitePermission { get; set; } = GroupChatInvitePermissionEnum.Anyone;
 
         public virtual Account Account { get; set; } = null!;
     }

@@ -13,6 +13,7 @@ namespace SocialNetwork.Infrastructure.Data
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
         public static string Unaccent(string text) => throw new NotSupportedException();
+        public static double Similarity(string source, string target) => throw new NotSupportedException();
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
@@ -78,6 +79,8 @@ namespace SocialNetwork.Infrastructure.Data
             // Required for functional indexes - PostgreSQL requires IMMUTABLE functions for indexes
             modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(Unaccent), new[] { typeof(string) })!)
                 .HasName("immutable_unaccent");
+            modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(Similarity), new[] { typeof(string), typeof(string) })!)
+                .HasName("similarity");
 
 
 
