@@ -726,34 +726,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
             return new PagedResponse<MessageBasicModel>(items, page, pageSize, totalItems);
         }
 
-        public async Task<List<GroupInviteAccountSearchResponse>> SearchAccountsForGroupInviteAsync(Guid currentId, string keyword, IEnumerable<Guid>? excludeAccountIds, int limit = 10)
-        {
-            var normalizedKeyword = keyword?.Trim() ?? string.Empty;
-            if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
-            {
-                throw new BadRequestException("Keyword must be empty or at least 2 characters.");
-            }
-
-            var items = await _accountRepository.SearchAccountsForGroupInviteAsync(currentId, normalizedKeyword, excludeAccountIds, limit);
-            return items.Select(x => new GroupInviteAccountSearchResponse
-            {
-                AccountId = x.AccountId,
-                Username = x.Username,
-                FullName = x.FullName,
-                AvatarUrl = x.AvatarUrl,
-                IsFollowing = x.IsFollowing,
-                IsFollower = x.IsFollower,
-                MutualGroupCount = x.MutualGroupCount,
-                LastDirectMessageAt = x.LastDirectMessageAt,
-                MatchScore = x.MatchScore,
-                FollowingScore = x.FollowingScore,
-                FollowerScore = x.FollowerScore,
-                RecentChatScore = x.RecentChatScore,
-                MutualGroupScore = x.MutualGroupScore,
-                TotalScore = x.TotalScore
-            }).ToList();
-        }
-
         public async Task<PagedResponse<ConversationMemberInfo>> GetGroupConversationMembersAsync(
             Guid conversationId,
             Guid currentId,

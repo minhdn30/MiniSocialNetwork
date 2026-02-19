@@ -1,4 +1,5 @@
-﻿using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
+﻿using SocialNetwork.Application.DTOs.ConversationDTOs;
+using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,9 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
         Task SetMuteStatusAsync(Guid conversationId, Guid currentId, bool isMuted);
         Task SetThemeAsync(Guid conversationId, Guid currentId, ConversationThemeUpdateRequest request);
         Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request);
+        Task<List<GroupInviteAccountSearchResponse>> SearchAccountsForGroupInviteAsync(Guid currentId, string keyword, IEnumerable<Guid>? excludeAccountIds, int limit = 10);
+        Task<List<GroupInviteAccountSearchResponse>> SearchAccountsForAddGroupMembersAsync(Guid conversationId, Guid currentId, string keyword, IEnumerable<Guid>? excludeAccountIds, int limit = 10);
+        Task AddGroupMembersAsync(Guid conversationId, Guid currentId, AddGroupMembersRequest request);
         Task KickGroupMemberAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
         Task AssignGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
         Task LeaveGroupAsync(Guid conversationId, Guid currentId);
