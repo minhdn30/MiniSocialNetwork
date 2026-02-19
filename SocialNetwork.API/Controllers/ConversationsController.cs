@@ -226,6 +226,42 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
+        [HttpPatch("{conversationId:guid}/members/{targetAccountId:guid}/kick")]
+        public async Task<IActionResult> KickGroupMember([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationService.KickGroupMemberAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/members/{targetAccountId:guid}/assign-admin")]
+        public async Task<IActionResult> AssignGroupAdmin([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationService.AssignGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/leave")]
+        public async Task<IActionResult> LeaveGroupConversation([FromRoute] Guid conversationId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationService.LeaveGroupAsync(conversationId, currentId.Value);
+            return NoContent();
+        }
+
+        [Authorize]
         [HttpGet("{conversationId:guid}/media")]
         public async Task<IActionResult> GetConversationMedia([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {

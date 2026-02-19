@@ -81,7 +81,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         {
             var baseQuery = _context.ConversationMembers
                 .AsNoTracking()
-                .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted 
+                .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted && !cm.HasLeft
                 && cm.Conversation.Messages.Any(m => (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) 
                 && !m.HiddenBy.Any(hb => hb.AccountId == currentId)));
 
