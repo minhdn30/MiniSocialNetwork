@@ -3,6 +3,8 @@ using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.ConversationDTOs;
 using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
+using SocialNetwork.Application.DTOs.MessageDTOs;
+using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -36,9 +38,10 @@ namespace SocialNetwork.Application.Services.ConversationServices
         private readonly IUnitOfWork _unitOfWork;
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IMapper _mapper;
+        private readonly IRealtimeService _realtimeService;
         public ConversationService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IMessageRepository messageRepository, IAccountRepository accountRepository, IFollowRepository followRepository,
-            IUnitOfWork unitOfWork, ICloudinaryService cloudinaryService, IMapper mapper)
+            IUnitOfWork unitOfWork, ICloudinaryService cloudinaryService, IMapper mapper, IRealtimeService realtimeService)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
@@ -48,6 +51,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
             _unitOfWork = unitOfWork;
             _cloudinaryService = cloudinaryService;
             _mapper = mapper;
+            _realtimeService = realtimeService;
         }
         public async Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId)
         {
@@ -269,6 +273,154 @@ namespace SocialNetwork.Application.Services.ConversationServices
             };
         }
 
+        public async Task UpdateGroupConversationInfoAsync(Guid conversationId, Guid currentId, UpdateGroupConversationRequest request)
+        {
+            if (request == null)
+                throw new BadRequestException("Request is required.");
+
+            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
+                throw new ForbiddenException("You are not a member of this conversation.");
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            if (!conversation.IsGroup)
+                throw new BadRequestException("Only group conversations can be updated.");
+
+            var actor = await _accountRepository.GetAccountById(currentId);
+            if (actor == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+
+            var hasConversationNameInput = request.ConversationName != null;
+            var normalizedConversationName = request.ConversationName?.Trim();
+            if (hasConversationNameInput && string.IsNullOrWhiteSpace(normalizedConversationName))
+                throw new BadRequestException("Conversation name cannot be empty.");
+
+            var hasConversationNameChanged =
+                hasConversationNameInput &&
+                !string.Equals(conversation.ConversationName, normalizedConversationName, StringComparison.Ordinal);
+
+            var hasConversationAvatarInput = request.ConversationAvatar != null;
+            var hasRemoveConversationAvatarInput = request.RemoveAvatar;
+            if (hasConversationAvatarInput && hasRemoveConversationAvatarInput)
+                throw new BadRequestException("You cannot upload and remove avatar in the same request.");
+
+            if (hasConversationAvatarInput && request.ConversationAvatar!.Length <= 0)
+                throw new BadRequestException("Conversation avatar file is empty.");
+
+            var nextConversationAvatar = conversation.ConversationAvatar;
+            string? uploadedConversationAvatarUrl = null;
+            if (hasConversationAvatarInput)
+            {
+                uploadedConversationAvatarUrl = await _cloudinaryService.UploadImageAsync(request.ConversationAvatar!);
+                if (string.IsNullOrWhiteSpace(uploadedConversationAvatarUrl))
+                    throw new InternalServerException("Conversation avatar upload failed.");
+
+                nextConversationAvatar = uploadedConversationAvatarUrl;
+            }
+            else if (hasRemoveConversationAvatarInput)
+            {
+                nextConversationAvatar = null;
+            }
+
+            var hasConversationAvatarChanged =
+                !string.Equals(conversation.ConversationAvatar, nextConversationAvatar, StringComparison.Ordinal);
+
+            if (!hasConversationNameChanged && !hasConversationAvatarChanged)
+                return;
+
+            var oldConversationAvatar = conversation.ConversationAvatar;
+
+            if (hasConversationNameChanged)
+                conversation.ConversationName = normalizedConversationName;
+
+            if (hasConversationAvatarChanged)
+                conversation.ConversationAvatar = nextConversationAvatar;
+
+            var isAvatarRemoved = hasConversationAvatarChanged && string.IsNullOrWhiteSpace(nextConversationAvatar);
+            var systemAction = hasConversationNameChanged && hasConversationAvatarChanged
+                ? SystemMessageActionEnum.GroupInfoUpdated
+                : hasConversationNameChanged
+                    ? SystemMessageActionEnum.GroupRenamed
+                    : SystemMessageActionEnum.GroupAvatarUpdated;
+
+            var systemMessage = new Message
+            {
+                ConversationId = conversation.ConversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = BuildGroupInfoSystemMessageFallback(
+                    actor.Username,
+                    conversation.ConversationName,
+                    hasConversationNameChanged,
+                    hasConversationAvatarChanged,
+                    isAvatarRemoved),
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)systemAction,
+                    actorAccountId = currentId,
+                    actorUsername = actor.Username,
+                    conversationName = conversation.ConversationName,
+                    conversationAvatar = conversation.ConversationAvatar,
+                    hasConversationNameChanged,
+                    hasConversationAvatarChanged,
+                    avatarRemoved = isAvatarRemoved
+                }),
+                SentAt = DateTime.UtcNow,
+                IsEdited = false,
+                IsRecalled = false
+            };
+
+            await _unitOfWork.ExecuteInTransactionAsync(
+                async () =>
+                {
+                    await _conversationRepository.UpdateConversationAsync(conversation);
+                    await _messageRepository.AddMessageAsync(systemMessage);
+                    return true;
+                },
+                async () =>
+                {
+                    if (string.IsNullOrWhiteSpace(uploadedConversationAvatarUrl))
+                        return;
+
+                    var newAvatarPublicId = _cloudinaryService.GetPublicIdFromUrl(uploadedConversationAvatarUrl);
+                    if (!string.IsNullOrWhiteSpace(newAvatarPublicId))
+                    {
+                        await _cloudinaryService.DeleteMediaAsync(newAvatarPublicId, MediaTypeEnum.Image);
+                    }
+                });
+
+            if (hasConversationAvatarChanged &&
+                !string.IsNullOrWhiteSpace(oldConversationAvatar) &&
+                !string.Equals(oldConversationAvatar, conversation.ConversationAvatar, StringComparison.Ordinal))
+            {
+                try
+                {
+                    var oldAvatarPublicId = _cloudinaryService.GetPublicIdFromUrl(oldConversationAvatar);
+                    if (!string.IsNullOrWhiteSpace(oldAvatarPublicId))
+                    {
+                        await _cloudinaryService.DeleteMediaAsync(oldAvatarPublicId, MediaTypeEnum.Image);
+                    }
+                }
+                catch
+                {
+                    // Database transaction is already committed; old avatar cleanup should not break the API response.
+                }
+            }
+
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversation.ConversationId);
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage);
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(actor);
+            await _realtimeService.NotifyNewMessageAsync(conversation.ConversationId, muteMap, realtimeMessage);
+
+            await _realtimeService.NotifyGroupConversationInfoUpdatedAsync(
+                conversation.ConversationId,
+                conversation.ConversationName,
+                conversation.ConversationAvatar,
+                currentId);
+        }
+
         public async Task<PagedResponse<ConversationListItemResponse>> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize)
         {
             var (items, totalCount) = await _conversationRepository.GetConversationsPagedAsync(currentId, isPrivate, search, page, pageSize);
@@ -425,6 +577,31 @@ namespace SocialNetwork.Application.Services.ConversationServices
             return normalized.StartsWith("@", StringComparison.Ordinal)
                 ? normalized
                 : $"@{normalized}";
+        }
+
+        private static string BuildGroupInfoSystemMessageFallback(
+            string actorUsername,
+            string? conversationName,
+            bool hasConversationNameChanged,
+            bool hasConversationAvatarChanged,
+            bool isAvatarRemoved)
+        {
+            var actorMention = ToMention(actorUsername);
+
+            if (hasConversationNameChanged && hasConversationAvatarChanged)
+            {
+                var avatarVerb = isAvatarRemoved ? "removed the group avatar" : "updated the group avatar";
+                return $"{actorMention} changed the group name to \"{conversationName}\" and {avatarVerb}.";
+            }
+
+            if (hasConversationNameChanged)
+            {
+                return $"{actorMention} changed the group name to \"{conversationName}\".";
+            }
+
+            return isAvatarRemoved
+                ? $"{actorMention} removed the group avatar."
+                : $"{actorMention} updated the group avatar.";
         }
 
         private string? FormatLastMessagePreview(MessageBasicModel? msg)

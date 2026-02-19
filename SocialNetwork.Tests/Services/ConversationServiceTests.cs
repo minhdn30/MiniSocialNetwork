@@ -1,7 +1,10 @@
 using AutoMapper;
 using FluentAssertions;
 using Moq;
+using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.ConversationDTOs;
+using SocialNetwork.Application.DTOs.MessageDTOs;
+using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Application.Services.ConversationServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
@@ -27,6 +30,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<IUnitOfWork> _unitOfWorkMock;
         private readonly Mock<ICloudinaryService> _cloudinaryServiceMock;
         private readonly Mock<IMapper> _mapperMock;
+        private readonly Mock<IRealtimeService> _realtimeServiceMock;
         private readonly ConversationService _conversationService;
 
         public ConversationServiceTests()
@@ -39,6 +43,39 @@ namespace SocialNetwork.Tests.Services
             _unitOfWorkMock = new Mock<IUnitOfWork>();
             _cloudinaryServiceMock = new Mock<ICloudinaryService>();
             _mapperMock = new Mock<IMapper>();
+            _realtimeServiceMock = new Mock<IRealtimeService>();
+
+            _messageRepositoryMock
+                .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
+                .Returns(Task.CompletedTask);
+
+            _mapperMock
+                .Setup(x => x.Map<SendMessageResponse>(It.IsAny<Message>()))
+                .Returns(new SendMessageResponse());
+            _mapperMock
+                .Setup(x => x.Map<AccountChatInfoResponse>(It.IsAny<Account>()))
+                .Returns((Account account) => new AccountChatInfoResponse
+                {
+                    AccountId = account.AccountId,
+                    Username = account.Username,
+                    FullName = account.FullName,
+                    AvatarUrl = account.AvatarUrl,
+                    IsActive = account.Status == AccountStatusEnum.Active
+                });
+
+            _realtimeServiceMock
+                .Setup(x => x.NotifyNewMessageAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<Dictionary<Guid, bool>>(),
+                    It.IsAny<SendMessageResponse>()))
+                .Returns(Task.CompletedTask);
+            _realtimeServiceMock
+                .Setup(x => x.NotifyGroupConversationInfoUpdatedAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<Guid>()))
+                .Returns(Task.CompletedTask);
 
             _conversationService = new ConversationService(
                 _conversationRepositoryMock.Object,
@@ -48,7 +85,8 @@ namespace SocialNetwork.Tests.Services
                 _followRepositoryMock.Object,
                 _unitOfWorkMock.Object,
                 _cloudinaryServiceMock.Object,
-                _mapperMock.Object
+                _mapperMock.Object,
+                _realtimeServiceMock.Object
             );
         }
 
@@ -345,6 +383,265 @@ namespace SocialNetwork.Tests.Services
             // Assert
             await act.Should().ThrowAsync<BadRequestException>()
                 .WithMessage("*invite privacy*");
+        }
+
+        #endregion
+
+        #region UpdateGroupConversationInfoAsync Tests
+
+        [Fact]
+        public async Task UpdateGroupConversationInfoAsync_NotMember_ThrowsForbiddenException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
+                .ReturnsAsync(false);
+
+            var request = new UpdateGroupConversationRequest
+            {
+                ConversationName = "New Group Name"
+            };
+
+            // Act
+            var act = () => _conversationService.UpdateGroupConversationInfoAsync(conversationId, currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<ForbiddenException>()
+                .WithMessage("You are not a member of this conversation.");
+        }
+
+        [Fact]
+        public async Task UpdateGroupConversationInfoAsync_ValidNameAndAvatar_UpdatesConversationAndDeletesOldAvatar()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var oldAvatarUrl = "https://res.cloudinary.com/demo/image/upload/v1/old-avatar.png";
+            var newAvatarUrl = "https://res.cloudinary.com/demo/image/upload/v2/new-avatar.png";
+            var oldPublicId = "cloudmsocialnetwork/images/old-avatar";
+            var actor = new Account
+            {
+                AccountId = currentId,
+                Username = "actor",
+                FullName = "Actor",
+                Status = AccountStatusEnum.Active
+            };
+
+            var conversation = new Conversation
+            {
+                ConversationId = conversationId,
+                ConversationName = "Old Name",
+                ConversationAvatar = oldAvatarUrl,
+                IsGroup = true
+            };
+
+            var avatarFileMock = new Mock<Microsoft.AspNetCore.Http.IFormFile>();
+            avatarFileMock.Setup(x => x.Length).Returns(128);
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
+                .ReturnsAsync(true);
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountById(currentId))
+                .ReturnsAsync(actor);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(conversationId))
+                .ReturnsAsync(new Dictionary<Guid, bool>
+                {
+                    [currentId] = false
+                });
+
+            _cloudinaryServiceMock
+                .Setup(x => x.UploadImageAsync(avatarFileMock.Object))
+                .ReturnsAsync(newAvatarUrl);
+
+            _cloudinaryServiceMock
+                .Setup(x => x.GetPublicIdFromUrl(oldAvatarUrl))
+                .Returns(oldPublicId);
+
+            _unitOfWorkMock.Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<bool>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<bool>> operation, Func<Task>? _) => operation());
+
+            var request = new UpdateGroupConversationRequest
+            {
+                ConversationName = "New Name",
+                ConversationAvatar = avatarFileMock.Object
+            };
+
+            // Act
+            await _conversationService.UpdateGroupConversationInfoAsync(conversationId, currentId, request);
+
+            // Assert
+            conversation.ConversationName.Should().Be("New Name");
+            conversation.ConversationAvatar.Should().Be(newAvatarUrl);
+            _conversationRepositoryMock.Verify(x => x.UpdateConversationAsync(It.IsAny<Conversation>()), Times.Once);
+            _messageRepositoryMock.Verify(x => x.AddMessageAsync(It.IsAny<Message>()), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync(oldPublicId, MediaTypeEnum.Image), Times.Once);
+            _realtimeServiceMock.Verify(x => x.NotifyGroupConversationInfoUpdatedAsync(
+                conversationId,
+                "New Name",
+                newAvatarUrl,
+                currentId), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateGroupConversationInfoAsync_TransactionFails_DeletesNewUploadedAvatarOnRollback()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var oldAvatarUrl = "https://res.cloudinary.com/demo/image/upload/v1/old-avatar.png";
+            var newAvatarUrl = "https://res.cloudinary.com/demo/image/upload/v2/new-avatar.png";
+            var newPublicId = "cloudmsocialnetwork/images/new-avatar";
+            var actor = new Account
+            {
+                AccountId = currentId,
+                Username = "actor",
+                FullName = "Actor",
+                Status = AccountStatusEnum.Active
+            };
+
+            var conversation = new Conversation
+            {
+                ConversationId = conversationId,
+                ConversationName = "Old Name",
+                ConversationAvatar = oldAvatarUrl,
+                IsGroup = true
+            };
+
+            var avatarFileMock = new Mock<Microsoft.AspNetCore.Http.IFormFile>();
+            avatarFileMock.Setup(x => x.Length).Returns(128);
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
+                .ReturnsAsync(true);
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountById(currentId))
+                .ReturnsAsync(actor);
+
+            _cloudinaryServiceMock
+                .Setup(x => x.UploadImageAsync(avatarFileMock.Object))
+                .ReturnsAsync(newAvatarUrl);
+
+            _cloudinaryServiceMock
+                .Setup(x => x.GetPublicIdFromUrl(newAvatarUrl))
+                .Returns(newPublicId);
+
+            _conversationRepositoryMock
+                .Setup(x => x.UpdateConversationAsync(It.IsAny<Conversation>()))
+                .ThrowsAsync(new Exception("DB failure"));
+
+            _unitOfWorkMock.Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<bool>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns(async (Func<Task<bool>> operation, Func<Task>? onRollback) =>
+                {
+                    try
+                    {
+                        return await operation();
+                    }
+                    catch
+                    {
+                        if (onRollback != null)
+                        {
+                            await onRollback();
+                        }
+
+                        throw;
+                    }
+                });
+
+            var request = new UpdateGroupConversationRequest
+            {
+                ConversationAvatar = avatarFileMock.Object
+            };
+
+            // Act
+            var act = () => _conversationService.UpdateGroupConversationInfoAsync(conversationId, currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<Exception>()
+                .WithMessage("DB failure");
+            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync(newPublicId, MediaTypeEnum.Image), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateGroupConversationInfoAsync_RemoveAvatarOnly_UpdatesConversationAndDeletesOldAvatar()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var oldAvatarUrl = "https://res.cloudinary.com/demo/image/upload/v1/old-avatar.png";
+            var oldPublicId = "cloudmsocialnetwork/images/old-avatar";
+            var actor = new Account
+            {
+                AccountId = currentId,
+                Username = "actor",
+                FullName = "Actor",
+                Status = AccountStatusEnum.Active
+            };
+
+            var conversation = new Conversation
+            {
+                ConversationId = conversationId,
+                ConversationName = "Old Name",
+                ConversationAvatar = oldAvatarUrl,
+                IsGroup = true
+            };
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
+                .ReturnsAsync(true);
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountById(currentId))
+                .ReturnsAsync(actor);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(conversationId))
+                .ReturnsAsync(new Dictionary<Guid, bool>
+                {
+                    [currentId] = false
+                });
+            _cloudinaryServiceMock
+                .Setup(x => x.GetPublicIdFromUrl(oldAvatarUrl))
+                .Returns(oldPublicId);
+            _unitOfWorkMock.Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<bool>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<bool>> operation, Func<Task>? _) => operation());
+
+            var request = new UpdateGroupConversationRequest
+            {
+                RemoveAvatar = true
+            };
+
+            // Act
+            await _conversationService.UpdateGroupConversationInfoAsync(conversationId, currentId, request);
+
+            // Assert
+            conversation.ConversationAvatar.Should().BeNull();
+            _conversationRepositoryMock.Verify(x => x.UpdateConversationAsync(It.IsAny<Conversation>()), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync(oldPublicId, MediaTypeEnum.Image), Times.Once);
+            _realtimeServiceMock.Verify(x => x.NotifyGroupConversationInfoUpdatedAsync(
+                conversationId,
+                "Old Name",
+                null,
+                currentId), Times.Once);
         }
 
         #endregion
