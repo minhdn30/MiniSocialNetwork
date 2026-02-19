@@ -23,9 +23,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
         Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize);
         Task<List<GroupInviteAccountSearchResponse>> SearchAccountsForGroupInviteAsync(Guid currentId, string keyword, IEnumerable<Guid>? excludeAccountIds, int limit = 10);
         Task<PagedResponse<ConversationMemberInfo>> GetGroupConversationMembersAsync(Guid conversationId, Guid currentId, int page, int pageSize, bool adminOnly);
-        Task KickGroupMemberAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
-        Task AssignGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
-        Task LeaveGroupAsync(Guid conversationId, Guid currentId);
         Task<PagedResponse<ConversationMediaItemModel>> GetConversationMediaAsync(Guid conversationId, Guid currentId, int page, int pageSize);
         Task<PagedResponse<ConversationMediaItemModel>> GetConversationFilesAsync(Guid conversationId, Guid currentId, int page, int pageSize);
     }

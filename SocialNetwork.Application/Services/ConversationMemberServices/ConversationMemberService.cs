@@ -168,6 +168,213 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
             await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
         }
+
+        public async Task KickGroupMemberAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
+        {
+            if (targetAccountId == Guid.Empty)
+                throw new BadRequestException("Target account is required.");
+
+            if (currentId == targetAccountId)
+                throw new BadRequestException("You cannot kick yourself from the group.");
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            if (!conversation.IsGroup)
+                throw new BadRequestException("Kick is only available for group conversations.");
+
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
+                throw new ForbiddenException("You are not a member of this conversation.");
+
+            if (!actorMember.IsAdmin)
+                throw new ForbiddenException("Only group admins can kick members.");
+
+            var targetMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, targetAccountId);
+            if (targetMember == null)
+                throw new BadRequestException("Target account is not an active member of this group.");
+
+            if (targetMember.IsAdmin)
+                throw new BadRequestException("You cannot kick another admin.");
+
+            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
+            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            if (actor == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+
+            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            if (target == null)
+                throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
+
+            targetMember.HasLeft = true;
+            var sentAt = DateTime.UtcNow;
+            var systemMessage = new Message
+            {
+                ConversationId = conversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = BuildMemberKickedSystemMessageFallback(actor.Username, target.Username),
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)SystemMessageActionEnum.MemberKicked,
+                    actorAccountId = currentId,
+                    actorUsername = actor.Username,
+                    targetAccountId,
+                    targetUsername = target.Username
+                }),
+                SentAt = sentAt,
+                IsEdited = false,
+                IsRecalled = false
+            };
+
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _conversationMemberRepository.UpdateConversationMember(targetMember);
+                await _messageRepository.AddMessageAsync(systemMessage);
+                return true;
+            });
+
+            await _realtimeService.NotifyConversationRemovedAsync(targetAccountId, conversationId, "kicked");
+
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage);
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(actor);
+            await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
+        }
+
+        public async Task AssignGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
+        {
+            if (targetAccountId == Guid.Empty)
+                throw new BadRequestException("Target account is required.");
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            if (!conversation.IsGroup)
+                throw new BadRequestException("Assign admin is only available for group conversations.");
+
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
+                throw new ForbiddenException("You are not a member of this conversation.");
+
+            if (!actorMember.IsAdmin)
+                throw new ForbiddenException("Only group admins can assign another admin.");
+
+            var targetMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, targetAccountId);
+            if (targetMember == null)
+                throw new BadRequestException("Target account is not an active member of this group.");
+
+            if (targetMember.IsAdmin)
+                throw new BadRequestException("Target member is already an admin.");
+
+            targetMember.IsAdmin = true;
+
+            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
+            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            if (actor == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+
+            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            if (target == null)
+                throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
+
+            var sentAt = DateTime.UtcNow;
+            var systemMessage = new Message
+            {
+                ConversationId = conversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = BuildAdminGrantedSystemMessageFallback(actor.Username, target.Username),
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)SystemMessageActionEnum.AdminGranted,
+                    actorAccountId = currentId,
+                    actorUsername = actor.Username,
+                    targetAccountId,
+                    targetUsername = target.Username
+                }),
+                SentAt = sentAt,
+                IsEdited = false,
+                IsRecalled = false
+            };
+
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _conversationMemberRepository.UpdateConversationMember(targetMember);
+                await _messageRepository.AddMessageAsync(systemMessage);
+                return true;
+            });
+
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage);
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(actor);
+            await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
+        }
+
+        public async Task LeaveGroupAsync(Guid conversationId, Guid currentId)
+        {
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            if (!conversation.IsGroup)
+                throw new BadRequestException("Leave is only available for group conversations.");
+
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
+                throw new ForbiddenException("You are not a member of this conversation.");
+
+            var activeMembers = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+            if (activeMembers.Count == 0)
+                throw new BadRequestException("This group has no active members.");
+
+            var actor = activeMembers
+                .FirstOrDefault(member => member.AccountId == currentId)
+                ?.Account;
+            if (actor == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+
+            var activeAdminCount = activeMembers.Count(member => member.IsAdmin);
+            var activeMemberCount = activeMembers.Count;
+            if (actorMember.IsAdmin && activeMemberCount > 1 && activeAdminCount <= 1)
+                throw new BadRequestException("You are the only admin. Assign another admin before leaving the group.");
+
+            actorMember.HasLeft = true;
+            var sentAt = DateTime.UtcNow;
+            var systemMessage = new Message
+            {
+                ConversationId = conversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = BuildMemberLeftSystemMessageFallback(actor.Username),
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)SystemMessageActionEnum.MemberLeft,
+                    actorAccountId = currentId,
+                    actorUsername = actor.Username
+                }),
+                SentAt = sentAt,
+                IsEdited = false,
+                IsRecalled = false
+            };
+
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _conversationMemberRepository.UpdateConversationMember(actorMember);
+                await _messageRepository.AddMessageAsync(systemMessage);
+                return true;
+            });
+
+            await _realtimeService.NotifyConversationRemovedAsync(currentId, conversationId, "left");
+
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage);
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(actor);
+            await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
+        }
+
         public async Task<bool> IsMemberAsync(Guid conversationId, Guid accountId)
         {
             return await _conversationMemberRepository.IsMemberOfConversation(conversationId, accountId);
@@ -231,6 +438,26 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             }
 
             return $"{actorMention} changed the chat theme to \"{theme}\".";
+        }
+
+        private static string BuildMemberKickedSystemMessageFallback(string actorUsername, string targetUsername)
+        {
+            var actorMention = ToMention(actorUsername);
+            var targetMention = ToMention(targetUsername);
+            return $"{actorMention} removed {targetMention} from the group.";
+        }
+
+        private static string BuildMemberLeftSystemMessageFallback(string actorUsername)
+        {
+            var actorMention = ToMention(actorUsername);
+            return $"{actorMention} left the group.";
+        }
+
+        private static string BuildAdminGrantedSystemMessageFallback(string actorUsername, string targetUsername)
+        {
+            var actorMention = ToMention(actorUsername);
+            var targetMention = ToMention(targetUsername);
+            return $"{actorMention} made {targetMention} an admin.";
         }
 
         private static string? NormalizeTheme(string? theme)

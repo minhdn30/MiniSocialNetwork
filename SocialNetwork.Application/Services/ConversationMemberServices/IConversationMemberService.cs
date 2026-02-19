@@ -13,6 +13,9 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
         Task SetMuteStatusAsync(Guid conversationId, Guid currentId, bool isMuted);
         Task SetThemeAsync(Guid conversationId, Guid currentId, ConversationThemeUpdateRequest request);
         Task UpdateMemberNickname(Guid conversationId, Guid currentId, ConversationMemberNicknameUpdateRequest request);
+        Task KickGroupMemberAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
+        Task AssignGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
+        Task LeaveGroupAsync(Guid conversationId, Guid currentId);
         Task SoftDeleteChatHistory(Guid conversationId, Guid currentId);
         Task MarkSeenAsync(Guid conversationId, Guid currentId, Guid newMessageId);
     }
