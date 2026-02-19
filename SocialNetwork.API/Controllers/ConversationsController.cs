@@ -233,7 +233,7 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            await _conversationService.KickGroupMemberAsync(conversationId, currentId.Value, targetAccountId);
+            await _conversationMemberService.KickGroupMemberAsync(conversationId, currentId.Value, targetAccountId);
             return NoContent();
         }
 
@@ -245,7 +245,7 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            await _conversationService.AssignGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
+            await _conversationMemberService.AssignGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
             return NoContent();
         }
 
@@ -257,7 +257,7 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            await _conversationService.LeaveGroupAsync(conversationId, currentId.Value);
+            await _conversationMemberService.LeaveGroupAsync(conversationId, currentId.Value);
             return NoContent();
         }
 
