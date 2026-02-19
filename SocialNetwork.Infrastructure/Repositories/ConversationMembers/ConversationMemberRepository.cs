@@ -45,6 +45,23 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
                                            && !cm.HasLeft);
         }
 
+        public async Task<List<ConversationMember>> GetConversationMembersByAccountIdsAsync(Guid conversationId, IEnumerable<Guid> accountIds)
+        {
+            var normalizedIds = (accountIds ?? Enumerable.Empty<Guid>())
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (normalizedIds.Count == 0)
+            {
+                return new List<ConversationMember>();
+            }
+
+            return await _context.ConversationMembers
+                .Where(cm => cm.ConversationId == conversationId && normalizedIds.Contains(cm.AccountId))
+                .ToListAsync();
+        }
+
         public async Task<List<Guid>> GetMemberIdsByConversationIdAsync(Guid conversationId)
         {
             return await _context.ConversationMembers

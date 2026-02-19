@@ -194,13 +194,47 @@ namespace SocialNetwork.API.Controllers
             if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
                 return BadRequest(new { message = "Keyword must be empty or at least 2 characters." });
 
-            var result = await _conversationService.SearchAccountsForGroupInviteAsync(
+            var result = await _conversationMemberService.SearchAccountsForGroupInviteAsync(
                 currentId.Value,
                 normalizedKeyword,
                 request.ExcludeAccountIds,
                 request.Limit);
 
             return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/members/search")]
+        public async Task<IActionResult> SearchAccountsForAddGroupMembers([FromRoute] Guid conversationId, [FromQuery] SearchGroupInviteAccountsRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var normalizedKeyword = request.Keyword?.Trim() ?? string.Empty;
+            if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
+                return BadRequest(new { message = "Keyword must be empty or at least 2 characters." });
+
+            var result = await _conversationMemberService.SearchAccountsForAddGroupMembersAsync(
+                conversationId,
+                currentId.Value,
+                normalizedKeyword,
+                request.ExcludeAccountIds,
+                request.Limit);
+
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("{conversationId:guid}/members")]
+        public async Task<IActionResult> AddGroupMembers([FromRoute] Guid conversationId, [FromBody] AddGroupMembersRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationMemberService.AddGroupMembersAsync(conversationId, currentId.Value, request);
+            return NoContent();
         }
 
         [Authorize]
