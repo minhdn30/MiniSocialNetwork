@@ -16,6 +16,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
         Task RemoveFollowAsync(Guid followerId, Guid followedId);
         Task<List<Guid>> GetFollowingIdsAsync(Guid followerId);
         Task<List<Guid>> GetFollowerIdsAsync(Guid followedId);
+        Task<HashSet<Guid>> GetConnectedAccountIdsAsync(Guid currentId, IEnumerable<Guid> targetIds);
         Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, bool? sortByCreatedASC, int page, int pageSize);
         Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, bool? sortByCreatedASC, int page, int pageSize);
         Task<int> CountFollowersAsync(Guid accountId);

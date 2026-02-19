@@ -1,17 +1,23 @@
 ﻿using AutoMapper;
+using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.ConversationDTOs;
+using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
+using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Messages;
+using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
+using SocialNetwork.Infrastructure.Services.Cloudinary;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
@@ -19,18 +25,28 @@ namespace SocialNetwork.Application.Services.ConversationServices
 {
     public class ConversationService : IConversationService
     {
+        private const int MinGroupConversationMembers = 3;
+        private const int MaxGroupConversationMembers = 50;
+
         private readonly IConversationRepository _conversationRepository;
         private readonly IConversationMemberRepository _conversationMemberRepository;
         private readonly IMessageRepository _messageRepository;
         private readonly IAccountRepository _accountRepository;
+        private readonly IFollowRepository _followRepository;
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ICloudinaryService _cloudinaryService;
         private readonly IMapper _mapper;
         public ConversationService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
-            IMessageRepository messageRepository, IAccountRepository accountRepository, IMapper mapper)
+            IMessageRepository messageRepository, IAccountRepository accountRepository, IFollowRepository followRepository,
+            IUnitOfWork unitOfWork, ICloudinaryService cloudinaryService, IMapper mapper)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
             _messageRepository = messageRepository;
             _accountRepository = accountRepository;
+            _followRepository = followRepository;
+            _unitOfWork = unitOfWork;
+            _cloudinaryService = cloudinaryService;
             _mapper = mapper;
         }
         public async Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId)
@@ -50,6 +66,207 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 throw new BadRequestException("A private conversation between these two accounts already exists.");
             var conversation = await _conversationRepository.CreatePrivateConversationAsync(currentId, otherId);
             return _mapper.Map<ConversationResponse>(conversation);
+        }
+
+        public async Task<ConversationResponse> CreateGroupConversationAsync(Guid currentId, CreateGroupConversationRequest request)
+        {
+            if (request == null)
+                throw new BadRequestException("Request is required.");
+
+            var normalizedGroupName = request.GroupName?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedGroupName))
+                throw new BadRequestException("Group name is required.");
+
+            var uniqueOtherMemberIds = (request.MemberIds ?? new List<Guid>())
+                .Where(id => id != Guid.Empty && id != currentId)
+                .Distinct()
+                .ToList();
+
+            var totalMembers = uniqueOtherMemberIds.Count + 1;
+            if (totalMembers < MinGroupConversationMembers)
+                throw new BadRequestException("A group must have at least 3 members (you and 2 others).");
+
+            if (totalMembers > MaxGroupConversationMembers)
+                throw new BadRequestException($"A group can contain at most {MaxGroupConversationMembers} members.");
+
+            var allMemberIds = uniqueOtherMemberIds
+                .Append(currentId)
+                .Distinct()
+                .ToList();
+
+            var allAccounts = await _accountRepository.GetAccountsByIds(allMemberIds);
+            var creator = allAccounts.FirstOrDefault(a => a.AccountId == currentId);
+            if (creator == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+            if (creator.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to create a group.");
+
+            var targetAccounts = allAccounts
+                .Where(a => a.AccountId != currentId)
+                .ToList();
+
+            if (targetAccounts.Count != uniqueOtherMemberIds.Count)
+                throw new BadRequestException("One or more selected members do not exist.");
+
+            var inactiveAccounts = targetAccounts.Where(a => a.Status != AccountStatusEnum.Active).ToList();
+            if (inactiveAccounts.Count > 0)
+            {
+                var inactiveMentions = string.Join(", ", inactiveAccounts
+                    .Select(a => ToMention(a.Username))
+                    .Distinct()
+                    .Take(5));
+                var suffix = inactiveAccounts.Count > 5 ? " ..." : string.Empty;
+                throw new BadRequestException($"These members are not active: {inactiveMentions}{suffix}");
+            }
+
+            var connectedAccountIds = await _followRepository.GetConnectedAccountIdsAsync(currentId, uniqueOtherMemberIds);
+
+            var permissionDeniedTargets = targetAccounts
+                .Where(target =>
+                {
+                    var permission = target.Settings?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone;
+                    if (permission == GroupChatInvitePermissionEnum.Anyone)
+                    {
+                        return false;
+                    }
+
+                    if (permission == GroupChatInvitePermissionEnum.NoOne)
+                    {
+                        return true;
+                    }
+
+                    return !connectedAccountIds.Contains(target.AccountId);
+                })
+                .ToList();
+
+            if (permissionDeniedTargets.Count > 0)
+            {
+                var deniedMentions = string.Join(", ", permissionDeniedTargets
+                    .Select(a => ToMention(a.Username))
+                    .Distinct()
+                    .Take(5));
+                var suffix = permissionDeniedTargets.Count > 5 ? " ..." : string.Empty;
+                throw new BadRequestException($"You are not allowed to add these members due to invite privacy: {deniedMentions}{suffix}");
+            }
+
+            string? uploadedGroupAvatarUrl = null;
+            if (request.GroupAvatar != null)
+            {
+                if (request.GroupAvatar.Length <= 0)
+                    throw new BadRequestException("Group avatar file is empty.");
+
+                uploadedGroupAvatarUrl = await _cloudinaryService.UploadImageAsync(request.GroupAvatar);
+                if (string.IsNullOrWhiteSpace(uploadedGroupAvatarUrl))
+                    throw new InternalServerException("Group avatar upload failed.");
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            var conversation = new Conversation
+            {
+                ConversationId = Guid.NewGuid(),
+                ConversationName = normalizedGroupName,
+                ConversationAvatar = uploadedGroupAvatarUrl,
+                IsGroup = true,
+                CreatedAt = nowUtc,
+                CreatedBy = currentId,
+                IsDeleted = false
+            };
+
+            var memberEntities = new List<ConversationMember>
+            {
+                new ConversationMember
+                {
+                    ConversationId = conversation.ConversationId,
+                    AccountId = currentId,
+                    IsAdmin = true,
+                    JoinedAt = nowUtc
+                }
+            };
+
+            memberEntities.AddRange(targetAccounts.Select(target => new ConversationMember
+            {
+                ConversationId = conversation.ConversationId,
+                AccountId = target.AccountId,
+                IsAdmin = false,
+                JoinedAt = nowUtc
+            }));
+
+            var systemMessage = new Message
+            {
+                ConversationId = conversation.ConversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = $"{ToMention(creator.Username)} created this group.",
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)SystemMessageActionEnum.GroupCreated,
+                    actorAccountId = currentId,
+                    actorUsername = creator.Username,
+                    conversationName = normalizedGroupName,
+                    memberCount = totalMembers
+                }),
+                SentAt = nowUtc,
+                IsEdited = false,
+                IsRecalled = false
+            };
+
+            await _unitOfWork.ExecuteInTransactionAsync(
+                async () =>
+                {
+                    await _conversationRepository.AddConversationAsync(conversation);
+                    await _conversationMemberRepository.AddConversationMembers(memberEntities);
+                    await _messageRepository.AddMessageAsync(systemMessage);
+                    return true;
+                },
+                async () =>
+                {
+                    if (string.IsNullOrWhiteSpace(uploadedGroupAvatarUrl))
+                        return;
+
+                    var publicId = _cloudinaryService.GetPublicIdFromUrl(uploadedGroupAvatarUrl);
+                    if (!string.IsNullOrWhiteSpace(publicId))
+                    {
+                        await _cloudinaryService.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
+                    }
+                });
+
+            var accountMap = allAccounts.ToDictionary(a => a.AccountId, a => a);
+
+            return new ConversationResponse
+            {
+                ConversationId = conversation.ConversationId,
+                ConversationName = conversation.ConversationName,
+                ConversationAvatar = conversation.ConversationAvatar,
+                Theme = conversation.Theme,
+                IsGroup = conversation.IsGroup,
+                CreatedAt = conversation.CreatedAt,
+                CreatedBy = conversation.CreatedBy,
+                IsDeleted = conversation.IsDeleted,
+                Members = memberEntities.Select(member =>
+                {
+                    accountMap.TryGetValue(member.AccountId, out var account);
+                    return new ConversationMemberResponse
+                    {
+                        ConversationId = member.ConversationId,
+                        Nickname = member.Nickname,
+                        JoinedAt = member.JoinedAt,
+                        IsAdmin = member.IsAdmin,
+                        HasLeft = member.HasLeft,
+                        LastSeenMessageId = member.LastSeenMessageId,
+                        IsMuted = member.IsMuted,
+                        IsDeleted = member.IsDeleted,
+                        ClearedAt = member.ClearedAt,
+                        Account = new AccountBasicInfoResponse
+                        {
+                            AccountId = member.AccountId,
+                            Username = account?.Username ?? string.Empty,
+                            FullName = account?.FullName ?? string.Empty,
+                            AvatarUrl = account?.AvatarUrl,
+                            Status = account?.Status ?? AccountStatusEnum.Active
+                        }
+                    };
+                }).ToList()
+            };
         }
 
         public async Task<PagedResponse<ConversationListItemResponse>> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize)
@@ -195,6 +412,19 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 },
                 Messages = new CursorResponse<MessageBasicModel>(new List<MessageBasicModel>(), null, null, false, false)
             };
+        }
+
+        private static string ToMention(string? username)
+        {
+            var normalized = (username ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "@unknown";
+            }
+
+            return normalized.StartsWith("@", StringComparison.Ordinal)
+                ? normalized
+                : $"@{normalized}";
         }
 
         private string? FormatLastMessagePreview(MessageBasicModel? msg)

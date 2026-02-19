@@ -496,6 +496,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         public async Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds)
         {
             return await _context.Accounts
+                .Include(a => a.Settings)
                 .Where(a => accountIds.Contains(a.AccountId))
                 .ToListAsync();
         }

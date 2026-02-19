@@ -72,6 +72,20 @@ namespace SocialNetwork.API.Controllers
             var conversation = await _conversationService.CreatePrivateConversationAsync(currentId.Value, request.OtherId);
             return CreatedAtAction(nameof(GetPrivateConversation), new { otherId = request.OtherId }, conversation);
         }
+
+        [Authorize]
+        [HttpPost("group")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> CreateGroupConversation([FromForm] CreateGroupConversationRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var conversation = await _conversationService.CreateGroupConversationAsync(currentId.Value, request);
+            return Ok(conversation);
+        }
+
         [Authorize]
         [HttpPatch("{conversationId:guid}/members/nickname")]
         public async Task<IActionResult> UpdateMemberNickname([FromRoute] Guid conversationId, [FromBody] ConversationMemberNicknameUpdateRequest request)
