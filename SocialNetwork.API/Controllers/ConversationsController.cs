@@ -204,6 +204,28 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
+        [HttpGet("{conversationId:guid}/members")]
+        public async Task<IActionResult> GetGroupConversationMembers(
+            [FromRoute] Guid conversationId,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] bool adminOnly = false)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _conversationService.GetGroupConversationMembersAsync(
+                conversationId,
+                currentId.Value,
+                page,
+                pageSize,
+                adminOnly);
+
+            return Ok(result);
+        }
+
+        [Authorize]
         [HttpGet("{conversationId:guid}/media")]
         public async Task<IActionResult> GetConversationMedia([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
