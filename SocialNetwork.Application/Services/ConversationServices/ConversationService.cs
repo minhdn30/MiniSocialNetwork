@@ -29,6 +29,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
     {
         private const int MinGroupConversationMembers = 3;
         private const int MaxGroupConversationMembers = 50;
+        private const int DefaultGroupMembersPageSize = 20;
+        private const int MaxGroupMembersPageSize = 100;
 
         private readonly IConversationRepository _conversationRepository;
         private readonly IConversationMemberRepository _conversationMemberRepository;
@@ -750,6 +752,52 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 MutualGroupScore = x.MutualGroupScore,
                 TotalScore = x.TotalScore
             }).ToList();
+        }
+
+        public async Task<PagedResponse<ConversationMemberInfo>> GetGroupConversationMembersAsync(
+            Guid conversationId,
+            Guid currentId,
+            int page,
+            int pageSize,
+            bool adminOnly)
+        {
+            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
+            {
+                throw new ForbiddenException("You are not a member of this conversation.");
+            }
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+            {
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+            }
+
+            if (!conversation.IsGroup)
+            {
+                throw new BadRequestException("Members list is only available for group conversations.");
+            }
+
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = DefaultGroupMembersPageSize;
+            if (pageSize > MaxGroupMembersPageSize) pageSize = MaxGroupMembersPageSize;
+
+            var (members, totalCount) = await _conversationMemberRepository.GetConversationMembersPagedAsync(
+                conversationId,
+                adminOnly,
+                page,
+                pageSize);
+
+            var items = members.Select(member => new ConversationMemberInfo
+            {
+                AccountId = member.AccountId,
+                AvatarUrl = member.Account?.AvatarUrl,
+                DisplayName = member.Nickname ?? member.Account?.Username,
+                Username = member.Account?.Username,
+                Nickname = member.Nickname,
+                Role = member.IsAdmin ? 1 : 0
+            }).ToList();
+
+            return new PagedResponse<ConversationMemberInfo>(items, page, pageSize, totalCount);
         }
 
         public async Task<PagedResponse<ConversationMediaItemModel>> GetConversationMediaAsync(Guid conversationId, Guid currentId, int page, int pageSize)

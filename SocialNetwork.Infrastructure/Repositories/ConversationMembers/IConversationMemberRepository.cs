@@ -17,5 +17,10 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
         Task<List<Guid>> GetMemberIdsByConversationIdAsync(Guid conversationId);
         Task<Dictionary<Guid, bool>> GetMembersWithMuteStatusAsync(Guid conversationId);
         Task<List<ConversationMember>> GetConversationMembersAsync(Guid conversationId);
+        Task<(List<ConversationMember> Members, int TotalCount)> GetConversationMembersPagedAsync(
+            Guid conversationId,
+            bool adminOnly,
+            int page,
+            int pageSize);
     }
 }

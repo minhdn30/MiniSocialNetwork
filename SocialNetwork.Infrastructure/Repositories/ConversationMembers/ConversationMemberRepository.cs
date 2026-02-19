@@ -61,6 +61,38 @@ namespace SocialNetwork.Infrastructure.Repositories.ConversationMembers
                 .ToListAsync();
         }
 
+        public async Task<(List<ConversationMember> Members, int TotalCount)> GetConversationMembersPagedAsync(
+            Guid conversationId,
+            bool adminOnly,
+            int page,
+            int pageSize)
+        {
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = 20;
+
+            var query = _context.ConversationMembers
+                .AsNoTracking()
+                .Include(cm => cm.Account)
+                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft);
+
+            if (adminOnly)
+            {
+                query = query.Where(cm => cm.IsAdmin);
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var members = await query
+                .OrderByDescending(cm => cm.IsAdmin)
+                .ThenBy(cm => cm.JoinedAt)
+                .ThenBy(cm => cm.Account.Username)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (members, totalCount);
+        }
+
         public async Task<Dictionary<Guid, bool>> GetMembersWithMuteStatusAsync(Guid conversationId)
         {
             return await _context.ConversationMembers
