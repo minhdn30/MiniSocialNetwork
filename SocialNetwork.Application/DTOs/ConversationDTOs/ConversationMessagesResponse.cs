@@ -27,6 +27,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public int MemberCount { get; set; }
         public OtherMemberInfo? OtherMember { get; set; }
         public List<string>? SampleMembers { get; set; } 
+        public List<string>? GroupAvatars { get; set; }
         public List<ConversationMemberInfo> Members { get; set; } = new();
         public List<MemberSeenStatus> MemberSeenStatuses { get; set; } = new();
     }

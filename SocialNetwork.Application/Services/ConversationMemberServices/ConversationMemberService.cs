@@ -791,13 +791,14 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
-            var ownerId = ResolveGroupOwnerId(conversation);
-            if (ownerId.HasValue && ownerId.Value == currentId)
-                throw new BadRequestException("Group owner must transfer ownership before leaving the group.");
-
             var activeMembers = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
             if (activeMembers.Count == 0)
                 throw new BadRequestException("This group has no active members.");
+
+            var ownerId = ResolveGroupOwnerId(conversation);
+            var isOwner = ownerId.HasValue && ownerId.Value == currentId;
+            if (isOwner && activeMembers.Count > 1)
+                throw new BadRequestException("Group owner must transfer ownership before leaving the group.");
 
             var actor = activeMembers
                 .FirstOrDefault(member => member.AccountId == currentId)
