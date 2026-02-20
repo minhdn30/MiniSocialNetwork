@@ -11,6 +11,7 @@ using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
+using System.Net;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,16 +29,21 @@ namespace SocialNetwork.Application.Services.AuthServices
         private readonly IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
         private readonly IJwtService _jwtService;
+        private readonly ILoginRateLimitService _loginRateLimitService;
         private readonly IUnitOfWork _unitOfWork;
 
         public AuthService(IAccountRepository accountRepository, 
             IAccountSettingRepository accountSettingRepository,
-            IMapper mapper, IJwtService jwtService, IUnitOfWork unitOfWork)
+            IMapper mapper,
+            IJwtService jwtService,
+            ILoginRateLimitService loginRateLimitService,
+            IUnitOfWork unitOfWork)
         {
             _accountRepository = accountRepository;
             _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
             _jwtService = jwtService;
+            _loginRateLimitService = loginRateLimitService;
             _unitOfWork = unitOfWork;
         }
         public async Task<RegisterResponse> RegisterAsync(RegisterDTO registerRequest)
@@ -66,19 +72,57 @@ namespace SocialNetwork.Application.Services.AuthServices
             var accountMapped = _mapper.Map<RegisterResponse>(account);
             return accountMapped;
         }
-        public async Task<LoginResponse?> LoginAsync(LoginRequest loginRequest)
+        public async Task<LoginResponse?> LoginAsync(LoginRequest loginRequest, string? requesterIpAddress = null)
         {
-            var account = await _accountRepository.GetAccountByEmail(loginRequest.Email);
+            var normalizedEmail = NormalizeEmail(loginRequest.Email);
+            var normalizedIpAddress = NormalizeIp(requesterIpAddress);
+            var nowUtc = DateTime.UtcNow;
+
+            try
+            {
+                await _loginRateLimitService.EnforceLoginAllowedAsync(normalizedEmail, normalizedIpAddress, nowUtc);
+            }
+            catch (InternalServerException)
+            {
+                // Keep login flow available even when external rate-limit storage is unavailable.
+            }
+
+            var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
             if(account == null)
             {
+                try
+                {
+                    await _loginRateLimitService.RecordFailedAttemptAsync(normalizedEmail, normalizedIpAddress, nowUtc);
+                }
+                catch (InternalServerException)
+                {
+                    // Best-effort only.
+                }
                 throw new UnauthorizedException("Invalid email or password.");
             }
             var isPasswordValid = BCrypt.Net.BCrypt.Verify(loginRequest.Password, account.PasswordHash);
             if(!isPasswordValid)
             {
+                try
+                {
+                    await _loginRateLimitService.RecordFailedAttemptAsync(normalizedEmail, normalizedIpAddress, nowUtc);
+                }
+                catch (InternalServerException)
+                {
+                    // Best-effort only.
+                }
                 throw new UnauthorizedException("Invalid email or password.");
             }
-            
+
+            try
+            {
+                await _loginRateLimitService.ClearFailedAttemptsAsync(normalizedEmail, normalizedIpAddress, nowUtc);
+            }
+            catch (InternalServerException)
+            {
+                // Best-effort only.
+            }
+
             if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
             {
                 throw new UnauthorizedException("Your account has been restricted. Please contact support.");
@@ -219,6 +263,32 @@ namespace SocialNetwork.Application.Services.AuthServices
             await _unitOfWork.CommitAsync();
 
             response.Cookies.Delete("refreshToken");
+        }
+
+        private static string NormalizeEmail(string email)
+        {
+            return (email ?? string.Empty).Trim().ToLowerInvariant();
+        }
+
+        private static string? NormalizeIp(string? ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(ipAddress))
+            {
+                return null;
+            }
+
+            var candidate = ipAddress.Split(',')[0].Trim();
+            if (!IPAddress.TryParse(candidate, out var parsedIp))
+            {
+                return null;
+            }
+
+            if (parsedIp.IsIPv4MappedToIPv6)
+            {
+                parsedIp = parsedIp.MapToIPv4();
+            }
+
+            return parsedIp.ToString();
         }
     }
 }

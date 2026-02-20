@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
 using SocialNetwork.Application.Services.EmailVerificationServices;
-using SocialNetwork.Infrastructure.Repositories.EmailVerificationIpRateLimits;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 
@@ -34,22 +33,18 @@ namespace SocialNetwork.API.Services
                 {
                     using var scope = _scopeFactory.CreateScope();
                     var emailVerificationRepository = scope.ServiceProvider.GetRequiredService<IEmailVerificationRepository>();
-                    var ipRateLimitRepository = scope.ServiceProvider.GetRequiredService<IEmailVerificationIpRateLimitRepository>();
                     var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
                     var nowUtc = DateTime.UtcNow;
                     var createdBeforeUtc = nowUtc.AddHours(-Math.Max(1, _securityOptions.RetentionHours));
                     var removedEmailRows = await emailVerificationRepository.CleanupStaleVerificationsAsync(nowUtc, createdBeforeUtc);
-                    var removedIpRows = await ipRateLimitRepository.CleanupStaleAsync(nowUtc, createdBeforeUtc);
-                    var removedRows = removedEmailRows + removedIpRows;
 
-                    if (removedRows > 0)
+                    if (removedEmailRows > 0)
                     {
                         await unitOfWork.CommitAsync();
                         _logger.LogInformation(
-                            "EmailVerification cleanup removed {RemovedEmailRows} email rows and {RemovedIpRows} IP-rate-limit rows.",
-                            removedEmailRows,
-                            removedIpRows);
+                            "EmailVerification cleanup removed {RemovedEmailRows} stale rows.",
+                            removedEmailRows);
                     }
                 }
                 catch (Exception ex)

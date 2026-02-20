@@ -21,6 +21,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<IAccountSettingRepository> _accountSettingRepositoryMock;
         private readonly Mock<IMapper> _mapperMock;
         private readonly Mock<IJwtService> _jwtServiceMock;
+        private readonly Mock<ILoginRateLimitService> _loginRateLimitServiceMock;
         private readonly Mock<IUnitOfWork> _unitOfWorkMock;
         private readonly AuthService _authService;
 
@@ -30,13 +31,24 @@ namespace SocialNetwork.Tests.Services
             _accountSettingRepositoryMock = new Mock<IAccountSettingRepository>();
             _mapperMock = new Mock<IMapper>();
             _jwtServiceMock = new Mock<IJwtService>();
+            _loginRateLimitServiceMock = new Mock<ILoginRateLimitService>();
             _unitOfWorkMock = new Mock<IUnitOfWork>();
+            _loginRateLimitServiceMock
+                .Setup(x => x.EnforceLoginAllowedAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTime>()))
+                .Returns(Task.CompletedTask);
+            _loginRateLimitServiceMock
+                .Setup(x => x.RecordFailedAttemptAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTime>()))
+                .Returns(Task.CompletedTask);
+            _loginRateLimitServiceMock
+                .Setup(x => x.ClearFailedAttemptsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTime>()))
+                .Returns(Task.CompletedTask);
 
             _authService = new AuthService(
                 _accountRepositoryMock.Object,
                 _accountSettingRepositoryMock.Object,
                 _mapperMock.Object,
                 _jwtServiceMock.Object,
+                _loginRateLimitServiceMock.Object,
                 _unitOfWorkMock.Object
             );
         }

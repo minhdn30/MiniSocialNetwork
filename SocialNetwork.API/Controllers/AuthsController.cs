@@ -222,7 +222,7 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            var result = await _authService.LoginAsync(request);
+            var result = await _authService.LoginAsync(request, GetClientIpAddress());
             if (result == null)
                 return Unauthorized(new { message = "Login failed." });
 

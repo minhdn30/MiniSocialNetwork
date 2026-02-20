@@ -11,7 +11,7 @@ namespace SocialNetwork.Application.Services.AuthServices
     public interface IAuthService
     {
         Task<RegisterResponse> RegisterAsync(RegisterDTO registerRequest);
-        Task<LoginResponse?> LoginAsync(LoginRequest loginRequest);
+        Task<LoginResponse?> LoginAsync(LoginRequest loginRequest, string? requesterIpAddress = null);
         Task<LoginResponse> LoginWithGoogleAsync(string idToken);
         Task<LoginResponse?> RefreshTokenAsync(string refreshToken);
         Task LogoutAsync(Guid accountId, HttpResponse response);

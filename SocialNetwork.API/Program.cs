@@ -42,7 +42,6 @@ using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
-using SocialNetwork.Infrastructure.Repositories.EmailVerificationIpRateLimits;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
@@ -57,6 +56,7 @@ using System;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using StackExchange.Redis;
 
 
 namespace SocialNetwork.API
@@ -97,7 +97,6 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IAccountSettingRepository, AccountSettingRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
-            builder.Services.AddScoped<IEmailVerificationIpRateLimitRepository, EmailVerificationIpRateLimitRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
             builder.Services.AddScoped<ICommentRepository, CommentRepository>();
             builder.Services.AddScoped<IPostRepository, PostRepository>();
@@ -114,16 +113,29 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // Services
+            builder.Services.Configure<LoginSecurityOptions>(
+                builder.Configuration.GetSection("LoginSecurity"));
             builder.Services.Configure<EmailVerificationSecurityOptions>(
                 builder.Configuration.GetSection("EmailVerification"));
+            builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+            {
+                var redisConnectionString =
+                    builder.Configuration.GetConnectionString("Redis")
+                    ?? builder.Configuration["Redis:ConnectionString"]
+                    ?? "localhost:6379,abortConnect=false";
+
+                return ConnectionMultiplexer.Connect(redisConnectionString);
+            });
 
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
             builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
             builder.Services.AddTransient<IEmailService, EmailService>();
             builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
+            builder.Services.AddScoped<IEmailVerificationRateLimitService, RedisEmailVerificationRateLimitService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IFollowService, FollowService>();
             builder.Services.AddScoped<IPostService, PostService>();

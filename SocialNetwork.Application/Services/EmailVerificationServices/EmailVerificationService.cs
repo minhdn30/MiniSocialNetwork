@@ -1,13 +1,12 @@
-﻿using Microsoft.Extensions.Options;
-using SocialNetwork.Domain.Entities;
+using Microsoft.Extensions.Options;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
-using SocialNetwork.Infrastructure.Repositories.EmailVerificationIpRateLimits;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Email;
 using System.Net;
 using System.Security.Cryptography;
+using System.Text;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.EmailVerificationServices
@@ -16,26 +15,27 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
     {
         private const int OtpDigits = 6;
         private const int OtpSaltBytes = 16;
-        private const int OtpHashBytes = 32;
+        private const int LegacyOtpHashBytes = 32;
+        private const int LegacyPbkdf2Iterations = 100000;
 
         private readonly IEmailService _emailService;
         private readonly IAccountRepository _accountRepository;
         private readonly IEmailVerificationRepository _emailVerificationRepository;
-        private readonly IEmailVerificationIpRateLimitRepository _ipRateLimitRepository;
+        private readonly IEmailVerificationRateLimitService _rateLimitService;
         private readonly IUnitOfWork _unitOfWork;
         private readonly EmailVerificationSecurityOptions _securityOptions;
 
         public EmailVerificationService(
             IEmailService emailService,
             IEmailVerificationRepository emailVerificationRepository,
-            IEmailVerificationIpRateLimitRepository ipRateLimitRepository,
+            IEmailVerificationRateLimitService rateLimitService,
             IAccountRepository accountRepository,
             IUnitOfWork unitOfWork,
             IOptions<EmailVerificationSecurityOptions> securityOptions)
         {
             _emailService = emailService;
             _emailVerificationRepository = emailVerificationRepository;
-            _ipRateLimitRepository = ipRateLimitRepository;
+            _rateLimitService = rateLimitService;
             _accountRepository = accountRepository;
             _unitOfWork = unitOfWork;
             _securityOptions = NormalizeOptions(securityOptions.Value);
@@ -55,15 +55,6 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
 
             await _emailVerificationRepository.EnsureExistsByEmailAsync(normalizedEmail, nowUtc);
 
-            EmailVerificationIpRateLimit? ipRateLimit = null;
-            if (!string.IsNullOrWhiteSpace(normalizedIpAddress))
-            {
-                await _ipRateLimitRepository.EnsureExistsByIpAsync(normalizedIpAddress, nowUtc);
-                ipRateLimit = await _ipRateLimitRepository.GetByIpAsync(normalizedIpAddress);
-            }
-
-            await EnforceIpRateLimitBeforeSendAsync(ipRateLimit, nowUtc);
-
             var verification = await _emailVerificationRepository.GetLatestByEmailAsync(normalizedEmail)
                 ?? throw new BadRequestException("Unable to prepare verification request. Please try again.");
 
@@ -73,33 +64,16 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
                     $"Too many invalid attempts. Please wait {GetRemainingSeconds(verification.LockedUntil.Value, nowUtc)} seconds before requesting another code.");
             }
 
-            if (verification.SendWindowStartedAt <= nowUtc.AddMinutes(-_securityOptions.SendWindowMinutes))
-            {
-                verification.SendWindowStartedAt = nowUtc;
-                verification.SendCountInWindow = 0;
-            }
+            ResetSendCountersIfNeeded(verification, nowUtc);
 
-            if (verification.DailyWindowStartedAt.Date != nowUtc.Date)
+            try
             {
-                verification.DailyWindowStartedAt = nowUtc.Date;
-                verification.DailySendCount = 0;
+                await _rateLimitService.EnforceSendRateLimitAsync(normalizedEmail, normalizedIpAddress, nowUtc);
             }
-
-            if (verification.LastSentAt > nowUtc.AddSeconds(-_securityOptions.ResendCooldownSeconds))
+            catch (InternalServerException)
             {
-                throw new BadRequestException(
-                    $"Please wait {GetRemainingSeconds(verification.LastSentAt.AddSeconds(_securityOptions.ResendCooldownSeconds), nowUtc)} seconds before requesting another code.");
-            }
-
-            if (verification.SendCountInWindow >= _securityOptions.MaxSendsPerWindow)
-            {
-                throw new BadRequestException(
-                    $"You have reached the OTP request limit. Please wait {GetRemainingSeconds(verification.SendWindowStartedAt.AddMinutes(_securityOptions.SendWindowMinutes), nowUtc)} seconds.");
-            }
-
-            if (verification.DailySendCount >= _securityOptions.MaxSendsPerDay)
-            {
-                throw new BadRequestException("You have reached today's OTP request limit. Please try again tomorrow.");
+                // Redis unavailable: fallback to SQL-backed limits to keep feature available.
+                EnforceSendRateLimitFallback(verification, nowUtc);
             }
 
             var code = GenerateOtpCode();
@@ -112,23 +86,7 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
             verification.LastSentAt = nowUtc;
             verification.SendCountInWindow += 1;
             verification.DailySendCount += 1;
-            verification.FailedAttempts = 0;
-            verification.LockedUntil = null;
             verification.ConsumedAt = null;
-
-            if (ipRateLimit != null)
-            {
-                ipRateLimit.LastSentAt = nowUtc;
-                ipRateLimit.SendCountInWindow += 1;
-                ipRateLimit.DailySendCount += 1;
-                ipRateLimit.LockedUntil = null;
-                ipRateLimit.UpdatedAt = nowUtc;
-
-                if (ipRateLimit.Id > 0)
-                {
-                    await _ipRateLimitRepository.UpdateAsync(ipRateLimit);
-                }
-            }
 
             string body = $@"
 <html>
@@ -203,7 +161,6 @@ If you did not request this code, please ignore this email.<br/>
             await _emailService.SendEmailAsync(normalizedEmail, "CloudM - Email Verification", body, isHtml: true);
             await _unitOfWork.CommitAsync();
         }
-
 
         public async Task<bool> VerifyEmailAsync(string email, string code)
         {
@@ -319,13 +276,7 @@ If you did not request this code, please ignore this email.<br/>
         private (string Hash, string Salt) HashCode(string code)
         {
             var saltBytes = RandomNumberGenerator.GetBytes(OtpSaltBytes);
-            var pepperedCode = $"{code}:{_securityOptions.OtpPepper}";
-            var hashBytes = Rfc2898DeriveBytes.Pbkdf2(
-                pepperedCode,
-                saltBytes,
-                _securityOptions.Pbkdf2Iterations,
-                HashAlgorithmName.SHA256,
-                OtpHashBytes);
+            var hashBytes = ComputeHmacHash(code, saltBytes);
 
             return (Convert.ToBase64String(hashBytes), Convert.ToBase64String(saltBytes));
         }
@@ -335,16 +286,24 @@ If you did not request this code, please ignore this email.<br/>
             try
             {
                 var saltBytes = Convert.FromBase64String(salt);
-                var pepperedCode = $"{code}:{_securityOptions.OtpPepper}";
-                var computedHashBytes = Rfc2898DeriveBytes.Pbkdf2(
-                    pepperedCode,
-                    saltBytes,
-                    _securityOptions.Pbkdf2Iterations,
-                    HashAlgorithmName.SHA256,
-                    OtpHashBytes);
+                var computedHashBytes = ComputeHmacHash(code, saltBytes);
                 var expectedHashBytes = Convert.FromBase64String(expectedHash);
 
-                return CryptographicOperations.FixedTimeEquals(computedHashBytes, expectedHashBytes);
+                if (CryptographicOperations.FixedTimeEquals(computedHashBytes, expectedHashBytes))
+                {
+                    return true;
+                }
+
+                // Backward-compatible verification for OTPs issued before HMAC migration.
+                var legacyPepperedCode = $"{code}:{_securityOptions.OtpPepper}";
+                var legacyHashBytes = Rfc2898DeriveBytes.Pbkdf2(
+                    legacyPepperedCode,
+                    saltBytes,
+                    LegacyPbkdf2Iterations,
+                    HashAlgorithmName.SHA256,
+                    LegacyOtpHashBytes);
+
+                return CryptographicOperations.FixedTimeEquals(legacyHashBytes, expectedHashBytes);
             }
             catch
             {
@@ -352,66 +311,61 @@ If you did not request this code, please ignore this email.<br/>
             }
         }
 
+        private byte[] ComputeHmacHash(string code, byte[] saltBytes)
+        {
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_securityOptions.OtpPepper));
+            var payload = BuildOtpPayload(code, saltBytes);
+            return hmac.ComputeHash(payload);
+        }
+
         private static int GetRemainingSeconds(DateTime futureTime, DateTime nowUtc)
         {
             return Math.Max(1, (int)Math.Ceiling((futureTime - nowUtc).TotalSeconds));
         }
 
-        private async Task EnforceIpRateLimitBeforeSendAsync(EmailVerificationIpRateLimit? ipRateLimit, DateTime nowUtc)
+        private static byte[] BuildOtpPayload(string code, byte[] saltBytes)
         {
-            if (ipRateLimit == null)
-            {
-                return;
-            }
+            var codeBytes = Encoding.UTF8.GetBytes(code);
+            var payload = new byte[saltBytes.Length + 1 + codeBytes.Length];
+            Buffer.BlockCopy(saltBytes, 0, payload, 0, saltBytes.Length);
+            payload[saltBytes.Length] = (byte)':';
+            Buffer.BlockCopy(codeBytes, 0, payload, saltBytes.Length + 1, codeBytes.Length);
 
-            if (ipRateLimit.LockedUntil.HasValue && ipRateLimit.LockedUntil.Value > nowUtc)
+            return payload;
+        }
+
+        private void EnforceSendRateLimitFallback(SocialNetwork.Domain.Entities.EmailVerification verification, DateTime nowUtc)
+        {
+            if (verification.LastSentAt > nowUtc.AddSeconds(-_securityOptions.ResendCooldownSeconds))
             {
                 throw new BadRequestException(
-                    $"Too many OTP requests from this network. Please wait {GetRemainingSeconds(ipRateLimit.LockedUntil.Value, nowUtc)} seconds before requesting another code.");
+                    $"Please wait {GetRemainingSeconds(verification.LastSentAt.AddSeconds(_securityOptions.ResendCooldownSeconds), nowUtc)} seconds before requesting another code.");
             }
 
-            if (ipRateLimit.SendWindowStartedAt <= nowUtc.AddMinutes(-_securityOptions.IpSendWindowMinutes))
+            if (verification.SendCountInWindow >= _securityOptions.MaxSendsPerWindow)
             {
-                ipRateLimit.SendWindowStartedAt = nowUtc;
-                ipRateLimit.SendCountInWindow = 0;
-            }
-
-            if (ipRateLimit.DailyWindowStartedAt.Date != nowUtc.Date)
-            {
-                ipRateLimit.DailyWindowStartedAt = nowUtc.Date;
-                ipRateLimit.DailySendCount = 0;
-            }
-
-            if (ipRateLimit.DailySendCount >= _securityOptions.MaxSendsPerIpDay)
-            {
-                var nextDayUtc = nowUtc.Date.AddDays(1);
-                ipRateLimit.LockedUntil = nextDayUtc;
-                ipRateLimit.UpdatedAt = nowUtc;
-
-                if (ipRateLimit.Id > 0)
-                {
-                    await _ipRateLimitRepository.UpdateAsync(ipRateLimit);
-                }
-
-                await _unitOfWork.CommitAsync();
                 throw new BadRequestException(
-                    $"This network has reached today's OTP request limit. Please wait {GetRemainingSeconds(nextDayUtc, nowUtc)} seconds.");
+                    $"You have reached the OTP request limit for this email. Please wait {GetRemainingSeconds(verification.SendWindowStartedAt.AddMinutes(_securityOptions.SendWindowMinutes), nowUtc)} seconds.");
             }
 
-            if (ipRateLimit.SendCountInWindow >= _securityOptions.MaxSendsPerIpWindow)
+            if (verification.DailySendCount >= _securityOptions.MaxSendsPerDay)
             {
-                var lockedUntil = nowUtc.AddMinutes(_securityOptions.IpLockMinutes);
-                ipRateLimit.LockedUntil = lockedUntil;
-                ipRateLimit.UpdatedAt = nowUtc;
+                throw new BadRequestException("You have reached today's OTP request limit for this email.");
+            }
+        }
 
-                if (ipRateLimit.Id > 0)
-                {
-                    await _ipRateLimitRepository.UpdateAsync(ipRateLimit);
-                }
+        private void ResetSendCountersIfNeeded(SocialNetwork.Domain.Entities.EmailVerification verification, DateTime nowUtc)
+        {
+            if (verification.SendWindowStartedAt <= nowUtc.AddMinutes(-_securityOptions.SendWindowMinutes))
+            {
+                verification.SendWindowStartedAt = nowUtc;
+                verification.SendCountInWindow = 0;
+            }
 
-                await _unitOfWork.CommitAsync();
-                throw new BadRequestException(
-                    $"Too many OTP requests from this network. Please wait {GetRemainingSeconds(lockedUntil, nowUtc)} seconds before requesting another code.");
+            if (verification.DailyWindowStartedAt.Date != nowUtc.Date)
+            {
+                verification.DailyWindowStartedAt = nowUtc.Date;
+                verification.DailySendCount = 0;
             }
         }
 
@@ -424,13 +378,16 @@ If you did not request this code, please ignore this email.<br/>
             options.MaxSendsPerDay = options.MaxSendsPerDay <= 0 ? 10 : options.MaxSendsPerDay;
             options.MaxSendsPerIpWindow = options.MaxSendsPerIpWindow <= 0 ? 10 : options.MaxSendsPerIpWindow;
             options.IpSendWindowMinutes = options.IpSendWindowMinutes <= 0 ? 15 : options.IpSendWindowMinutes;
-            options.MaxSendsPerIpDay = options.MaxSendsPerIpDay <= 0 ? 30 : options.MaxSendsPerIpDay;
+            options.MaxSendsPerIpDay = options.MaxSendsPerIpDay <= 0 ? 200 : options.MaxSendsPerIpDay;
+            options.MaxSendsPerEmailIpWindow = options.MaxSendsPerEmailIpWindow < 0 ? 5 : options.MaxSendsPerEmailIpWindow;
+            options.EmailIpSendWindowMinutes = options.EmailIpSendWindowMinutes <= 0 ? 15 : options.EmailIpSendWindowMinutes;
+            options.MaxGlobalSendsPerWindow = options.MaxGlobalSendsPerWindow <= 0 ? 1000 : options.MaxGlobalSendsPerWindow;
+            options.GlobalSendWindowMinutes = options.GlobalSendWindowMinutes <= 0 ? 60 : options.GlobalSendWindowMinutes;
             options.IpLockMinutes = options.IpLockMinutes <= 0 ? 15 : options.IpLockMinutes;
             options.MaxFailedAttempts = options.MaxFailedAttempts <= 0 ? 5 : options.MaxFailedAttempts;
             options.LockMinutes = options.LockMinutes <= 0 ? 15 : options.LockMinutes;
             options.CleanupIntervalMinutes = options.CleanupIntervalMinutes <= 0 ? 30 : options.CleanupIntervalMinutes;
             options.RetentionHours = options.RetentionHours <= 0 ? 24 : options.RetentionHours;
-            options.Pbkdf2Iterations = options.Pbkdf2Iterations <= 0 ? 100000 : options.Pbkdf2Iterations;
             options.OtpPepper = string.IsNullOrWhiteSpace(options.OtpPepper)
                 ? "CHANGE_ME_OTP_PEPPER"
                 : options.OtpPepper;

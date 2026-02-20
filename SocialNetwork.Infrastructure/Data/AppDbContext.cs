@@ -17,7 +17,6 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
-        public virtual DbSet<EmailVerificationIpRateLimit> EmailVerificationIpRateLimits { get; set; }
         public virtual DbSet<Follow> Follows { get; set; }
         public virtual DbSet<Post> Posts { get; set; }
         public virtual DbSet<PostMedia> PostMedias { get; set; }
@@ -98,19 +97,6 @@ namespace SocialNetwork.Infrastructure.Data
 
                 entity.HasIndex(e => e.ExpiredAt)
                     .HasDatabaseName("IX_EmailVerifications_ExpiredAt");
-            });
-
-            modelBuilder.Entity<EmailVerificationIpRateLimit>(entity =>
-            {
-                entity.HasIndex(e => e.IpAddress)
-                    .IsUnique()
-                    .HasDatabaseName("IX_EmailVerificationIpRateLimits_IpAddress_Unique");
-
-                entity.HasIndex(e => e.UpdatedAt)
-                    .HasDatabaseName("IX_EmailVerificationIpRateLimits_UpdatedAt");
-
-                entity.HasIndex(e => e.LockedUntil)
-                    .HasDatabaseName("IX_EmailVerificationIpRateLimits_LockedUntil");
             });
 
             // =====================
