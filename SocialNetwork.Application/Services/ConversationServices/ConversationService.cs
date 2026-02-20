@@ -460,6 +460,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 Theme = item.Theme,
                 Owner = item.Owner,
                 CurrentUserRole = item.CurrentUserRole,
+                GroupAvatars = item.GroupAvatars,
                 LastMessageSeenBy = item.LastMessageSeenBy,
                 LastMessageSeenCount = item.LastMessageSeenCount
             }).ToList();
@@ -495,6 +496,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         DisplayAvatar = repoMeta.DisplayAvatar,
                         Owner = repoMeta.Owner,
                         CurrentUserRole = repoMeta.CurrentUserRole,
+                        GroupAvatars = repoMeta.GroupAvatars,
                         OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
                         {
                             AccountId = repoMeta.OtherMember.AccountId,
@@ -693,6 +695,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     DisplayAvatar = repoMeta.DisplayAvatar,
                     Owner = repoMeta.Owner,
                     CurrentUserRole = repoMeta.CurrentUserRole,
+                    GroupAvatars = repoMeta.GroupAvatars,
                     OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
                     {
                         AccountId = repoMeta.OtherMember.AccountId,
