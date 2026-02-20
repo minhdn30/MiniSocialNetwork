@@ -287,12 +287,28 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasForeignKey(c => c.CreatedBy)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Conversation → Owner (Account, group only)
+            modelBuilder.Entity<Conversation>()
+                .HasOne(c => c.OwnerAccount)
+                .WithMany(a => a.OwnedConversations)
+                .HasForeignKey(c => c.Owner)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Data consistency: private chat must not have owner, group chat must have owner.
+            modelBuilder.Entity<Conversation>()
+                .ToTable(table => table.HasCheckConstraint(
+                    "CK_Conversations_GroupOwner",
+                    "(\"IsGroup\" = FALSE AND \"Owner\" IS NULL) OR (\"IsGroup\" = TRUE AND \"Owner\" IS NOT NULL)"));
+
             // Index: sort / filter conversations
             modelBuilder.Entity<Conversation>()
                 .HasIndex(c => c.CreatedAt);
 
             modelBuilder.Entity<Conversation>()
                 .HasIndex(c => c.CreatedBy);
+
+            modelBuilder.Entity<Conversation>()
+                .HasIndex(c => c.Owner);
 
             // Trigram index for group conversation name search (ILIKE %keyword%)
             modelBuilder.Entity<Conversation>()

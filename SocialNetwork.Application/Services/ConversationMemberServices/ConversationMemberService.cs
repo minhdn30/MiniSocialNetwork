@@ -227,10 +227,16 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (!conversation.IsGroup)
                 throw new BadRequestException("Add member search is only available for group conversations.");
 
-            var activeMemberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(conversationId);
-            if (!activeMemberIds.Contains(currentId))
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
+            var ownerId = ResolveGroupOwnerId(conversation);
+            var actorIsOwner = ownerId.HasValue && ownerId.Value == currentId;
+            if (!actorMember.IsAdmin && !actorIsOwner)
+                throw new ForbiddenException("Only group admins can search and add members.");
+
+            var activeMemberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(conversationId);
             if (activeMemberIds.Count >= MaxGroupConversationMembers)
                 return new List<GroupInviteAccountSearchResponse>();
 
@@ -270,10 +276,16 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (!conversation.IsGroup)
                 throw new BadRequestException("Add member is only available for group conversations.");
 
-            var activeMemberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(conversationId);
-            if (!activeMemberIds.Contains(currentId))
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
+            var ownerId = ResolveGroupOwnerId(conversation);
+            var actorIsOwner = ownerId.HasValue && ownerId.Value == currentId;
+            if (!actorMember.IsAdmin && !actorIsOwner)
+                throw new ForbiddenException("Only group admins can add members.");
+
+            var activeMemberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(conversationId);
             if (activeMemberIds.Count >= MaxGroupConversationMembers)
                 throw new BadRequestException($"A group can contain at most {MaxGroupConversationMembers} members.");
 
@@ -473,15 +485,20 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
-            if (!actorMember.IsAdmin)
+            var ownerId = ResolveGroupOwnerId(conversation);
+            var actorIsOwner = ownerId.HasValue && ownerId.Value == currentId;
+            if (!actorMember.IsAdmin && !actorIsOwner)
                 throw new ForbiddenException("Only group admins can kick members.");
 
             var targetMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, targetAccountId);
             if (targetMember == null)
                 throw new BadRequestException("Target account is not an active member of this group.");
 
-            if (targetMember.IsAdmin)
-                throw new BadRequestException("You cannot kick another admin.");
+            if (ownerId.HasValue && ownerId.Value == targetAccountId)
+                throw new BadRequestException("You cannot kick the group owner.");
+
+            if (!actorIsOwner && targetMember.IsAdmin)
+                throw new BadRequestException("Only group owner can kick another admin.");
 
             var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
             var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
@@ -492,6 +509,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (target == null)
                 throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
 
+            targetMember.IsAdmin = false;
             targetMember.HasLeft = true;
             var sentAt = DateTime.UtcNow;
             var systemMessage = new Message
@@ -544,12 +562,16 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
-            if (!actorMember.IsAdmin)
-                throw new ForbiddenException("Only group admins can assign another admin.");
+            var ownerId = ResolveGroupOwnerId(conversation);
+            if (!ownerId.HasValue || ownerId.Value != currentId)
+                throw new ForbiddenException("Only group owner can assign another admin.");
 
             var targetMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, targetAccountId);
             if (targetMember == null)
                 throw new BadRequestException("Target account is not an active member of this group.");
+
+            if (ownerId.Value == targetAccountId)
+                throw new BadRequestException("Group owner already has highest privileges.");
 
             if (targetMember.IsAdmin)
                 throw new BadRequestException("Target member is already an admin.");
@@ -598,6 +620,164 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
         }
 
+        public async Task RevokeGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
+        {
+            if (targetAccountId == Guid.Empty)
+                throw new BadRequestException("Target account is required.");
+
+            if (targetAccountId == currentId)
+                throw new BadRequestException("You cannot revoke your own admin role.");
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            if (!conversation.IsGroup)
+                throw new BadRequestException("Revoke admin is only available for group conversations.");
+
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
+                throw new ForbiddenException("You are not a member of this conversation.");
+
+            var ownerId = ResolveGroupOwnerId(conversation);
+            if (!ownerId.HasValue || ownerId.Value != currentId)
+                throw new ForbiddenException("Only group owner can revoke admin privileges.");
+
+            if (ownerId.Value == targetAccountId)
+                throw new BadRequestException("You cannot revoke admin role from the group owner.");
+
+            var targetMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, targetAccountId);
+            if (targetMember == null)
+                throw new BadRequestException("Target account is not an active member of this group.");
+
+            if (!targetMember.IsAdmin)
+                throw new BadRequestException("Target member is not an admin.");
+
+            targetMember.IsAdmin = false;
+
+            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
+            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            if (actor == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+
+            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            if (target == null)
+                throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
+
+            var sentAt = DateTime.UtcNow;
+            var systemMessage = new Message
+            {
+                ConversationId = conversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = BuildAdminRevokedSystemMessageFallback(actor.Username, target.Username),
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)SystemMessageActionEnum.AdminRevoked,
+                    actorAccountId = currentId,
+                    actorUsername = actor.Username,
+                    targetAccountId,
+                    targetUsername = target.Username
+                }),
+                SentAt = sentAt,
+                IsEdited = false,
+                IsRecalled = false
+            };
+
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _conversationMemberRepository.UpdateConversationMember(targetMember);
+                await _messageRepository.AddMessageAsync(systemMessage);
+                return true;
+            });
+
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage);
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(actor);
+            await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
+        }
+
+        public async Task TransferGroupOwnerAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
+        {
+            if (targetAccountId == Guid.Empty)
+                throw new BadRequestException("Target account is required.");
+
+            if (targetAccountId == currentId)
+                throw new BadRequestException("Please choose another member as the new owner.");
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            if (!conversation.IsGroup)
+                throw new BadRequestException("Ownership transfer is only available for group conversations.");
+
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
+                throw new ForbiddenException("You are not a member of this conversation.");
+
+            var ownerId = ResolveGroupOwnerId(conversation);
+            if (!ownerId.HasValue || ownerId.Value != currentId)
+                throw new ForbiddenException("Only group owner can transfer ownership.");
+
+            var targetMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, targetAccountId);
+            if (targetMember == null)
+                throw new BadRequestException("Target account is not an active member of this group.");
+
+            conversation.Owner = targetAccountId;
+            targetMember.IsAdmin = true;
+
+            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
+            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            if (actor == null)
+                throw new NotFoundException($"Account with ID {currentId} does not exist.");
+
+            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            if (target == null)
+                throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
+
+            var sentAt = DateTime.UtcNow;
+            var systemMessage = new Message
+            {
+                ConversationId = conversationId,
+                AccountId = currentId,
+                MessageType = MessageTypeEnum.System,
+                Content = BuildOwnerTransferredSystemMessageFallback(actor.Username, target.Username),
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = (int)SystemMessageActionEnum.OwnerTransferred,
+                    actorAccountId = currentId,
+                    actorUsername = actor.Username,
+                    targetAccountId,
+                    targetUsername = target.Username,
+                    ownerAccountId = targetAccountId
+                }),
+                SentAt = sentAt,
+                IsEdited = false,
+                IsRecalled = false
+            };
+
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _conversationRepository.UpdateConversationAsync(conversation);
+                await _conversationMemberRepository.UpdateConversationMember(targetMember);
+                await _messageRepository.AddMessageAsync(systemMessage);
+                return true;
+            });
+
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage);
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(actor);
+            await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, realtimeMessage);
+
+            await _realtimeService.NotifyGroupConversationInfoUpdatedAsync(
+                conversationId,
+                conversation.ConversationName,
+                conversation.ConversationAvatar,
+                conversation.Owner,
+                currentId);
+        }
+
         public async Task LeaveGroupAsync(Guid conversationId, Guid currentId)
         {
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
@@ -611,6 +791,10 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
+            var ownerId = ResolveGroupOwnerId(conversation);
+            if (ownerId.HasValue && ownerId.Value == currentId)
+                throw new BadRequestException("Group owner must transfer ownership before leaving the group.");
+
             var activeMembers = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
             if (activeMembers.Count == 0)
                 throw new BadRequestException("This group has no active members.");
@@ -621,11 +805,7 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentId} does not exist.");
 
-            var activeAdminCount = activeMembers.Count(member => member.IsAdmin);
-            var activeMemberCount = activeMembers.Count;
-            if (actorMember.IsAdmin && activeMemberCount > 1 && activeAdminCount <= 1)
-                throw new BadRequestException("You are the only admin. Assign another admin before leaving the group.");
-
+            actorMember.IsAdmin = false;
             actorMember.HasLeft = true;
             var sentAt = DateTime.UtcNow;
             var systemMessage = new Message
@@ -745,6 +925,20 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             return $"{actorMention} made {targetMention} an admin.";
         }
 
+        private static string BuildAdminRevokedSystemMessageFallback(string actorUsername, string targetUsername)
+        {
+            var actorMention = ToMention(actorUsername);
+            var targetMention = ToMention(targetUsername);
+            return $"{actorMention} removed admin role from {targetMention}.";
+        }
+
+        private static string BuildOwnerTransferredSystemMessageFallback(string actorUsername, string targetUsername)
+        {
+            var actorMention = ToMention(actorUsername);
+            var targetMention = ToMention(targetUsername);
+            return $"{actorMention} transferred group ownership to {targetMention}.";
+        }
+
         private static string BuildMembersAddedSystemMessageFallback(string actorUsername, IEnumerable<string> targetUsernames)
         {
             var actorMention = ToMention(actorUsername);
@@ -771,6 +965,17 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             return normalized.Length > MaxConversationThemeLength
                 ? normalized[..MaxConversationThemeLength]
                 : normalized;
+        }
+
+        private static Guid? ResolveGroupOwnerId(Conversation conversation)
+        {
+            if (conversation == null || !conversation.IsGroup)
+                return null;
+
+            if (conversation.Owner.HasValue && conversation.Owner.Value != Guid.Empty)
+                return conversation.Owner.Value;
+
+            return conversation.CreatedBy != Guid.Empty ? conversation.CreatedBy : null;
         }
     }
 }

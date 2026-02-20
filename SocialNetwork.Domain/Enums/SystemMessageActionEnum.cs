@@ -15,6 +15,7 @@ namespace SocialNetwork.Domain.Enums
         MessagePinned = 10,          // Pin a message
         MessageUnpinned = 11,         // Unpin a message
         GroupAvatarUpdated = 12,      // Update group avatar
-        GroupInfoUpdated = 13         // Update group name/avatar
+        GroupInfoUpdated = 13,        // Update group name/avatar
+        OwnerTransferred = 14         // Transfer group owner
     }
 }

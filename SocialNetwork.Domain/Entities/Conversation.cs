@@ -15,10 +15,12 @@ namespace SocialNetwork.Domain.Entities
         public bool IsGroup { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid CreatedBy { get; set; }
+        public Guid? Owner { get; set; }
         public bool IsDeleted { get; set; } = false;
         public ICollection<ConversationMember> Members { get; set; } = new List<ConversationMember>();
         public ICollection<Message> Messages { get; set; } = new List<Message>();
         public virtual Account CreatedByAccount { get; set; } = null!;
+        public virtual Account? OwnerAccount { get; set; }
 
     }
 }

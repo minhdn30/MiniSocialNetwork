@@ -19,6 +19,8 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
         Task AddGroupMembersAsync(Guid conversationId, Guid currentId, AddGroupMembersRequest request);
         Task KickGroupMemberAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
         Task AssignGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
+        Task RevokeGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
+        Task TransferGroupOwnerAsync(Guid conversationId, Guid currentId, Guid targetAccountId);
         Task LeaveGroupAsync(Guid conversationId, Guid currentId);
         Task SoftDeleteChatHistory(Guid conversationId, Guid currentId);
         Task MarkSeenAsync(Guid conversationId, Guid currentId, Guid newMessageId);

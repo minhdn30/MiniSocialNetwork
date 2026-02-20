@@ -239,7 +239,7 @@ namespace SocialNetwork.API.Services
                 });
         }
 
-        public async Task NotifyGroupConversationInfoUpdatedAsync(Guid conversationId, string? conversationName, string? conversationAvatar, Guid updatedBy)
+        public async Task NotifyGroupConversationInfoUpdatedAsync(Guid conversationId, string? conversationName, string? conversationAvatar, Guid? ownerAccountId, Guid updatedBy)
         {
             await _chatHubContext.Clients.Group(conversationId.ToString())
                 .SendAsync("ReceiveGroupConversationInfoUpdated", new
@@ -247,6 +247,7 @@ namespace SocialNetwork.API.Services
                     ConversationId = conversationId,
                     ConversationName = conversationName,
                     ConversationAvatar = conversationAvatar,
+                    Owner = ownerAccountId,
                     UpdatedBy = updatedBy
                 });
         }

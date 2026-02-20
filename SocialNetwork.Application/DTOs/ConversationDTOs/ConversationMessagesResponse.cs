@@ -22,6 +22,8 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public string? Theme { get; set; }
         public string? DisplayName { get; set; }
         public string? DisplayAvatar { get; set; }
+        public Guid? Owner { get; set; }
+        public int CurrentUserRole { get; set; }
         public int MemberCount { get; set; }
         public OtherMemberInfo? OtherMember { get; set; }
         public List<string>? SampleMembers { get; set; } 

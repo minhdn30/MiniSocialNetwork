@@ -74,6 +74,7 @@ namespace SocialNetwork.Tests.Services
                     It.IsAny<Guid>(),
                     It.IsAny<string?>(),
                     It.IsAny<string?>(),
+                    It.IsAny<Guid?>(),
                     It.IsAny<Guid>()))
                 .Returns(Task.CompletedTask);
 
@@ -444,6 +445,15 @@ namespace SocialNetwork.Tests.Services
             _conversationMemberRepositoryMock
                 .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
                 .ReturnsAsync(true);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetConversationMemberAsync(conversationId, currentId))
+                .ReturnsAsync(new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = currentId,
+                    IsAdmin = true,
+                    HasLeft = false
+                });
 
             _conversationRepositoryMock
                 .Setup(x => x.GetConversationByIdAsync(conversationId))
@@ -490,6 +500,7 @@ namespace SocialNetwork.Tests.Services
                 conversationId,
                 "New Name",
                 newAvatarUrl,
+                It.Is<Guid?>(owner => owner == null),
                 currentId), Times.Once);
         }
 
@@ -524,6 +535,15 @@ namespace SocialNetwork.Tests.Services
             _conversationMemberRepositoryMock
                 .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
                 .ReturnsAsync(true);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetConversationMemberAsync(conversationId, currentId))
+                .ReturnsAsync(new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = currentId,
+                    IsAdmin = true,
+                    HasLeft = false
+                });
 
             _conversationRepositoryMock
                 .Setup(x => x.GetConversationByIdAsync(conversationId))
@@ -605,6 +625,15 @@ namespace SocialNetwork.Tests.Services
             _conversationMemberRepositoryMock
                 .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
                 .ReturnsAsync(true);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetConversationMemberAsync(conversationId, currentId))
+                .ReturnsAsync(new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = currentId,
+                    IsAdmin = true,
+                    HasLeft = false
+                });
             _conversationRepositoryMock
                 .Setup(x => x.GetConversationByIdAsync(conversationId))
                 .ReturnsAsync(conversation);
@@ -641,6 +670,7 @@ namespace SocialNetwork.Tests.Services
                 conversationId,
                 "Old Name",
                 null,
+                It.Is<Guid?>(owner => owner == null),
                 currentId), Times.Once);
         }
 

@@ -195,7 +195,9 @@ namespace SocialNetwork.Application.Services.PinnedMessageServices
             {
                 // group: only admins can pin/unpin
                 var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentAccountId);
-                if (member == null || !member.IsAdmin)
+                var ownerId = conversation.Owner ?? (conversation.CreatedBy != Guid.Empty ? conversation.CreatedBy : Guid.Empty);
+                var isOwner = ownerId != Guid.Empty && ownerId == currentAccountId;
+                if (member == null || (!member.IsAdmin && !isOwner))
                     throw new ForbiddenException("Only group admins can pin or unpin messages.");
             }
             // 1:1 chat: anyone can pin/unpin (no check needed)

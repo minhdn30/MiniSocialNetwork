@@ -284,6 +284,30 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
+        [HttpPatch("{conversationId:guid}/members/{targetAccountId:guid}/revoke-admin")]
+        public async Task<IActionResult> RevokeGroupAdmin([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationMemberService.RevokeGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/owner/{targetAccountId:guid}/transfer")]
+        public async Task<IActionResult> TransferGroupOwner([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationMemberService.TransferGroupOwnerAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
         [HttpPatch("{conversationId:guid}/leave")]
         public async Task<IActionResult> LeaveGroupConversation([FromRoute] Guid conversationId)
         {

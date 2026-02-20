@@ -17,6 +17,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public bool IsGroup { get; set; }
         public DateTime CreatedAt { get; set; }
         public Guid CreatedBy { get; set; }
+        public Guid? Owner { get; set; }
         public bool IsDeleted { get; set; } = false;
         public IEnumerable<ConversationMemberResponse> Members { get; set; } = new List<ConversationMemberResponse>();
     }
