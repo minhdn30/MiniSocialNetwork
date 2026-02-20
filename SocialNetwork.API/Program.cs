@@ -42,6 +42,7 @@ using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
+using SocialNetwork.Infrastructure.Repositories.EmailVerificationIpRateLimits;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
@@ -96,6 +97,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IAccountSettingRepository, AccountSettingRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
+            builder.Services.AddScoped<IEmailVerificationIpRateLimitRepository, EmailVerificationIpRateLimitRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
             builder.Services.AddScoped<ICommentRepository, CommentRepository>();
             builder.Services.AddScoped<IPostRepository, PostRepository>();
@@ -112,6 +114,9 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // Services
+            builder.Services.Configure<EmailVerificationSecurityOptions>(
+                builder.Configuration.GetSection("EmailVerification"));
+
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
@@ -136,6 +141,7 @@ namespace SocialNetwork.API
 
             // Realtime Services
             builder.Services.AddScoped<IRealtimeService, RealtimeService>();
+            builder.Services.AddHostedService<EmailVerificationCleanupHostedService>();
 
             // Helpers
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();

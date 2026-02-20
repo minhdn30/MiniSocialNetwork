@@ -63,6 +63,8 @@ namespace SocialNetwork.Tests.Services
             // Assert
             result.Should().NotBeNull();
             result.AccountId.Should().Be(account.AccountId);
+            account.Status.Should().Be(AccountStatusEnum.EmailNotVerified);
+            account.Settings.Should().NotBeNull();
             _accountRepositoryMock.Verify(x => x.AddAccount(It.IsAny<Account>()), Times.Once);
             _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
         }
@@ -109,7 +111,7 @@ namespace SocialNetwork.Tests.Services
             var request = TestDataFactory.CreateLoginRequest();
             var account = TestDataFactory.CreateAccount(email: request.Email);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-            account.IsEmailVerified = true;
+            account.Status = AccountStatusEnum.Active;
 
             var accessToken = "test-access-token";
             var settings = new AccountSettings { DefaultPostPrivacy = PostPrivacyEnum.Public };
@@ -191,7 +193,7 @@ namespace SocialNetwork.Tests.Services
             var request = TestDataFactory.CreateLoginRequest();
             var account = TestDataFactory.CreateAccount(email: request.Email);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-            account.IsEmailVerified = false;
+            account.Status = AccountStatusEnum.EmailNotVerified;
 
             _accountRepositoryMock.Setup(x => x.GetAccountByEmail(request.Email)).ReturnsAsync(account);
 

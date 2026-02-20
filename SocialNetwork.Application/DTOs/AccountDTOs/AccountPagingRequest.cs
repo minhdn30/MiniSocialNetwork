@@ -17,7 +17,6 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public int? RoleId { get; set; }
         public bool? Gender { get; set; }
         public AccountStatusEnum? Status { get; set; }
-        public bool? IsEmailVerified { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }

@@ -84,7 +84,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         }
         // search and filter accounts (admin)
         public async Task<(List<Account> Items, int TotalItems)> GetAccountsAsync(Guid? id, string? username, string? email,
-            string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, bool? isEmailVerified, int page, int pageSize)
+            string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, int page, int pageSize)
         {
             var query = _context.Accounts.Include(a => a.Role).OrderBy(a => a.CreatedAt).AsQueryable();
             if (id.HasValue && id.Value != Guid.Empty)
@@ -123,10 +123,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
             if (status.HasValue)
             {
                 query = query.Where(a => a.Status == status.Value);
-            }
-            if (isEmailVerified.HasValue)
-            {
-                query = query.Where(a => a.IsEmailVerified == isEmailVerified.Value);
             }
             int totalItems = await query.CountAsync();
             var items = await query

@@ -12,6 +12,7 @@ namespace SocialNetwork.Domain.Enums
         Inactive = 1,
         Suspended = 2,
         Banned = 3,
-        Deleted = 4
+        Deleted = 4,
+        EmailNotVerified = 5
     }
 }

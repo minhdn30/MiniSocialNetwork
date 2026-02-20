@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SocialNetwork.Infrastructure.Data;
@@ -11,9 +12,11 @@ using SocialNetwork.Infrastructure.Data;
 namespace SocialNetwork.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260220154828_HardenEmailVerificationSecurity")]
+    partial class HardenEmailVerificationSecurity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -366,58 +369,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .HasDatabaseName("IX_EmailVerifications_ExpiredAt");
 
                     b.ToTable("EmailVerifications");
-                });
-
-            modelBuilder.Entity("SocialNetwork.Domain.Entities.EmailVerificationIpRateLimit", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("DailySendCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("DailyWindowStartedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("IpAddress")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<DateTime>("LastSentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("LockedUntil")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("SendCountInWindow")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("SendWindowStartedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IpAddress")
-                        .IsUnique()
-                        .HasDatabaseName("IX_EmailVerificationIpRateLimits_IpAddress_Unique");
-
-                    b.HasIndex("LockedUntil")
-                        .HasDatabaseName("IX_EmailVerificationIpRateLimits_LockedUntil");
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("IX_EmailVerificationIpRateLimits_UpdatedAt");
-
-                    b.ToTable("EmailVerificationIpRateLimits");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Follow", b =>

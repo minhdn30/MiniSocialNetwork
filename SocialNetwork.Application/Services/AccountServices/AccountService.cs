@@ -60,7 +60,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {
             var (accounts, totalItems) = await _accountRepository.GetAccountsAsync(request.Id, request.Username, request.Email, request.Fullname, request.Phone,
-                request.RoleId, request.Gender, request.Status, request.IsEmailVerified, request.Page, request.PageSize);
+                request.RoleId, request.Gender, request.Status, request.Page, request.PageSize);
             var mappedAccounts = _mapper.Map<IEnumerable<AccountOverviewResponse>>(accounts);
             var rs = new PagedResponse<AccountOverviewResponse>
             {
@@ -109,6 +109,10 @@ namespace SocialNetwork.Application.Services.AccountServices
             EnumValidator.ValidateEnum<RoleEnum>(request.RoleId);
             var account = _mapper.Map<Account>(request);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            account.Settings ??= new AccountSettings
+            {
+                AccountId = account.AccountId
+            };
             await _accountRepository.AddAccount(account);
             await _unitOfWork.CommitAsync();
             return _mapper.Map<AccountDetailResponse>(account);

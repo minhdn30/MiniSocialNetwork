@@ -46,7 +46,7 @@ namespace SocialNetwork.Application.Services.JwtServices
                 new Claim(JwtRegisteredClaimNames.Email, account.Email),                //email
                 new Claim("fullName", account.FullName ?? ""),                           //fullname
                 new Claim("avatarUrl", account.AvatarUrl ?? ""),
-                new Claim("isVerified", account.IsEmailVerified.ToString())
+                new Claim("isVerified", (account.Status != AccountStatusEnum.EmailNotVerified).ToString())
 
             };
 
