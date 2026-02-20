@@ -11,6 +11,5 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
     {
         public int? RoleId { get; set; }
         public AccountStatusEnum? Status { get; set; } 
-        public bool? IsEmailVerified { get; set; }
     }
 }

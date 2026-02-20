@@ -16,10 +16,24 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
         {
             _context = context;
         }
-        public async Task<EmailVerification?> GetByEmailAsync(string email)
+        public async Task<EmailVerification?> GetLatestByEmailAsync(string email)
         {
             return await _context.EmailVerifications
-                .FirstOrDefaultAsync(e => e.Email == email);
+                .Where(e => e.Email == email)
+                .OrderByDescending(e => e.CreatedAt)
+                .ThenByDescending(e => e.Id)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task EnsureExistsByEmailAsync(string email, DateTime nowUtc)
+        {
+            var dailyWindowStart = nowUtc.Date;
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO ""EmailVerifications""
+                (""Email"", ""CodeHash"", ""CodeSalt"", ""FailedAttempts"", ""LastSentAt"", ""SendCountInWindow"", ""SendWindowStartedAt"", ""DailySendCount"", ""DailyWindowStartedAt"", ""LockedUntil"", ""ConsumedAt"", ""ExpiredAt"", ""CreatedAt"")
+                VALUES
+                ({email}, {string.Empty}, {string.Empty}, 0, {DateTime.UnixEpoch}, 0, {nowUtc}, 0, {dailyWindowStart}, {null}, {null}, {nowUtc}, {nowUtc})
+                ON CONFLICT (""Email"") DO NOTHING;");
         }
 
         public async Task AddEmailVerificationAsync(EmailVerification emailVerification)
@@ -31,31 +45,33 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
             _context.EmailVerifications.Update(emailVerification);
             return Task.CompletedTask;
         }
-        public async Task<bool> IsEmailExist(string email)
-        {
-            return await _context.EmailVerifications.AnyAsync(e => e.Email == email);
-        }
-        public async Task<bool> VerifyCodeAsync(string email, string code)
-        {
-            var latestVerification = await _context.EmailVerifications
-                .Where(e => e.Email == email)
-                .OrderByDescending(e => e.ExpiredAt) 
-                .FirstOrDefaultAsync();
-
-            if (latestVerification == null || latestVerification.ExpiredAt <= DateTime.UtcNow)
-                return false;
-
-            return latestVerification.Code == code;
-        }
 
         public async Task DeleteEmailVerificationAsync(string email)
         {
-            var verification = await _context.EmailVerifications
-                .FirstOrDefaultAsync(e => e.Email == email);
-            if (verification != null)
-            {
-                _context.EmailVerifications.Remove(verification);
-            }
+            await _context.EmailVerifications
+                .Where(e => e.Email == email)
+                .ExecuteDeleteAsync();
+        }
+
+        public async Task<bool> TryMarkAsConsumedAsync(int verificationId, DateTime consumedAtUtc)
+        {
+            var affectedRows = await _context.EmailVerifications
+                .Where(e => e.Id == verificationId && e.ConsumedAt == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(e => e.ConsumedAt, consumedAtUtc));
+
+            return affectedRows > 0;
+        }
+
+        public async Task<int> CleanupStaleVerificationsAsync(DateTime nowUtc, DateTime createdBeforeUtc)
+        {
+            return await _context.EmailVerifications
+                .Where(e =>
+                    e.ExpiredAt <= nowUtc ||
+                    (e.LockedUntil != null && e.LockedUntil <= nowUtc.AddMinutes(-5)) ||
+                    e.CreatedAt <= createdBeforeUtc ||
+                    e.ConsumedAt != null)
+                .ExecuteDeleteAsync();
         }
     }
 }

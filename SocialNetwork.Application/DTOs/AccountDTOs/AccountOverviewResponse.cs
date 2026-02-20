@@ -24,6 +24,5 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public AccountStatusEnum Status { get; set; } 
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
-        public bool IsEmailVerified { get; set; }
     }
 }

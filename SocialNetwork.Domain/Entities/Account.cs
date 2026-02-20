@@ -38,7 +38,6 @@ namespace SocialNetwork.Domain.Entities
         public AccountStatusEnum Status { get; set; } = 0;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
-        public bool IsEmailVerified { get; set; } = false;
         [MaxLength(256)]
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiryTime { get; set; }

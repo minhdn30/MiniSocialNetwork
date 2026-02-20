@@ -55,7 +55,11 @@ namespace SocialNetwork.Application.Services.AuthServices
             var account = _mapper.Map<Account>(registerRequest);
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerRequest.Password);
             account.RoleId = (int)RoleEnum.User;
-            account.IsEmailVerified = false;
+            account.Status = AccountStatusEnum.EmailNotVerified;
+            account.Settings ??= new AccountSettings
+            {
+                AccountId = account.AccountId
+            };
             await _accountRepository.AddAccount(account);
             await _unitOfWork.CommitAsync();
 
@@ -79,7 +83,7 @@ namespace SocialNetwork.Application.Services.AuthServices
             {
                 throw new UnauthorizedException("Your account has been restricted. Please contact support.");
             }
-            if(!account.IsEmailVerified)
+            if (account.Status == AccountStatusEnum.EmailNotVerified)
             {
                 throw new UnauthorizedException("Email is not verified. Please verify your email.");
             }
@@ -126,6 +130,10 @@ namespace SocialNetwork.Application.Services.AuthServices
             {
                 throw new UnauthorizedException("Your account has been restricted. Please contact support.");
             }
+            if (account.Status == AccountStatusEnum.EmailNotVerified)
+            {
+                throw new UnauthorizedException("Email is not verified. Please verify your email.");
+            }
 
             // Sinh access token
             var accessToken = _jwtService.GenerateToken(account);
@@ -166,6 +174,8 @@ namespace SocialNetwork.Application.Services.AuthServices
 
             if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
                 throw new UnauthorizedException("Your account has been restricted.");
+            if (account.Status == AccountStatusEnum.EmailNotVerified)
+                throw new UnauthorizedException("Email is not verified. Please verify your email.");
 
             var newAccessToken = _jwtService.GenerateToken(account);
 

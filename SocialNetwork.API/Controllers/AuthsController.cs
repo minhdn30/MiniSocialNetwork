@@ -9,6 +9,7 @@ using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
 using System;
 using System.Linq;
+using System.Net;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -179,6 +180,22 @@ namespace SocialNetwork.API.Controllers
             return false;
         }
 
+        private string? GetClientIpAddress()
+        {
+            IPAddress? remoteIp = HttpContext.Connection.RemoteIpAddress;
+            if (remoteIp == null)
+            {
+                return null;
+            }
+
+            if (remoteIp.IsIPv4MappedToIPv6)
+            {
+                remoteIp = remoteIp.MapToIPv4();
+            }
+
+            return remoteIp.ToString();
+        }
+
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDTO registerDTO)
         {
@@ -189,7 +206,7 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("send-email")]
         public async Task<IActionResult> SendVerificationEmail([FromBody] string email)
         {
-            await _emailVerificationService.SendVerificationEmailAsync(email);
+            await _emailVerificationService.SendVerificationEmailAsync(email, GetClientIpAddress());
             return Ok(new { Message = "Verification email sent." });
         }
 

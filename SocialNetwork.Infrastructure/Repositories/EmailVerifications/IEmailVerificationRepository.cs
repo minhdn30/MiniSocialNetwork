@@ -9,12 +9,12 @@ namespace SocialNetwork.Infrastructure.Repositories.EmailVerifications
 {
     public interface IEmailVerificationRepository
     {
-        Task<EmailVerification?> GetByEmailAsync(string email);
+        Task<EmailVerification?> GetLatestByEmailAsync(string email);
+        Task EnsureExistsByEmailAsync(string email, DateTime nowUtc);
         Task AddEmailVerificationAsync(EmailVerification emailVerification);
         Task UpdateEmailVerificationAsync(EmailVerification emailVerification);
-        Task<bool> IsEmailExist(string email);
-        Task<bool> VerifyCodeAsync(string email, string code);
         Task DeleteEmailVerificationAsync(string email);
-        
+        Task<bool> TryMarkAsConsumedAsync(int verificationId, DateTime consumedAtUtc);
+        Task<int> CleanupStaleVerificationsAsync(DateTime nowUtc, DateTime createdBeforeUtc);
      }
 }
