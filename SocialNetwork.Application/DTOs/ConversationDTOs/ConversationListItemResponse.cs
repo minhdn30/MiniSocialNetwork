@@ -25,6 +25,8 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public DateTime? LastMessageSentAt { get; set; }
         public bool IsMuted { get; set; }
         public string? Theme { get; set; }
+        public Guid? Owner { get; set; }
+        public int CurrentUserRole { get; set; }
 
         // Members who seen the last message (only populated when the current user sent the last message).
 

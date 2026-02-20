@@ -175,6 +175,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 IsGroup = true,
                 CreatedAt = nowUtc,
                 CreatedBy = currentId,
+                Owner = currentId,
                 IsDeleted = false
             };
 
@@ -247,6 +248,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 IsGroup = conversation.IsGroup,
                 CreatedAt = conversation.CreatedAt,
                 CreatedBy = conversation.CreatedBy,
+                Owner = conversation.Owner,
                 IsDeleted = conversation.IsDeleted,
                 Members = memberEntities.Select(member =>
                 {
@@ -280,7 +282,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
             if (request == null)
                 throw new BadRequestException("Request is required.");
 
-            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
+            var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
+            if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
@@ -289,6 +292,11 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
             if (!conversation.IsGroup)
                 throw new BadRequestException("Only group conversations can be updated.");
+
+            var ownerId = conversation.Owner ?? (conversation.CreatedBy != Guid.Empty ? conversation.CreatedBy : Guid.Empty);
+            var actorIsOwner = ownerId != Guid.Empty && ownerId == currentId;
+            if (!actorMember.IsAdmin && !actorIsOwner)
+                throw new ForbiddenException("Only group admins can edit group name or avatar.");
 
             var actor = await _accountRepository.GetAccountById(currentId);
             if (actor == null)
@@ -420,6 +428,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 conversation.ConversationId,
                 conversation.ConversationName,
                 conversation.ConversationAvatar,
+                conversation.Owner,
                 currentId);
         }
 
@@ -449,6 +458,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 LastMessageSentAt = item.LastMessageSentAt,
                 IsMuted = item.IsMuted,
                 Theme = item.Theme,
+                Owner = item.Owner,
+                CurrentUserRole = item.CurrentUserRole,
                 LastMessageSeenBy = item.LastMessageSeenBy,
                 LastMessageSeenCount = item.LastMessageSeenCount
             }).ToList();
@@ -482,6 +493,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         Theme = repoMeta.Theme,
                         DisplayName = repoMeta.DisplayName,
                         DisplayAvatar = repoMeta.DisplayAvatar,
+                        Owner = repoMeta.Owner,
+                        CurrentUserRole = repoMeta.CurrentUserRole,
                         OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
                         {
                             AccountId = repoMeta.OtherMember.AccountId,
@@ -494,6 +507,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     };
 
                     var members = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+                    var ownerId = metaData.Owner;
                     metaData.Members = members.Select(m => new ConversationMemberInfo
                     {
                         AccountId = m.AccountId,
@@ -501,7 +515,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         DisplayName = m.Nickname ?? m.Account.Username,
                         Username = m.Account.Username,
                         Nickname = m.Nickname,
-                        Role = m.IsAdmin ? 1 : 0
+                        Role = (m.IsAdmin || (ownerId.HasValue && ownerId.Value == m.AccountId)) ? 1 : 0
                     }).ToList();
                     metaData.MemberSeenStatuses = members.Select(m => new MemberSeenStatus
                     {
@@ -677,6 +691,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     Theme = repoMeta.Theme,
                     DisplayName = repoMeta.DisplayName,
                     DisplayAvatar = repoMeta.DisplayAvatar,
+                    Owner = repoMeta.Owner,
+                    CurrentUserRole = repoMeta.CurrentUserRole,
                     OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
                     {
                         AccountId = repoMeta.OtherMember.AccountId,
@@ -689,6 +705,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 };
 
                 var members = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+                var ownerId = metaData.Owner;
                 metaData.Members = members.Select(m => new ConversationMemberInfo
                 {
                     AccountId = m.AccountId,
@@ -696,7 +713,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     DisplayName = m.Nickname ?? m.Account.Username,
                     Username = m.Account.Username,
                     Nickname = m.Nickname,
-                    Role = m.IsAdmin ? 1 : 0
+                    Role = (m.IsAdmin || (ownerId.HasValue && ownerId.Value == m.AccountId)) ? 1 : 0
                 }).ToList();
                 metaData.MemberSeenStatuses = members.Select(m => new MemberSeenStatus
                 {
@@ -759,6 +776,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 page,
                 pageSize);
 
+            var ownerId = conversation.Owner ?? (conversation.CreatedBy != Guid.Empty ? conversation.CreatedBy : Guid.Empty);
             var items = members.Select(member => new ConversationMemberInfo
             {
                 AccountId = member.AccountId,
@@ -766,7 +784,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 DisplayName = member.Nickname ?? member.Account?.Username,
                 Username = member.Account?.Username,
                 Nickname = member.Nickname,
-                Role = member.IsAdmin ? 1 : 0
+                Role = (member.IsAdmin || (ownerId != Guid.Empty && ownerId == member.AccountId)) ? 1 : 0
             }).ToList();
 
             return new PagedResponse<ConversationMemberInfo>(items, page, pageSize, totalCount);

@@ -118,6 +118,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 cm.Conversation.ConversationName,
                 cm.Conversation.ConversationAvatar,
                 cm.Conversation.Theme,
+                Owner = cm.Conversation.IsGroup
+                    ? (cm.Conversation.Owner ?? cm.Conversation.CreatedBy)
+                    : (Guid?)null,
+                cm.IsAdmin,
+                IsOwner = cm.Conversation.IsGroup && ((cm.Conversation.Owner ?? cm.Conversation.CreatedBy) == currentId),
                 cm.LastSeenAt,
                 cm.IsMuted,
                 // Correlation subquery for sorting by last message
@@ -329,6 +334,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     ConversationName = item.ConversationName,
                     ConversationAvatar = item.ConversationAvatar,
                     Theme = item.Theme,
+                    Owner = item.Owner,
+                    CurrentUserRole = (item.IsAdmin || item.IsOwner) ? 1 : 0,
                     LastSeenAt = item.LastSeenAt,
                     IsMuted = item.IsMuted,
                     UnreadCount = unreadCount,
@@ -389,6 +396,10 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 ConversationName = cm.Conversation.ConversationName,
                 ConversationAvatar = cm.Conversation.ConversationAvatar,
                 Theme = cm.Conversation.Theme,
+                Owner = cm.Conversation.IsGroup
+                    ? (cm.Conversation.Owner ?? cm.Conversation.CreatedBy)
+                    : (Guid?)null,
+                CurrentUserRole = (cm.IsAdmin || (cm.Conversation.IsGroup && ((cm.Conversation.Owner ?? cm.Conversation.CreatedBy) == currentId))) ? 1 : 0,
                 LastSeenAt = cm.LastSeenAt,
                 UnreadCount = unreadCount,
                 IsRead = unreadCount == 0,

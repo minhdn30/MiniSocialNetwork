@@ -79,8 +79,8 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         // notify active clients in the conversation room when the conversation theme was changed
         Task NotifyConversationThemeUpdatedAsync(Guid conversationId, string? theme, Guid updatedBy);
 
-        // notify active clients in the conversation room when group name/avatar was changed
-        Task NotifyGroupConversationInfoUpdatedAsync(Guid conversationId, string? conversationName, string? conversationAvatar, Guid updatedBy);
+        // notify active clients in the conversation room when group name/avatar/owner was changed
+        Task NotifyGroupConversationInfoUpdatedAsync(Guid conversationId, string? conversationName, string? conversationAvatar, Guid? ownerAccountId, Guid updatedBy);
 
         // notify a specific user that a conversation should be removed from their chat list
         Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason);
