@@ -27,6 +27,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public string? Theme { get; set; }
         public Guid? Owner { get; set; }
         public int CurrentUserRole { get; set; }
+        public List<string>? GroupAvatars { get; set; }
 
         // Members who seen the last message (only populated when the current user sent the last message).
 
