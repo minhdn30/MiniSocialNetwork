@@ -16,6 +16,7 @@ namespace SocialNetwork.Infrastructure.Data
         public static double Similarity(string source, string target) => throw new NotSupportedException();
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
+        public virtual DbSet<ExternalLogin> ExternalLogins { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
         public virtual DbSet<Follow> Follows { get; set; }
         public virtual DbSet<Post> Posts { get; set; }
@@ -68,6 +69,25 @@ namespace SocialNetwork.Infrastructure.Data
                 entity.HasOne(a => a.Settings)
                       .WithOne(s => s.Account)
                       .HasForeignKey<AccountSettings>(s => s.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<ExternalLogin>(entity =>
+            {
+                entity.HasIndex(e => new { e.Provider, e.ProviderUserId })
+                      .IsUnique()
+                      .HasDatabaseName("IX_ExternalLogins_Provider_ProviderUserId_Unique");
+
+                entity.HasIndex(e => new { e.AccountId, e.Provider })
+                      .IsUnique()
+                      .HasDatabaseName("IX_ExternalLogins_AccountId_Provider_Unique");
+
+                entity.HasIndex(e => e.AccountId)
+                      .HasDatabaseName("IX_ExternalLogins_AccountId");
+
+                entity.HasOne(e => e.Account)
+                      .WithMany(a => a.ExternalLogins)
+                      .HasForeignKey(e => e.AccountId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

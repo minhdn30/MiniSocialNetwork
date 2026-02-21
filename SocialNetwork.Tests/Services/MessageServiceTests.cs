@@ -123,7 +123,7 @@ namespace SocialNetwork.Tests.Services
         #region SendMessageInPrivateChatAsync Tests
 
         [Fact]
-        public async Task SendMessageInPrivateChatAsync_SameUser_ThrowsBadRequestException()
+        public async Task SendMessageInPrivateChatAsync_SameUser_WithoutControllerValidation_ThrowsReceiverNotFound()
         {
             // Arrange
             var senderId = Guid.NewGuid();
@@ -138,17 +138,18 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             await act.Should().ThrowAsync<BadRequestException>()
-                .WithMessage("You cannot send a message to yourself.");
+                .WithMessage($"Receiver account with ID {senderId} does not exist.");
         }
 
         [Fact]
-        public async Task SendMessageInPrivateChatAsync_EmptyContentNoMedia_ThrowsBadRequestException()
+        public async Task SendMessageInPrivateChatAsync_EmptyContentNoMedia_WithoutControllerValidation_ThrowsReceiverNotFound()
         {
             // Arrange
             var senderId = Guid.NewGuid();
+            var receiverId = Guid.NewGuid();
             var request = new SendMessageInPrivateChatRequest
             {
-                ReceiverId = Guid.NewGuid(),
+                ReceiverId = receiverId,
                 Content = "",
                 MediaFiles = null
             };
@@ -158,7 +159,7 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             await act.Should().ThrowAsync<BadRequestException>()
-                .WithMessage("Message content and media files cannot both be empty.");
+                .WithMessage($"Receiver account with ID {receiverId} does not exist.");
         }
 
         [Fact]

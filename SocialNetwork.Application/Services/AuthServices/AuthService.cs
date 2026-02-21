@@ -1,23 +1,15 @@
-﻿using AutoMapper;
-using Google.Apis.Auth;
+using AutoMapper;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.Identity.Data;
 using SocialNetwork.Application.DTOs.AuthDTOs;
-using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
+using SocialNetwork.Infrastructure.Repositories.ExternalLogins;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System.Net;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 using LoginRequest = SocialNetwork.Application.DTOs.AuthDTOs.LoginRequest;
 
@@ -26,39 +18,59 @@ namespace SocialNetwork.Application.Services.AuthServices
     public class AuthService : IAuthService
     {
         private readonly IAccountRepository _accountRepository;
+        private readonly IExternalLoginRepository _externalLoginRepository;
         private readonly IAccountSettingRepository _accountSettingRepository;
         private readonly IMapper _mapper;
         private readonly IJwtService _jwtService;
         private readonly ILoginRateLimitService _loginRateLimitService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly Dictionary<ExternalLoginProviderEnum, IExternalIdentityProvider> _externalIdentityProviders;
 
-        public AuthService(IAccountRepository accountRepository, 
+        public AuthService(
+            IAccountRepository accountRepository,
+            IExternalLoginRepository externalLoginRepository,
             IAccountSettingRepository accountSettingRepository,
             IMapper mapper,
             IJwtService jwtService,
             ILoginRateLimitService loginRateLimitService,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IEnumerable<IExternalIdentityProvider> externalIdentityProviders)
         {
             _accountRepository = accountRepository;
+            _externalLoginRepository = externalLoginRepository;
             _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
             _jwtService = jwtService;
             _loginRateLimitService = loginRateLimitService;
             _unitOfWork = unitOfWork;
+            _externalIdentityProviders = externalIdentityProviders
+                .GroupBy(x => x.Provider)
+                .ToDictionary(x => x.Key, x => x.First());
         }
+
         public async Task<RegisterResponse> RegisterAsync(RegisterDTO registerRequest)
         {
-            var usernameExists = await _accountRepository.IsUsernameExist(registerRequest.Username);
-            if(usernameExists)
+            var normalizedUsername = NormalizeUsername(registerRequest.Username);
+            var normalizedEmail = NormalizeEmail(registerRequest.Email);
+
+            var usernameExists = await _accountRepository.IsUsernameExist(normalizedUsername);
+            if (usernameExists)
             {
                 throw new BadRequestException("Username already exists.");
             }
-            var emailExists = await _accountRepository.IsEmailExist(registerRequest.Email);
-            if(emailExists)
+
+            var emailExists = await _accountRepository.IsEmailExist(normalizedEmail);
+            if (emailExists)
             {
                 throw new BadRequestException("Email already exists.");
             }
+
+            registerRequest.Username = normalizedUsername;
+            registerRequest.Email = normalizedEmail;
+
             var account = _mapper.Map<Account>(registerRequest);
+            account.Username = normalizedUsername;
+            account.Email = normalizedEmail;
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerRequest.Password);
             account.RoleId = (int)RoleEnum.User;
             account.Status = AccountStatusEnum.EmailNotVerified;
@@ -66,12 +78,13 @@ namespace SocialNetwork.Application.Services.AuthServices
             {
                 AccountId = account.AccountId
             };
+
             await _accountRepository.AddAccount(account);
             await _unitOfWork.CommitAsync();
 
-            var accountMapped = _mapper.Map<RegisterResponse>(account);
-            return accountMapped;
+            return _mapper.Map<RegisterResponse>(account);
         }
+
         public async Task<LoginResponse?> LoginAsync(LoginRequest loginRequest, string? requesterIpAddress = null)
         {
             var normalizedEmail = NormalizeEmail(loginRequest.Email);
@@ -88,29 +101,24 @@ namespace SocialNetwork.Application.Services.AuthServices
             }
 
             var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
-            if(account == null)
+            if (account == null)
             {
-                try
-                {
-                    await _loginRateLimitService.RecordFailedAttemptAsync(normalizedEmail, normalizedIpAddress, nowUtc);
-                }
-                catch (InternalServerException)
-                {
-                    // Best-effort only.
-                }
+                await RecordLoginFailureAsync(normalizedEmail, normalizedIpAddress, nowUtc);
                 throw new UnauthorizedException("Invalid email or password.");
             }
-            var isPasswordValid = BCrypt.Net.BCrypt.Verify(loginRequest.Password, account.PasswordHash);
-            if(!isPasswordValid)
+
+            await EnsureAccountHasAuthMethodOrThrowAsync(account);
+
+            if (!HasPassword(account))
             {
-                try
-                {
-                    await _loginRateLimitService.RecordFailedAttemptAsync(normalizedEmail, normalizedIpAddress, nowUtc);
-                }
-                catch (InternalServerException)
-                {
-                    // Best-effort only.
-                }
+                await RecordLoginFailureAsync(normalizedEmail, normalizedIpAddress, nowUtc);
+                throw new UnauthorizedException("Invalid email or password.");
+            }
+
+            var isPasswordValid = BCrypt.Net.BCrypt.Verify(loginRequest.Password, account.PasswordHash);
+            if (!isPasswordValid)
+            {
+                await RecordLoginFailureAsync(normalizedEmail, normalizedIpAddress, nowUtc);
                 throw new UnauthorizedException("Invalid email or password.");
             }
 
@@ -123,119 +131,199 @@ namespace SocialNetwork.Application.Services.AuthServices
                 // Best-effort only.
             }
 
-            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
-            {
-                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
-            }
-            if (account.Status == AccountStatusEnum.EmailNotVerified)
-            {
-                throw new UnauthorizedException("Email is not verified. Please verify your email.");
-            }
-            //create access token
-            var accessToken = _jwtService.GenerateToken(account);
-            //create refresh token
-            var refreshToken = Guid.NewGuid().ToString();
-            account.RefreshToken = refreshToken;
-            account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            EnsureAccountCanLoginWithPassword(account);
+
+            account.RefreshToken = GenerateRefreshToken();
+            account.RefreshTokenExpiryTime = nowUtc.AddDays(7);
+            account.LastActiveAt = nowUtc;
+            account.UpdatedAt = nowUtc;
 
             await _accountRepository.UpdateAccount(account);
             await _unitOfWork.CommitAsync();
 
-            var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
-            var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
-
-            return new LoginResponse
-            {
-                AccountId = account.AccountId,
-                Fullname = account.FullName,
-                Username = account.Username,
-                AvatarUrl = account.AvatarUrl,
-                AccessToken = accessToken,
-                RefreshToken = refreshToken,
-                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
-                Status = account.Status,
-                DefaultPostPrivacy = defaultPostPrivacy
-            };
+            return await BuildLoginResponseAsync(account);
         }
-        public async Task<LoginResponse> LoginWithGoogleAsync(string idToken)
-        {
-            // Xác thực token với Google
-            var payload = await GoogleJsonWebSignature.ValidateAsync(idToken, new GoogleJsonWebSignature.ValidationSettings());
-            var email = payload.Email;
 
-            // Kiểm tra xem account có tồn tại không
-            var account = await _accountRepository.GetAccountByEmail(email);
+        public Task<LoginResponse> LoginWithGoogleAsync(string idToken)
+        {
+            return LoginWithExternalAsync(ExternalLoginProviderEnum.Google, idToken);
+        }
+
+        public async Task<LoginResponse> LoginWithExternalAsync(ExternalLoginProviderEnum provider, string credential)
+        {
+            if (!_externalIdentityProviders.TryGetValue(provider, out var identityProvider))
+            {
+                throw new BadRequestException($"Provider '{provider}' is not supported.");
+            }
+
+            var identity = await identityProvider.VerifyAsync(credential);
+            if (identity.Provider != provider)
+            {
+                throw new BadRequestException("External provider does not match credential.");
+            }
+
+            if (!identity.EmailVerified)
+            {
+                throw new UnauthorizedException("Provider email is not verified.");
+            }
+
+            var normalizedProviderUserId = NormalizeProviderUserId(identity.ProviderUserId);
+            if (string.IsNullOrWhiteSpace(normalizedProviderUserId))
+            {
+                throw new UnauthorizedException("External account identifier is invalid.");
+            }
+
+            var nowUtc = DateTime.UtcNow;
+
+            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                var externalLogin = await _externalLoginRepository.GetByProviderUserIdAsync(provider, normalizedProviderUserId);
+                Account account;
+
+                if (externalLogin != null)
+                {
+                    account = externalLogin.Account
+                        ?? await _accountRepository.GetAccountById(externalLogin.AccountId)
+                        ?? throw new UnauthorizedException("Unable to sign in with this account.");
+                }
+                else
+                {
+                    var normalizedEmail = NormalizeEmail(identity.Email);
+                    if (string.IsNullOrWhiteSpace(normalizedEmail))
+                    {
+                        throw new UnauthorizedException("Provider email is invalid.");
+                    }
+
+                    var existingAccount = await _accountRepository.GetAccountByEmail(normalizedEmail);
+                    if (existingAccount == null)
+                    {
+                        account = await CreateExternalAccountAsync(identity, normalizedEmail, nowUtc);
+                        await _accountRepository.AddAccount(account);
+                    }
+                    else
+                    {
+                        account = existingAccount;
+                    }
+
+                    EnsureAccountAllowedForExternalLink(account);
+
+                    if (account.Status == AccountStatusEnum.EmailNotVerified)
+                    {
+                        account.Status = AccountStatusEnum.Active;
+                    }
+
+                    externalLogin = new ExternalLogin
+                    {
+                        Id = Guid.NewGuid(),
+                        AccountId = account.AccountId,
+                        Provider = provider,
+                        ProviderUserId = normalizedProviderUserId,
+                        CreatedAt = nowUtc,
+                        LastLoginAt = nowUtc
+                    };
+
+                    await _externalLoginRepository.AddAsync(externalLogin);
+                }
+
+                await EnsureAccountHasAuthMethodOrThrowAsync(account);
+                EnsureAccountCanLoginWithExternal(account);
+
+                externalLogin.LastLoginAt = nowUtc;
+
+                account.LastActiveAt = nowUtc;
+                account.RefreshToken = GenerateRefreshToken();
+                account.RefreshTokenExpiryTime = nowUtc.AddDays(7);
+                account.UpdatedAt = nowUtc;
+
+                await _accountRepository.UpdateAccount(account);
+
+                return await BuildLoginResponseAsync(account);
+            });
+        }
+
+        public async Task<IReadOnlyList<ExternalLoginSummaryResponse>> GetExternalLoginsAsync(Guid accountId)
+        {
+            var externalLogins = await _externalLoginRepository.GetByAccountIdAsync(accountId);
+            return externalLogins
+                .Select(x => new ExternalLoginSummaryResponse
+                {
+                    Provider = x.Provider.ToString(),
+                    CreatedAt = x.CreatedAt,
+                    LastLoginAt = x.LastLoginAt,
+                })
+                .ToList();
+        }
+
+        public async Task UnlinkExternalLoginAsync(Guid accountId, ExternalLoginProviderEnum provider)
+        {
+            var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
             {
-                throw new UnauthorizedException("Account not registered. Please sign up first.");
+                throw new NotFoundException("Account not found.");
             }
 
-            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
+            var externalLogin = await _externalLoginRepository.GetByAccountIdAndProviderAsync(accountId, provider);
+            if (externalLogin == null)
             {
-                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
+                throw new NotFoundException("External login is not linked.");
             }
-            if (account.Status == AccountStatusEnum.EmailNotVerified)
+
+            var externalLoginCount = await _externalLoginRepository.CountByAccountIdAsync(accountId);
+            if (externalLoginCount <= 1 && !HasPassword(account))
             {
-                throw new UnauthorizedException("Email is not verified. Please verify your email.");
+                throw new BadRequestException("Please set a password before unlinking your last external login.");
             }
 
-            // Sinh access token
-            var accessToken = _jwtService.GenerateToken(account);
-
-            // Tạo refresh token
-            var refreshToken = Guid.NewGuid().ToString();
-            account.RefreshToken = refreshToken;
-            account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-            account.LastActiveAt = DateTime.UtcNow;
-
-            await _accountRepository.UpdateAccount(account);
+            await _externalLoginRepository.DeleteAsync(externalLogin);
             await _unitOfWork.CommitAsync();
-
-            var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
-            var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
-
-            return new LoginResponse
-            {
-                AccountId = account.AccountId,
-                Fullname = account.FullName,
-                Username = account.Username,
-                AvatarUrl = account.AvatarUrl,
-                AccessToken = accessToken,
-                RefreshToken = refreshToken,
-                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime.Value,
-                Status = account.Status,
-                DefaultPostPrivacy = defaultPostPrivacy
-            };
         }
-        public async Task<LoginResponse?> RefreshTokenAsync(string refreshToken)
+
+        public async Task SetPasswordAsync(Guid accountId, string newPassword, string confirmPassword)
         {
-            if (string.IsNullOrEmpty(refreshToken))
-                throw new UnauthorizedException("No refresh token provided.");
+            var account = await _accountRepository.GetAccountById(accountId);
+            if (account == null)
+            {
+                throw new NotFoundException("Account not found.");
+            }
 
-            var account = await _accountRepository.GetByRefreshToken(refreshToken);
-            if (account == null || account.RefreshTokenExpiryTime <= DateTime.UtcNow)
-                throw new UnauthorizedException("Invalid or expired refresh token.");
-
-            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
-                throw new UnauthorizedException("Your account has been restricted.");
-            if (account.Status == AccountStatusEnum.EmailNotVerified)
-                throw new UnauthorizedException("Email is not verified. Please verify your email.");
-
-            var newAccessToken = _jwtService.GenerateToken(account);
-
-            var newRefreshToken = Convert.ToBase64String(
-                RandomNumberGenerator.GetBytes(64)
-            );
-
-            account.RefreshToken = newRefreshToken;
-            account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
             account.UpdatedAt = DateTime.UtcNow;
 
             await _accountRepository.UpdateAccount(account);
             await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<LoginResponse?> RefreshTokenAsync(string refreshToken)
+        {
+            var account = await _accountRepository.GetByRefreshToken(refreshToken);
+            if (account == null || account.RefreshTokenExpiryTime <= DateTime.UtcNow)
+            {
+                throw new UnauthorizedException("Invalid or expired refresh token.");
+            }
+
+            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
+            {
+                throw new UnauthorizedException("Your account has been restricted.");
+            }
+
+            if (account.Status == AccountStatusEnum.EmailNotVerified)
+            {
+                throw new UnauthorizedException("Email is not verified. Please verify your email.");
+            }
+
+            await EnsureAccountHasAuthMethodOrThrowAsync(account);
+
+            var newAccessToken = _jwtService.GenerateToken(account);
+            var newRefreshToken = GenerateRefreshToken();
+
+            account.RefreshToken = newRefreshToken;
+            account.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            account.UpdatedAt = DateTime.UtcNow;
+            await _accountRepository.UpdateAccount(account);
+            await _unitOfWork.CommitAsync();
 
             var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
-            var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
+            var defaultPostPrivacy = settings?.DefaultPostPrivacy ?? PostPrivacyEnum.Public;
 
             return new LoginResponse
             {
@@ -255,7 +343,9 @@ namespace SocialNetwork.Application.Services.AuthServices
         {
             var account = await _accountRepository.GetAccountById(accountId);
             if (account == null)
+            {
                 throw new NotFoundException("Account not found.");
+            }
 
             account.RefreshToken = null;
             account.RefreshTokenExpiryTime = null;
@@ -265,9 +355,195 @@ namespace SocialNetwork.Application.Services.AuthServices
             response.Cookies.Delete("refreshToken");
         }
 
+        private async Task<Account> CreateExternalAccountAsync(ExternalAuthIdentity identity, string normalizedEmail, DateTime nowUtc)
+        {
+            var baseUsername = BuildUsernameBase(identity, normalizedEmail);
+            var username = await GenerateUniqueUsernameAsync(baseUsername);
+            var fullName = BuildDisplayName(identity, normalizedEmail, username);
+
+            var account = new Account
+            {
+                AccountId = Guid.NewGuid(),
+                Username = username,
+                Email = normalizedEmail,
+                FullName = fullName,
+                AvatarUrl = identity.AvatarUrl,
+                PasswordHash = null,
+                RoleId = (int)RoleEnum.User,
+                Status = AccountStatusEnum.Active,
+                CreatedAt = nowUtc,
+                UpdatedAt = nowUtc,
+                Settings = new AccountSettings()
+            };
+
+            account.Settings.AccountId = account.AccountId;
+            return account;
+        }
+
+        private async Task<string> GenerateUniqueUsernameAsync(string baseUsername)
+        {
+            var normalizedBase = NormalizeUsername(baseUsername);
+            if (string.IsNullOrWhiteSpace(normalizedBase))
+            {
+                normalizedBase = $"user{RandomNumberGenerator.GetInt32(100000, 999999)}";
+            }
+
+            if (!await _accountRepository.IsUsernameExist(normalizedBase))
+            {
+                return normalizedBase;
+            }
+
+            for (var attempt = 0; attempt < 30; attempt++)
+            {
+                var candidate = $"{normalizedBase}{RandomNumberGenerator.GetInt32(1000, 9999)}";
+                if (!await _accountRepository.IsUsernameExist(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return $"user{RandomNumberGenerator.GetInt32(10000000, 99999999)}";
+        }
+
+        private static string BuildUsernameBase(ExternalAuthIdentity identity, string normalizedEmail)
+        {
+            var emailName = normalizedEmail.Split('@')[0];
+            var source = !string.IsNullOrWhiteSpace(emailName)
+                ? emailName
+                : identity.FullName ?? "user";
+
+            var filtered = new string(source
+                .Trim()
+                .ToLowerInvariant()
+                .Where(ch => char.IsLetterOrDigit(ch) || ch == '_')
+                .ToArray());
+
+            if (filtered.Length < 3)
+            {
+                filtered = $"user{RandomNumberGenerator.GetInt32(1000, 9999)}";
+            }
+
+            if (filtered.Length > 30)
+            {
+                filtered = filtered[..30];
+            }
+
+            return filtered;
+        }
+
+        private static string BuildDisplayName(ExternalAuthIdentity identity, string normalizedEmail, string username)
+        {
+            if (!string.IsNullOrWhiteSpace(identity.FullName))
+            {
+                return identity.FullName.Trim();
+            }
+
+            var emailName = normalizedEmail.Split('@')[0].Trim();
+            if (!string.IsNullOrWhiteSpace(emailName))
+            {
+                return emailName;
+            }
+
+            return username;
+        }
+
+        private static bool HasPassword(Account account)
+        {
+            return !string.IsNullOrWhiteSpace(account.PasswordHash);
+        }
+
+        private async Task EnsureAccountHasAuthMethodOrThrowAsync(Account account)
+        {
+            if (HasPassword(account))
+            {
+                return;
+            }
+
+            var externalLoginCount = await _externalLoginRepository.CountByAccountIdAsync(account.AccountId);
+            if (externalLoginCount > 0)
+            {
+                return;
+            }
+
+            throw new InternalServerException("Account is missing authentication methods. Please contact support.");
+        }
+
+        private static void EnsureAccountAllowedForExternalLink(Account account)
+        {
+            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
+            {
+                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
+            }
+        }
+
+        private static void EnsureAccountCanLoginWithExternal(Account account)
+        {
+            EnsureAccountAllowedForExternalLink(account);
+
+            if (account.Status == AccountStatusEnum.EmailNotVerified)
+            {
+                throw new UnauthorizedException("Email is not verified. Please verify your email.");
+            }
+        }
+
+        private static void EnsureAccountCanLoginWithPassword(Account account)
+        {
+            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
+            {
+                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
+            }
+
+            if (account.Status == AccountStatusEnum.EmailNotVerified)
+            {
+                throw new UnauthorizedException("Email is not verified. Please verify your email.");
+            }
+        }
+
+        private async Task RecordLoginFailureAsync(string normalizedEmail, string? normalizedIpAddress, DateTime nowUtc)
+        {
+            try
+            {
+                await _loginRateLimitService.RecordFailedAttemptAsync(normalizedEmail, normalizedIpAddress, nowUtc);
+            }
+            catch (InternalServerException)
+            {
+                // Best-effort only.
+            }
+        }
+
+        private async Task<LoginResponse> BuildLoginResponseAsync(Account account)
+        {
+            var accessToken = _jwtService.GenerateToken(account);
+            var settings = account.Settings ?? await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(account.AccountId);
+            var defaultPostPrivacy = settings != null ? settings.DefaultPostPrivacy : PostPrivacyEnum.Public;
+
+            return new LoginResponse
+            {
+                AccountId = account.AccountId,
+                Fullname = account.FullName,
+                Username = account.Username,
+                AvatarUrl = account.AvatarUrl,
+                AccessToken = accessToken,
+                RefreshToken = account.RefreshToken,
+                RefreshTokenExpiryTime = account.RefreshTokenExpiryTime ?? DateTime.UtcNow.AddDays(7),
+                Status = account.Status,
+                DefaultPostPrivacy = defaultPostPrivacy
+            };
+        }
+
+        private static string NormalizeUsername(string username)
+        {
+            return (username ?? string.Empty).Trim().ToLowerInvariant();
+        }
+
         private static string NormalizeEmail(string email)
         {
             return (email ?? string.Empty).Trim().ToLowerInvariant();
+        }
+
+        private static string NormalizeProviderUserId(string providerUserId)
+        {
+            return (providerUserId ?? string.Empty).Trim();
         }
 
         private static string? NormalizeIp(string? ipAddress)
@@ -289,6 +565,11 @@ namespace SocialNetwork.Application.Services.AuthServices
             }
 
             return parsedIp.ToString();
+        }
+
+        private static string GenerateRefreshToken()
+        {
+            return Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         }
     }
 }

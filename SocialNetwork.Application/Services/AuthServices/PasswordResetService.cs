@@ -9,7 +9,6 @@ using SocialNetwork.Infrastructure.Services.Email;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.AuthServices
@@ -20,7 +19,6 @@ namespace SocialNetwork.Application.Services.AuthServices
         private const int OtpSaltBytes = 16;
         private const int LegacyOtpHashBytes = 32;
         private const int LegacyPbkdf2Iterations = 100000;
-        private const int PasswordMinLength = 6;
 
         private readonly IEmailService _emailService;
         private readonly IAccountRepository _accountRepository;
@@ -50,11 +48,6 @@ namespace SocialNetwork.Application.Services.AuthServices
             var normalizedEmail = NormalizeEmail(email);
             var normalizedIpAddress = NormalizeIp(requesterIpAddress);
             var nowUtc = DateTime.UtcNow;
-
-            if (string.IsNullOrWhiteSpace(normalizedEmail))
-            {
-                throw new BadRequestException("Email is required.");
-            }
 
             var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
             if (account == null || account.Status == AccountStatusEnum.Deleted)
@@ -224,8 +217,6 @@ This code is valid for <strong>{_securityOptions.OtpExpiresMinutes} minutes</str
             var normalizedNewPassword = NormalizePassword(newPassword);
             var normalizedConfirmPassword = NormalizePassword(confirmPassword);
             var nowUtc = DateTime.UtcNow;
-
-            ValidatePassword(normalizedNewPassword, normalizedConfirmPassword);
 
             if (!IsValidOtpFormat(normalizedCode))
             {
@@ -452,34 +443,6 @@ This code is valid for <strong>{_securityOptions.OtpExpiresMinutes} minutes</str
                 ? "CHANGE_ME_OTP_PEPPER"
                 : options.OtpPepper;
             return options;
-        }
-
-        private static void ValidatePassword(string newPassword, string confirmPassword)
-        {
-            if (string.IsNullOrWhiteSpace(newPassword))
-            {
-                throw new BadRequestException("New password is required.");
-            }
-
-            if (newPassword.Length < PasswordMinLength)
-            {
-                throw new BadRequestException($"Password must be at least {PasswordMinLength} characters long.");
-            }
-
-            if (newPassword.Contains(' '))
-            {
-                throw new BadRequestException("Password cannot contain spaces.");
-            }
-
-            if (Regex.IsMatch(newPassword, @"[\u00C0-\u024F\u1E00-\u1EFF]"))
-            {
-                throw new BadRequestException("Password cannot contain Vietnamese accents.");
-            }
-
-            if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
-            {
-                throw new BadRequestException("Password and Confirm Password do not match.");
-            }
         }
     }
 }

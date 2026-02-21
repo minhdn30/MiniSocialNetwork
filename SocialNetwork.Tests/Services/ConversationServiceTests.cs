@@ -133,17 +133,16 @@ namespace SocialNetwork.Tests.Services
         }
 
         [Fact]
-        public async Task GetPrivateConversationAsync_SameUser_ThrowsBadRequestException()
+        public async Task GetPrivateConversationAsync_SameUser_ReturnsNull_WhenControllerValidationIsBypassed()
         {
             // Arrange
             var userId = Guid.NewGuid();
 
             // Act
-            var act = () => _conversationService.GetPrivateConversationAsync(userId, userId);
+            var result = await _conversationService.GetPrivateConversationAsync(userId, userId);
 
             // Assert
-            await act.Should().ThrowAsync<BadRequestException>()
-                .WithMessage("Sender and receiver cannot be the same.");
+            result.Should().BeNull();
         }
 
         #endregion
@@ -177,7 +176,7 @@ namespace SocialNetwork.Tests.Services
         }
 
         [Fact]
-        public async Task CreatePrivateConversationAsync_SameUser_ThrowsBadRequestException()
+        public async Task CreatePrivateConversationAsync_SameUser_ThrowsNotFoundException_WhenControllerValidationIsBypassed()
         {
             // Arrange
             var userId = Guid.NewGuid();
@@ -186,8 +185,8 @@ namespace SocialNetwork.Tests.Services
             var act = () => _conversationService.CreatePrivateConversationAsync(userId, userId);
 
             // Assert
-            await act.Should().ThrowAsync<BadRequestException>()
-                .WithMessage("Sender and receiver cannot be the same.");
+            await act.Should().ThrowAsync<NotFoundException>()
+                .WithMessage("One or both accounts do not exist.");
         }
 
         [Fact]

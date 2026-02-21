@@ -17,6 +17,9 @@ namespace SocialNetwork.API.Controllers
     [ApiController]
     public class ConversationsController : ControllerBase
     {
+        private const int MinGroupConversationMembers = 3;
+        private const int MaxGroupConversationMembers = 50;
+
         private readonly IConversationService _conversationService;
         private readonly IConversationMemberService _conversationMemberService;
         private readonly IMessageService _messageService;
@@ -46,6 +49,10 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if(currentId == null) 
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (otherId == Guid.Empty)
+                return BadRequest(new { message = "Other account is required." });
+            if (currentId.Value == otherId)
+                return BadRequest(new { message = "Sender and receiver cannot be the same." });
             var conversation = await _conversationService.GetPrivateConversationAsync(currentId.Value, otherId);
             return Ok(conversation);
         }
@@ -57,6 +64,10 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (otherId == Guid.Empty)
+                return BadRequest(new { message = "Other account is required." });
+            if (currentId.Value == otherId)
+                return BadRequest(new { message = "You cannot chat with yourself." });
 
             var result = await _conversationService.GetPrivateConversationWithMessagesByOtherIdAsync(currentId.Value, otherId, cursor, pageSize);
             return Ok(result);
@@ -69,6 +80,15 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.OtherId == Guid.Empty)
+                return BadRequest(new { message = "Other account is required." });
+            if (currentId.Value == request.OtherId)
+                return BadRequest(new { message = "Sender and receiver cannot be the same." });
+
             var conversation = await _conversationService.CreatePrivateConversationAsync(currentId.Value, request.OtherId);
             return CreatedAtAction(nameof(GetPrivateConversation), new { otherId = request.OtherId }, conversation);
         }
@@ -81,6 +101,27 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (string.IsNullOrWhiteSpace(request.GroupName))
+                return BadRequest(new { message = "Group name is required." });
+
+            var uniqueOtherMemberIds = (request.MemberIds ?? new List<Guid>())
+                .Where(id => id != Guid.Empty && id != currentId.Value)
+                .Distinct()
+                .ToList();
+
+            var totalMembers = uniqueOtherMemberIds.Count + 1;
+            if (totalMembers < MinGroupConversationMembers)
+                return BadRequest(new { message = "A group must have at least 3 members (you and 2 others)." });
+
+            if (totalMembers > MaxGroupConversationMembers)
+                return BadRequest(new { message = $"A group can contain at most {MaxGroupConversationMembers} members." });
+
+            if (request.GroupAvatar != null && request.GroupAvatar.Length <= 0)
+                return BadRequest(new { message = "Group avatar file is empty." });
 
             var conversation = await _conversationService.CreateGroupConversationAsync(currentId.Value, request);
             return Ok(conversation);
@@ -95,6 +136,18 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.ConversationName != null && string.IsNullOrWhiteSpace(request.ConversationName))
+                return BadRequest(new { message = "Conversation name cannot be empty." });
+
+            if (request.ConversationAvatar != null && request.RemoveAvatar)
+                return BadRequest(new { message = "You cannot upload and remove avatar in the same request." });
+
+            if (request.ConversationAvatar != null && request.ConversationAvatar.Length <= 0)
+                return BadRequest(new { message = "Conversation avatar file is empty." });
+
             await _conversationService.UpdateGroupConversationInfoAsync(conversationId, currentId.Value, request);
             return NoContent();
         }
@@ -106,6 +159,13 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.AccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
             await _conversationMemberService.UpdateMemberNickname(conversationId, currentId.Value, request);
             return NoContent();
         }
@@ -127,6 +187,9 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
 
             await _conversationMemberService.SetThemeAsync(conversationId, currentId.Value, request);
             return NoContent();
@@ -233,6 +296,17 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            var requestedMemberIds = (request.MemberIds ?? new List<Guid>())
+                .Where(id => id != Guid.Empty && id != currentId.Value)
+                .Distinct()
+                .ToList();
+
+            if (requestedMemberIds.Count == 0)
+                return BadRequest(new { message = "Please select at least one member to add." });
+
             await _conversationMemberService.AddGroupMembersAsync(conversationId, currentId.Value, request);
             return NoContent();
         }
@@ -267,6 +341,12 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            if (currentId.Value == targetAccountId)
+                return BadRequest(new { message = "You cannot kick yourself from the group." });
+
             await _conversationMemberService.KickGroupMemberAsync(conversationId, currentId.Value, targetAccountId);
             return NoContent();
         }
@@ -278,6 +358,9 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
 
             await _conversationMemberService.AssignGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
             return NoContent();
@@ -291,6 +374,12 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            if (targetAccountId == currentId.Value)
+                return BadRequest(new { message = "You cannot revoke your own admin role." });
+
             await _conversationMemberService.RevokeGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
             return NoContent();
         }
@@ -302,6 +391,12 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            if (targetAccountId == currentId.Value)
+                return BadRequest(new { message = "Please choose another member as the new owner." });
 
             await _conversationMemberService.TransferGroupOwnerAsync(conversationId, currentId.Value, targetAccountId);
             return NoContent();

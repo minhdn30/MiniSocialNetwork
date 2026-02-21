@@ -27,8 +27,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
 {
     public class ConversationService : IConversationService
     {
-        private const int MinGroupConversationMembers = 3;
-        private const int MaxGroupConversationMembers = 50;
         private const int DefaultGroupMembersPageSize = 20;
         private const int MaxGroupMembersPageSize = 100;
 
@@ -57,15 +55,11 @@ namespace SocialNetwork.Application.Services.ConversationServices
         }
         public async Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId)
         {
-            if (currentId == otherId)
-                throw new BadRequestException("Sender and receiver cannot be the same.");          
             var conversation = await _conversationRepository.GetConversationByTwoAccountIdsAsync(currentId, otherId);
             return conversation == null ? null : _mapper.Map<ConversationResponse>(conversation);         
         }
         public async Task<ConversationResponse> CreatePrivateConversationAsync(Guid currentId, Guid otherId)
         {
-            if (currentId == otherId)
-                throw new BadRequestException("Sender and receiver cannot be the same.");
             if(!await _accountRepository.IsAccountIdExist(currentId) || !await _accountRepository.IsAccountIdExist(otherId))
                 throw new NotFoundException("One or both accounts do not exist.");
             if(await _conversationRepository.IsPrivateConversationExistBetweenTwoAccounts(currentId, otherId))
@@ -76,12 +70,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
         public async Task<ConversationResponse> CreateGroupConversationAsync(Guid currentId, CreateGroupConversationRequest request)
         {
-            if (request == null)
-                throw new BadRequestException("Request is required.");
-
             var normalizedGroupName = request.GroupName?.Trim();
-            if (string.IsNullOrWhiteSpace(normalizedGroupName))
-                throw new BadRequestException("Group name is required.");
 
             var uniqueOtherMemberIds = (request.MemberIds ?? new List<Guid>())
                 .Where(id => id != Guid.Empty && id != currentId)
@@ -89,11 +78,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 .ToList();
 
             var totalMembers = uniqueOtherMemberIds.Count + 1;
-            if (totalMembers < MinGroupConversationMembers)
-                throw new BadRequestException("A group must have at least 3 members (you and 2 others).");
-
-            if (totalMembers > MaxGroupConversationMembers)
-                throw new BadRequestException($"A group can contain at most {MaxGroupConversationMembers} members.");
 
             var allMemberIds = uniqueOtherMemberIds
                 .Append(currentId)
@@ -158,9 +142,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
             string? uploadedGroupAvatarUrl = null;
             if (request.GroupAvatar != null)
             {
-                if (request.GroupAvatar.Length <= 0)
-                    throw new BadRequestException("Group avatar file is empty.");
-
                 uploadedGroupAvatarUrl = await _cloudinaryService.UploadImageAsync(request.GroupAvatar);
                 if (string.IsNullOrWhiteSpace(uploadedGroupAvatarUrl))
                     throw new InternalServerException("Group avatar upload failed.");
@@ -279,9 +260,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
         public async Task UpdateGroupConversationInfoAsync(Guid conversationId, Guid currentId, UpdateGroupConversationRequest request)
         {
-            if (request == null)
-                throw new BadRequestException("Request is required.");
-
             var actorMember = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentId);
             if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
@@ -304,20 +282,14 @@ namespace SocialNetwork.Application.Services.ConversationServices
 
             var hasConversationNameInput = request.ConversationName != null;
             var normalizedConversationName = request.ConversationName?.Trim();
-            if (hasConversationNameInput && string.IsNullOrWhiteSpace(normalizedConversationName))
-                throw new BadRequestException("Conversation name cannot be empty.");
 
             var hasConversationNameChanged =
                 hasConversationNameInput &&
+                !string.IsNullOrWhiteSpace(normalizedConversationName) &&
                 !string.Equals(conversation.ConversationName, normalizedConversationName, StringComparison.Ordinal);
 
             var hasConversationAvatarInput = request.ConversationAvatar != null;
             var hasRemoveConversationAvatarInput = request.RemoveAvatar;
-            if (hasConversationAvatarInput && hasRemoveConversationAvatarInput)
-                throw new BadRequestException("You cannot upload and remove avatar in the same request.");
-
-            if (hasConversationAvatarInput && request.ConversationAvatar!.Length <= 0)
-                throw new BadRequestException("Conversation avatar file is empty.");
 
             var nextConversationAvatar = conversation.ConversationAvatar;
             string? uploadedConversationAvatarUrl = null;
@@ -539,9 +511,6 @@ namespace SocialNetwork.Application.Services.ConversationServices
         public async Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, string? cursor, int pageSize)
         {
             if (pageSize <= 0) pageSize = 20;
-
-            if (currentId == otherId)
-                throw new BadRequestException("You cannot chat with yourself.");
 
             var conversation = await _conversationRepository.GetConversationByTwoAccountIdsAsync(currentId, otherId);
 

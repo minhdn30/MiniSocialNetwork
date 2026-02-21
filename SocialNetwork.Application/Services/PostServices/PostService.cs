@@ -8,7 +8,6 @@ using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
-using SocialNetwork.Application.Helpers.ValidationHelpers;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
@@ -107,9 +106,6 @@ namespace SocialNetwork.Application.Services.PostServices
 
             if (account.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to create posts.");
-
-            EnumValidator.ValidateEnumIfHasValue<PostPrivacyEnum>(request.Privacy, "Invalid privacy setting.");
-            EnumValidator.ValidateEnumIfHasValue<AspectRatioEnum>(request.FeedAspectRatio, "Invalid feed aspect ratio.");
 
             // Generate Unique PostCode
             string postCode = StringHelper.GeneratePostCode(10);
@@ -237,7 +233,7 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with ID {postId} not found.");
             }
-            EnumValidator.ValidateEnumIfHasValue<PostPrivacyEnum>(request.Privacy, "Invalid privacy setting.");
+
             if(post.AccountId != currentId)
             {
                 throw new ForbiddenException("You are not authorized to update this post.");
@@ -333,7 +329,7 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with ID {postId} not found.");
             }
-            EnumValidator.ValidateEnumIfHasValue<PostPrivacyEnum>(request.Privacy, "Invalid privacy setting.");
+
             if (post.AccountId != currentId)
             {
                 throw new ForbiddenException("You are not authorized to update this post.");

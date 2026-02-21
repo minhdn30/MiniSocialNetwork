@@ -44,11 +44,6 @@ namespace SocialNetwork.Application.Services.MessageReactServices
 
         public async Task<MessageReactStateResponse> SetMessageReactAsync(Guid messageId, Guid accountId, ReactEnum reactType)
         {
-            if (!Enum.IsDefined(typeof(ReactEnum), reactType))
-            {
-                throw new BadRequestException("Invalid react type.");
-            }
-
             var message = await EnsureCanAccessMessageAsync(messageId, accountId);
 
             var existingReact = await _messageReactRepository.GetReactAsync(messageId, accountId);

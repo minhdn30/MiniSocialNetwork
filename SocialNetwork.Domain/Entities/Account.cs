@@ -30,8 +30,7 @@ namespace SocialNetwork.Domain.Entities
         [MaxLength(15)]
         public string? Phone { get; set; }
         public bool? Gender { get; set; }
-        [Required]
-        public string PasswordHash { get; set; } = null!;
+        public string? PasswordHash { get; set; }
         [MaxLength(255)]
         public string? Address { get; set; }
         public int RoleId { get; set; }
@@ -46,6 +45,7 @@ namespace SocialNetwork.Domain.Entities
         public ICollection<Follow> Followers { get; set; } = new List<Follow>(); // Accounts that follow this account
         public ICollection<Follow> Followings { get; set; } = new List<Follow>(); // Accounts that this account follows
         public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
+        public virtual ICollection<ExternalLogin> ExternalLogins { get; set; } = new List<ExternalLogin>();
 
         // Comment-related
         public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();

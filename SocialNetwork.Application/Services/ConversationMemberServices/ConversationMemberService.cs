@@ -181,8 +181,6 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             int limit = 10)
         {
             var normalizedKeyword = keyword?.Trim() ?? string.Empty;
-            if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
-                throw new BadRequestException("Keyword must be empty or at least 2 characters.");
 
             var results = await _accountRepository.SearchAccountsForGroupInviteAsync(
                 currentId,
@@ -217,8 +215,6 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
             int limit = 10)
         {
             var normalizedKeyword = keyword?.Trim() ?? string.Empty;
-            if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
-                throw new BadRequestException("Keyword must be empty or at least 2 characters.");
 
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
             if (conversation == null)
@@ -258,16 +254,10 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 
         public async Task AddGroupMembersAsync(Guid conversationId, Guid currentId, AddGroupMembersRequest request)
         {
-            if (request == null)
-                throw new BadRequestException("Request is required.");
-
             var requestedMemberIds = (request.MemberIds ?? new List<Guid>())
                 .Where(id => id != Guid.Empty && id != currentId)
                 .Distinct()
                 .ToList();
-
-            if (requestedMemberIds.Count == 0)
-                throw new BadRequestException("Please select at least one member to add.");
 
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
             if (conversation == null)
@@ -468,12 +458,6 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 
         public async Task KickGroupMemberAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
         {
-            if (targetAccountId == Guid.Empty)
-                throw new BadRequestException("Target account is required.");
-
-            if (currentId == targetAccountId)
-                throw new BadRequestException("You cannot kick yourself from the group.");
-
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
             if (conversation == null)
                 throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
@@ -548,9 +532,6 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 
         public async Task AssignGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
         {
-            if (targetAccountId == Guid.Empty)
-                throw new BadRequestException("Target account is required.");
-
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
             if (conversation == null)
                 throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
@@ -622,12 +603,6 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 
         public async Task RevokeGroupAdminAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
         {
-            if (targetAccountId == Guid.Empty)
-                throw new BadRequestException("Target account is required.");
-
-            if (targetAccountId == currentId)
-                throw new BadRequestException("You cannot revoke your own admin role.");
-
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
             if (conversation == null)
                 throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
@@ -699,12 +674,6 @@ namespace SocialNetwork.Application.Services.ConversationMemberServices
 
         public async Task TransferGroupOwnerAsync(Guid conversationId, Guid currentId, Guid targetAccountId)
         {
-            if (targetAccountId == Guid.Empty)
-                throw new BadRequestException("Target account is required.");
-
-            if (targetAccountId == currentId)
-                throw new BadRequestException("Please choose another member as the new owner.");
-
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
             if (conversation == null)
                 throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");

@@ -42,6 +42,7 @@ using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
+using SocialNetwork.Infrastructure.Repositories.ExternalLogins;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
@@ -67,7 +68,9 @@ namespace SocialNetwork.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            builder.Configuration.AddUserSecrets<Program>();
+            builder.Configuration
+                .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true)
+                .AddUserSecrets<Program>();
 
             var connectionString = BuildConnectionString(builder.Configuration, builder.Environment);
             if (string.IsNullOrWhiteSpace(connectionString))
@@ -97,6 +100,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IAccountSettingRepository, AccountSettingRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
+            builder.Services.AddScoped<IExternalLoginRepository, ExternalLoginRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
             builder.Services.AddScoped<ICommentRepository, CommentRepository>();
             builder.Services.AddScoped<IPostRepository, PostRepository>();
@@ -117,6 +121,8 @@ namespace SocialNetwork.API
                 builder.Configuration.GetSection("LoginSecurity"));
             builder.Services.Configure<EmailVerificationSecurityOptions>(
                 builder.Configuration.GetSection("EmailVerification"));
+            builder.Services.Configure<GoogleAuthOptions>(
+                builder.Configuration.GetSection("ExternalAuth:Google"));
             builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
             {
                 var redisConnectionString =
@@ -128,6 +134,7 @@ namespace SocialNetwork.API
             });
 
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<IExternalIdentityProvider, GoogleExternalIdentityProvider>();
             builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
             builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
             builder.Services.AddScoped<IAccountService, AccountService>();

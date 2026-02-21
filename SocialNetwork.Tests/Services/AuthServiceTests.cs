@@ -9,6 +9,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.AccountSettingRepos;
+using SocialNetwork.Infrastructure.Repositories.ExternalLogins;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Tests.Helpers;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
@@ -19,6 +20,7 @@ namespace SocialNetwork.Tests.Services
     {
         private readonly Mock<IAccountRepository> _accountRepositoryMock;
         private readonly Mock<IAccountSettingRepository> _accountSettingRepositoryMock;
+        private readonly Mock<IExternalLoginRepository> _externalLoginRepositoryMock;
         private readonly Mock<IMapper> _mapperMock;
         private readonly Mock<IJwtService> _jwtServiceMock;
         private readonly Mock<ILoginRateLimitService> _loginRateLimitServiceMock;
@@ -29,6 +31,7 @@ namespace SocialNetwork.Tests.Services
         {
             _accountRepositoryMock = new Mock<IAccountRepository>();
             _accountSettingRepositoryMock = new Mock<IAccountSettingRepository>();
+            _externalLoginRepositoryMock = new Mock<IExternalLoginRepository>();
             _mapperMock = new Mock<IMapper>();
             _jwtServiceMock = new Mock<IJwtService>();
             _loginRateLimitServiceMock = new Mock<ILoginRateLimitService>();
@@ -42,14 +45,19 @@ namespace SocialNetwork.Tests.Services
             _loginRateLimitServiceMock
                 .Setup(x => x.ClearFailedAttemptsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTime>()))
                 .Returns(Task.CompletedTask);
+            _externalLoginRepositoryMock
+                .Setup(x => x.CountByAccountIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(0);
 
             _authService = new AuthService(
                 _accountRepositoryMock.Object,
+                _externalLoginRepositoryMock.Object,
                 _accountSettingRepositoryMock.Object,
                 _mapperMock.Object,
                 _jwtServiceMock.Object,
                 _loginRateLimitServiceMock.Object,
-                _unitOfWorkMock.Object
+                _unitOfWorkMock.Object,
+                new List<IExternalIdentityProvider>()
             );
         }
 
@@ -259,7 +267,7 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             await act.Should().ThrowAsync<UnauthorizedException>()
-                .WithMessage("No refresh token provided.");
+                .WithMessage("Invalid or expired refresh token.");
         }
 
         [Fact]

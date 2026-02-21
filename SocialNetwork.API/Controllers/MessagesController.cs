@@ -9,6 +9,7 @@ using SocialNetwork.Application.Services.MessageHiddenServices;
 using SocialNetwork.Application.Services.MessageReactServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PinnedMessageServices;
+using SocialNetwork.Domain.Enums;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -39,6 +40,11 @@ namespace SocialNetwork.API.Controllers
             _pinnedMessageService = pinnedMessageService;
         }
 
+        private static bool IsMessagePayloadEmpty(string? content, List<IFormFile>? mediaFiles)
+        {
+            return string.IsNullOrWhiteSpace(content) && (mediaFiles == null || !mediaFiles.Any());
+        }
+
         [Authorize]
         [HttpGet("{conversationId}")]
         public async Task<IActionResult> GetMessagesByConversationId(Guid conversationId, [FromQuery] string? cursor = null, [FromQuery] int pageSize = 20)
@@ -58,6 +64,19 @@ namespace SocialNetwork.API.Controllers
             var senderId = User.GetAccountId();
             if (senderId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.ReceiverId == Guid.Empty)
+                return BadRequest(new { message = "Receiver account is required." });
+
+            if (senderId.Value == request.ReceiverId)
+                return BadRequest(new { message = "You cannot send a message to yourself." });
+
+            if (IsMessagePayloadEmpty(request.Content, request.MediaFiles))
+                return BadRequest(new { message = "Message content and media files cannot both be empty." });
+
             var result = await _messageService.SendMessageInPrivateChatAsync(senderId.Value, request);
             return Ok(result);
         }
@@ -75,6 +94,12 @@ namespace SocialNetwork.API.Controllers
             var senderId = User.GetAccountId();
             if (senderId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (IsMessagePayloadEmpty(request.Content, request.MediaFiles))
+                return BadRequest(new { message = "Message content and media files cannot both be empty." });
             
             var result = await _messageService.SendMessageInGroupAsync(senderId.Value, conversationId, request);
             return Ok(result);
@@ -177,6 +202,8 @@ namespace SocialNetwork.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
             if (request == null)
                 return BadRequest(new { message = "React payload is required." });
+            if (!Enum.IsDefined(typeof(ReactEnum), request.ReactType))
+                return BadRequest(new { message = "Invalid react type." });
 
             var result = await _messageReactService.SetMessageReactAsync(messageId, currentId.Value, request.ReactType);
             return Ok(result);

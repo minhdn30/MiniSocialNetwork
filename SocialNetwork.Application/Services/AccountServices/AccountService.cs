@@ -6,7 +6,6 @@ using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
-using SocialNetwork.Application.Helpers.ValidationHelpers;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
@@ -96,18 +95,23 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<AccountDetailResponse> CreateAccount(AccountCreateRequest request)
         {
-            var usernameExists = await _accountRepository.IsUsernameExist(request.Username);
+            var normalizedUsername = (request.Username ?? string.Empty).Trim().ToLowerInvariant();
+            var normalizedEmail = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
+
+            var usernameExists = await _accountRepository.IsUsernameExist(normalizedUsername);
             if (usernameExists)
             {
                 throw new BadRequestException("Username already exists.");
             }
-            var emailExists = await _accountRepository.IsEmailExist(request.Email);
+            var emailExists = await _accountRepository.IsEmailExist(normalizedEmail);
             if (emailExists)
             {
                 throw new BadRequestException("Email already exists.");
             }
-            EnumValidator.ValidateEnum<RoleEnum>(request.RoleId);
+
             var account = _mapper.Map<Account>(request);
+            account.Username = normalizedUsername;
+            account.Email = normalizedEmail;
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             account.Settings ??= new AccountSettings
             {
@@ -119,8 +123,6 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request)
         {
-            EnumValidator.ValidateEnumIfHasValue<RoleEnum>(request.RoleId);
-
             var account = await _accountRepository.GetAccountById(accountId);
             if(account  == null)
             {
@@ -236,13 +238,11 @@ namespace SocialNetwork.Application.Services.AccountServices
 
                         if (request.PhonePrivacy.HasValue)
                         {
-                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.PhonePrivacy.Value);
                             settings.PhonePrivacy = request.PhonePrivacy.Value;
                         }
 
                         if (request.AddressPrivacy.HasValue)
                         {
-                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.AddressPrivacy.Value);
                             settings.AddressPrivacy = request.AddressPrivacy.Value;
                         }
 

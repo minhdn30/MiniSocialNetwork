@@ -7,9 +7,11 @@ using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Application.Services.EmailVerificationServices;
+using SocialNetwork.Domain.Enums;
 using System;
 using System.Linq;
 using System.Net;
+using System.Text.RegularExpressions;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -17,6 +19,9 @@ namespace SocialNetwork.API.Controllers
     [ApiController]
     public class AuthsController : ControllerBase
     {
+        private const int PasswordMinLength = 6;
+        private static readonly Regex PasswordAccentRegex = new(@"[\u00C0-\u024F\u1E00-\u1EFF]", RegexOptions.Compiled);
+
         private static readonly string[] DefaultAllowedOrigins = new[]
         {
             "http://127.0.0.1:5500",
@@ -199,9 +204,54 @@ namespace SocialNetwork.API.Controllers
             return remoteIp.ToString();
         }
 
-        [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterDTO registerDTO)
+        private IActionResult? ValidatePasswordInput(string newPassword, string confirmPassword)
         {
+            if (string.IsNullOrWhiteSpace(newPassword))
+            {
+                return BadRequest(new { message = "New password is required." });
+            }
+
+            if (newPassword.Length < PasswordMinLength)
+            {
+                return BadRequest(new { message = $"Password must be at least {PasswordMinLength} characters long." });
+            }
+
+            if (newPassword.Contains(' '))
+            {
+                return BadRequest(new { message = "Password cannot contain spaces." });
+            }
+
+            if (PasswordAccentRegex.IsMatch(newPassword))
+            {
+                return BadRequest(new { message = "Password cannot contain Vietnamese accents." });
+            }
+
+            if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+            {
+                return BadRequest(new { message = "Password and Confirm Password do not match." });
+            }
+
+            return null;
+        }
+
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] RegisterDTO registerDTO)
+        {
+            if (registerDTO == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(registerDTO.Username))
+            {
+                return BadRequest(new { message = "Username is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(registerDTO.Email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
             var result = await _authService.RegisterAsync(registerDTO);
             return Ok(result);
         }
@@ -209,6 +259,11 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("send-email")]
         public async Task<IActionResult> SendVerificationEmail([FromBody] string email)
         {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
             await _emailVerificationService.SendVerificationEmailAsync(email, GetClientIpAddress());
             return Ok(new { Message = "Verification email sent." });
         }
@@ -216,6 +271,21 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("verify-code")]
         public async Task<IActionResult> VerifyCode([FromBody] VerifyCodeRequest request)
         {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                return BadRequest(new { message = "Code is required." });
+            }
+
             var result = await _emailVerificationService.VerifyEmailAsync(request.Email, request.Code);
             if (!result) return BadRequest(new { message = "Code is invalid or expired." });
 
@@ -225,6 +295,16 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("forgot-password/send-code")]
         public async Task<IActionResult> SendForgotPasswordCode([FromBody] ForgotPasswordRequest request)
         {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
             await _passwordResetService.SendResetPasswordCodeAsync(request.Email, GetClientIpAddress());
             return Ok(new { message = "If the email exists, a reset code has been sent." });
         }
@@ -232,6 +312,21 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("forgot-password/verify-code")]
         public async Task<IActionResult> VerifyForgotPasswordCode([FromBody] ForgotPasswordVerifyRequest request)
         {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                return BadRequest(new { message = "Code is required." });
+            }
+
             var isValid = await _passwordResetService.VerifyResetPasswordCodeAsync(request.Email, request.Code);
             if (!isValid)
             {
@@ -244,6 +339,27 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("forgot-password/reset")]
         public async Task<IActionResult> ResetForgottenPassword([FromBody] ForgotPasswordResetRequest request)
         {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                return BadRequest(new { message = "Code is required." });
+            }
+
+            var passwordValidationError = ValidatePasswordInput(request.NewPassword, request.ConfirmPassword);
+            if (passwordValidationError != null)
+            {
+                return passwordValidationError;
+            }
+
             await _passwordResetService.ResetPasswordAsync(
                 request.Email,
                 request.Code,
@@ -256,6 +372,21 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Password))
+            {
+                return BadRequest(new { message = "Password is required." });
+            }
+
             var result = await _authService.LoginAsync(request, GetClientIpAddress());
             if (result == null)
                 return Unauthorized(new { message = "Login failed." });
@@ -274,8 +405,53 @@ namespace SocialNetwork.API.Controllers
         [HttpPost("login-with-google")]
         public async Task<ActionResult<LoginResponse>> LoginWithGoogle([FromBody] GoogleLoginRequest request)
         {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.IdToken))
+            {
+                return BadRequest(new { message = "Google credential is required." });
+            }
+
             var result = await _authService.LoginWithGoogleAsync(request.IdToken);
 
+            if (!string.IsNullOrEmpty(result.RefreshToken))
+            {
+                Response.Cookies.Append(
+                    "refreshToken",
+                    result.RefreshToken,
+                    BuildRefreshTokenCookieOptions(result.RefreshTokenExpiryTime));
+            }
+
+            return Ok(result);
+        }
+
+        [HttpPost("external-login")]
+        public async Task<ActionResult<LoginResponse>> LoginWithExternal([FromBody] ExternalLoginRequest request)
+        {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Provider))
+            {
+                return BadRequest(new { message = "Provider is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Credential))
+            {
+                return BadRequest(new { message = "Credential is required." });
+            }
+
+            if (!Enum.TryParse<ExternalLoginProviderEnum>(request.Provider, true, out var provider))
+            {
+                return BadRequest(new { message = "Unsupported provider." });
+            }
+
+            var result = await _authService.LoginWithExternalAsync(provider, request.Credential);
             if (!string.IsNullOrEmpty(result.RefreshToken))
             {
                 Response.Cookies.Append(
@@ -335,6 +511,55 @@ namespace SocialNetwork.API.Controllers
             Response.Cookies.Delete("refreshToken", BuildRefreshTokenDeleteCookieOptions());
 
             return Ok(new { message = "Logged out successfully." });
+        }
+
+        [Authorize]
+        [HttpPost("set-password")]
+        public async Task<IActionResult> SetPassword([FromBody] SetPasswordRequest request)
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            var passwordValidationError = ValidatePasswordInput(request.NewPassword, request.ConfirmPassword);
+            if (passwordValidationError != null)
+            {
+                return passwordValidationError;
+            }
+
+            await _authService.SetPasswordAsync(accountId.Value, request.NewPassword, request.ConfirmPassword);
+            return Ok(new { message = "Password set successfully." });
+        }
+
+        [Authorize]
+        [HttpGet("external-logins")]
+        public async Task<IActionResult> GetExternalLogins()
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+
+            var result = await _authService.GetExternalLoginsAsync(accountId.Value);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpDelete("external-logins/{provider}")]
+        public async Task<IActionResult> UnlinkExternalLogin([FromRoute] string provider)
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null) return Unauthorized();
+
+            if (!Enum.TryParse<ExternalLoginProviderEnum>(provider, true, out var parsedProvider))
+            {
+                return BadRequest(new { message = "Unsupported provider." });
+            }
+
+            await _authService.UnlinkExternalLoginAsync(accountId.Value, parsedProvider);
+            return Ok(new { message = "External login unlinked successfully." });
         }
     }
 }

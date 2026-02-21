@@ -69,14 +69,6 @@ namespace SocialNetwork.Application.Services.MessageServices
         public async Task<SendMessageResponse> SendMessageInPrivateChatAsync(Guid senderId, SendMessageInPrivateChatRequest request)
         {
             // === validation phase ===
-            
-            // check can't send to self
-            if(senderId == request.ReceiverId)
-                throw new BadRequestException("You cannot send a message to yourself.");
-
-            // check content + media not both empty
-            if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
-                throw new BadRequestException("Message content and media files cannot both be empty.");
 
             // batch query both sender and receiver in single query
             var accounts = await _accountRepository.GetAccountsByIds(new[] { senderId, request.ReceiverId })
@@ -258,10 +250,6 @@ namespace SocialNetwork.Application.Services.MessageServices
         public async Task<SendMessageResponse> SendMessageInGroupAsync(Guid senderId, Guid conversationId, SendMessageRequest request)
         {
             // === validation phase ===
-            
-            // check content + media not both empty
-            if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
-                throw new BadRequestException("Message content and media files cannot both be empty.");
             
             // verify conversation exists
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);

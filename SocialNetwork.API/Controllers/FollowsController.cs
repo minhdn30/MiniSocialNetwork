@@ -29,6 +29,8 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (targetId == Guid.Empty) return BadRequest(new { message = "Target account is required." });
+            if (currentId.Value == targetId) return BadRequest(new { message = "You cannot follow yourself." });
             var result = await _followService.FollowAsync(currentId.Value, targetId);
             return Ok(result);
         }
@@ -39,6 +41,7 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (targetId == Guid.Empty) return BadRequest(new { message = "Target account is required." });
 
             var result = await _followService.UnfollowAsync(currentId.Value, targetId);
             return Ok(result);
@@ -51,6 +54,7 @@ namespace SocialNetwork.API.Controllers
         {
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (targetId == Guid.Empty) return BadRequest(new { message = "Target account is required." });
 
             var result = await _followService.IsFollowingAsync(currentId.Value, targetId);
 

@@ -32,11 +32,13 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         }
         public async Task<bool> IsUsernameExist (string username)
         {
-            return await _context.Accounts.AnyAsync(a => a.Username == username);
+            var normalizedUsername = (username ?? string.Empty).Trim().ToLower();
+            return await _context.Accounts.AnyAsync(a => a.Username.ToLower() == normalizedUsername);
         }
         public async Task<bool> IsEmailExist(string email)
         {
-            return await _context.Accounts.AnyAsync(a => a.Email == email);
+            var normalizedEmail = (email ?? string.Empty).Trim().ToLower();
+            return await _context.Accounts.AnyAsync(a => a.Email.ToLower() == normalizedEmail);
         }
         public async Task<bool> IsAccountIdExist(Guid accountId)
         {
