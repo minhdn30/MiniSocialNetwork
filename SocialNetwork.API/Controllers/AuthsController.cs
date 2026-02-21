@@ -20,6 +20,11 @@ namespace SocialNetwork.API.Controllers
     public class AuthsController : ControllerBase
     {
         private const int PasswordMinLength = 6;
+        private const int UsernameMinLength = 6;
+        private const int UsernameMaxLength = 30;
+        private const int FullNameMinLength = 2;
+        private const int FullNameMaxLength = 25;
+        private static readonly Regex UsernameRegex = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
         private static readonly Regex PasswordAccentRegex = new(@"[\u00C0-\u024F\u1E00-\u1EFF]", RegexOptions.Compiled);
 
         private static readonly string[] DefaultAllowedOrigins = new[]
@@ -234,6 +239,38 @@ namespace SocialNetwork.API.Controllers
             return null;
         }
 
+        private IActionResult? ValidateExternalProfileInput(string username, string fullName)
+        {
+            var normalizedUsername = (username ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedUsername))
+            {
+                return BadRequest(new { message = "Username is required." });
+            }
+
+            if (normalizedUsername.Length < UsernameMinLength || normalizedUsername.Length > UsernameMaxLength)
+            {
+                return BadRequest(new { message = $"Username must be between {UsernameMinLength} and {UsernameMaxLength} characters." });
+            }
+
+            if (!UsernameRegex.IsMatch(normalizedUsername))
+            {
+                return BadRequest(new { message = "Username can only include letters, numbers, and underscore (_), without spaces or accents." });
+            }
+
+            var normalizedFullName = (fullName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedFullName))
+            {
+                return BadRequest(new { message = "Full name is required." });
+            }
+
+            if (normalizedFullName.Length < FullNameMinLength || normalizedFullName.Length > FullNameMaxLength)
+            {
+                return BadRequest(new { message = $"Full name must be between {FullNameMinLength} and {FullNameMaxLength} characters." });
+            }
+
+            return null;
+        }
+
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDTO registerDTO)
         {
@@ -403,7 +440,7 @@ namespace SocialNetwork.API.Controllers
         }
 
         [HttpPost("login-with-google")]
-        public async Task<ActionResult<LoginResponse>> LoginWithGoogle([FromBody] GoogleLoginRequest request)
+        public async Task<ActionResult<ExternalLoginStartResponse>> LoginWithGoogle([FromBody] GoogleLoginRequest request)
         {
             if (request == null)
             {
@@ -415,21 +452,20 @@ namespace SocialNetwork.API.Controllers
                 return BadRequest(new { message = "Google credential is required." });
             }
 
-            var result = await _authService.LoginWithGoogleAsync(request.IdToken);
-
-            if (!string.IsNullOrEmpty(result.RefreshToken))
+            var result = await _authService.StartExternalLoginAsync(ExternalLoginProviderEnum.Google, request.IdToken);
+            if (!result.RequiresProfileCompletion && !string.IsNullOrEmpty(result.Login?.RefreshToken))
             {
                 Response.Cookies.Append(
                     "refreshToken",
-                    result.RefreshToken,
-                    BuildRefreshTokenCookieOptions(result.RefreshTokenExpiryTime));
+                    result.Login.RefreshToken,
+                    BuildRefreshTokenCookieOptions(result.Login.RefreshTokenExpiryTime));
             }
 
             return Ok(result);
         }
 
         [HttpPost("external-login")]
-        public async Task<ActionResult<LoginResponse>> LoginWithExternal([FromBody] ExternalLoginRequest request)
+        public async Task<ActionResult<ExternalLoginStartResponse>> LoginWithExternal([FromBody] ExternalLoginRequest request)
         {
             if (request == null)
             {
@@ -451,7 +487,52 @@ namespace SocialNetwork.API.Controllers
                 return BadRequest(new { message = "Unsupported provider." });
             }
 
-            var result = await _authService.LoginWithExternalAsync(provider, request.Credential);
+            var result = await _authService.StartExternalLoginAsync(provider, request.Credential);
+            if (!result.RequiresProfileCompletion && !string.IsNullOrEmpty(result.Login?.RefreshToken))
+            {
+                Response.Cookies.Append(
+                    "refreshToken",
+                    result.Login.RefreshToken,
+                    BuildRefreshTokenCookieOptions(result.Login.RefreshTokenExpiryTime));
+            }
+
+            return Ok(result);
+        }
+
+        [HttpPost("external-login/complete-profile")]
+        public async Task<IActionResult> CompleteExternalProfile([FromBody] CompleteExternalProfileRequest request)
+        {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Provider))
+            {
+                return BadRequest(new { message = "Provider is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Credential))
+            {
+                return BadRequest(new { message = "Credential is required." });
+            }
+
+            if (!Enum.TryParse<ExternalLoginProviderEnum>(request.Provider, true, out var provider))
+            {
+                return BadRequest(new { message = "Unsupported provider." });
+            }
+
+            var profileValidationError = ValidateExternalProfileInput(request.Username, request.FullName);
+            if (profileValidationError != null)
+            {
+                return profileValidationError;
+            }
+
+            var result = await _authService.CompleteExternalProfileAsync(
+                provider,
+                request.Credential,
+                request.Username,
+                request.FullName);
             if (!string.IsNullOrEmpty(result.RefreshToken))
             {
                 Response.Cookies.Append(

@@ -48,6 +48,16 @@ namespace SocialNetwork.Tests.Services
             _externalLoginRepositoryMock
                 .Setup(x => x.CountByAccountIdAsync(It.IsAny<Guid>()))
                 .ReturnsAsync(0);
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<LoginResponse>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<LoginResponse>> operation, Func<Task>? _) => operation());
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<ExternalLoginStartResponse>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<ExternalLoginStartResponse>> operation, Func<Task>? _) => operation());
 
             _authService = new AuthService(
                 _accountRepositoryMock.Object,
@@ -223,6 +233,195 @@ namespace SocialNetwork.Tests.Services
             // Assert
             await act.Should().ThrowAsync<UnauthorizedException>()
                 .WithMessage("Email is not verified. Please verify your email.");
+        }
+
+        #endregion
+
+        #region External Login Tests
+
+        [Fact]
+        public async Task StartExternalLoginAsync_NewEmail_ReturnsProfileCompletionRequired()
+        {
+            // Arrange
+            const string credential = "google-id-token";
+            var identity = new ExternalAuthIdentity
+            {
+                Provider = ExternalLoginProviderEnum.Google,
+                ProviderUserId = "google-sub-123",
+                Email = "newuser@example.com",
+                EmailVerified = true,
+                FullName = "New User",
+                AvatarUrl = "https://example.com/avatar.png"
+            };
+
+            var providerMock = new Mock<IExternalIdentityProvider>();
+            providerMock.SetupGet(x => x.Provider).Returns(ExternalLoginProviderEnum.Google);
+            providerMock.Setup(x => x.VerifyAsync(credential)).ReturnsAsync(identity);
+
+            _externalLoginRepositoryMock
+                .Setup(x => x.GetByProviderUserIdAsync(ExternalLoginProviderEnum.Google, identity.ProviderUserId))
+                .ReturnsAsync((ExternalLogin?)null);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountByEmail(identity.Email))
+                .ReturnsAsync((Account?)null);
+            _accountRepositoryMock
+                .Setup(x => x.IsUsernameExist(It.IsAny<string>()))
+                .ReturnsAsync(false);
+            _jwtServiceMock
+                .Setup(x => x.GenerateToken(It.IsAny<Account>()))
+                .Returns("external-access-token");
+
+            var service = new AuthService(
+                _accountRepositoryMock.Object,
+                _externalLoginRepositoryMock.Object,
+                _accountSettingRepositoryMock.Object,
+                _mapperMock.Object,
+                _jwtServiceMock.Object,
+                _loginRateLimitServiceMock.Object,
+                _unitOfWorkMock.Object,
+                new[] { providerMock.Object });
+
+            // Act
+            var result = await service.StartExternalLoginAsync(ExternalLoginProviderEnum.Google, credential);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.RequiresProfileCompletion.Should().BeTrue();
+            result.Login.Should().BeNull();
+            result.Profile.Should().NotBeNull();
+            result.Profile!.Email.Should().Be(identity.Email);
+            result.Profile.Provider.Should().Be(ExternalLoginProviderEnum.Google.ToString());
+            result.Profile.AvatarUrl.Should().BeNull();
+            _accountRepositoryMock.Verify(x => x.AddAccount(It.IsAny<Account>()), Times.Never);
+            _externalLoginRepositoryMock.Verify(x => x.AddAsync(It.IsAny<ExternalLogin>()), Times.Never);
+            _accountRepositoryMock.Verify(x => x.UpdateAccount(It.IsAny<Account>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CompleteExternalProfileAsync_NewEmail_CreatesAccountAndLinksExternalLogin()
+        {
+            // Arrange
+            const string credential = "google-id-token";
+            var identity = new ExternalAuthIdentity
+            {
+                Provider = ExternalLoginProviderEnum.Google,
+                ProviderUserId = "google-sub-456",
+                Email = "newsocial@example.com",
+                EmailVerified = true,
+                FullName = "New Social User",
+                AvatarUrl = "https://example.com/avatar.png"
+            };
+
+            var providerMock = new Mock<IExternalIdentityProvider>();
+            providerMock.SetupGet(x => x.Provider).Returns(ExternalLoginProviderEnum.Google);
+            providerMock.Setup(x => x.VerifyAsync(credential)).ReturnsAsync(identity);
+
+            _externalLoginRepositoryMock
+                .Setup(x => x.GetByProviderUserIdAsync(ExternalLoginProviderEnum.Google, identity.ProviderUserId))
+                .ReturnsAsync((ExternalLogin?)null);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountByEmail(identity.Email))
+                .ReturnsAsync((Account?)null);
+            _accountRepositoryMock
+                .Setup(x => x.IsUsernameExist(It.IsAny<string>()))
+                .ReturnsAsync(false);
+            _jwtServiceMock
+                .Setup(x => x.GenerateToken(It.IsAny<Account>()))
+                .Returns("external-access-token");
+
+            var service = new AuthService(
+                _accountRepositoryMock.Object,
+                _externalLoginRepositoryMock.Object,
+                _accountSettingRepositoryMock.Object,
+                _mapperMock.Object,
+                _jwtServiceMock.Object,
+                _loginRateLimitServiceMock.Object,
+                _unitOfWorkMock.Object,
+                new[] { providerMock.Object });
+
+            // Act
+            var result = await service.CompleteExternalProfileAsync(
+                ExternalLoginProviderEnum.Google,
+                credential,
+                "new_social_user",
+                "New Social User");
+
+            // Assert
+            result.Should().NotBeNull();
+            result.AccessToken.Should().Be("external-access-token");
+            _accountRepositoryMock.Verify(
+                x => x.AddAccount(It.Is<Account>(a =>
+                    a.Email == identity.Email &&
+                    a.Username == "new_social_user" &&
+                    a.FullName == "New Social User" &&
+                    a.PasswordHash == null &&
+                    a.Status == AccountStatusEnum.Active)),
+                Times.Once);
+            _externalLoginRepositoryMock.Verify(
+                x => x.AddAsync(It.Is<ExternalLogin>(l =>
+                    l.Provider == ExternalLoginProviderEnum.Google &&
+                    l.ProviderUserId == identity.ProviderUserId)),
+                Times.Once);
+            _accountRepositoryMock.Verify(x => x.UpdateAccount(It.IsAny<Account>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CompleteExternalProfileAsync_NewEmail_WithLongProfileFields_NormalizesAndSucceeds()
+        {
+            // Arrange
+            const string credential = "google-id-token";
+            var identity = new ExternalAuthIdentity
+            {
+                Provider = ExternalLoginProviderEnum.Google,
+                ProviderUserId = "google-sub-789",
+                Email = "longprofile@example.com",
+                EmailVerified = true,
+                FullName = new string('a', 150),
+                AvatarUrl = $"https://example.com/{new string('b', 280)}"
+            };
+
+            var providerMock = new Mock<IExternalIdentityProvider>();
+            providerMock.SetupGet(x => x.Provider).Returns(ExternalLoginProviderEnum.Google);
+            providerMock.Setup(x => x.VerifyAsync(credential)).ReturnsAsync(identity);
+
+            _externalLoginRepositoryMock
+                .Setup(x => x.GetByProviderUserIdAsync(ExternalLoginProviderEnum.Google, identity.ProviderUserId))
+                .ReturnsAsync((ExternalLogin?)null);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountByEmail(identity.Email))
+                .ReturnsAsync((Account?)null);
+            _accountRepositoryMock
+                .Setup(x => x.IsUsernameExist(It.IsAny<string>()))
+                .ReturnsAsync(false);
+            _jwtServiceMock
+                .Setup(x => x.GenerateToken(It.IsAny<Account>()))
+                .Returns("external-access-token");
+
+            var service = new AuthService(
+                _accountRepositoryMock.Object,
+                _externalLoginRepositoryMock.Object,
+                _accountSettingRepositoryMock.Object,
+                _mapperMock.Object,
+                _jwtServiceMock.Object,
+                _loginRateLimitServiceMock.Object,
+                _unitOfWorkMock.Object,
+                new[] { providerMock.Object });
+
+            // Act
+            var result = await service.CompleteExternalProfileAsync(
+                ExternalLoginProviderEnum.Google,
+                credential,
+                "long_profile_user",
+                new string('c', 140));
+
+            // Assert
+            result.Should().NotBeNull();
+            _accountRepositoryMock.Verify(
+                x => x.AddAccount(It.Is<Account>(a =>
+                    a.Username == "long_profile_user" &&
+                    a.FullName.Length == 100 &&
+                    a.AvatarUrl == null)),
+                Times.Once);
         }
 
         #endregion

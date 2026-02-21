@@ -17,6 +17,9 @@ namespace SocialNetwork.Application.Services.AuthServices
 {
     public class AuthService : IAuthService
     {
+        private const int MaxFullNameLength = 100;
+        private const int ExternalProfileFullNameMaxLength = 25;
+
         private readonly IAccountRepository _accountRepository;
         private readonly IExternalLoginRepository _externalLoginRepository;
         private readonly IAccountSettingRepository _accountSettingRepository;
@@ -151,6 +154,164 @@ namespace SocialNetwork.Application.Services.AuthServices
 
         public async Task<LoginResponse> LoginWithExternalAsync(ExternalLoginProviderEnum provider, string credential)
         {
+            var startResult = await StartExternalLoginAsync(provider, credential);
+            if (startResult.RequiresProfileCompletion || startResult.Login == null)
+            {
+                throw new BadRequestException("Please complete username and full name to continue.");
+            }
+
+            return startResult.Login;
+        }
+
+        public Task<ExternalLoginStartResponse> StartExternalLoginAsync(
+            ExternalLoginProviderEnum provider,
+            string credential)
+        {
+            return HandleExternalLoginAsync(
+                provider,
+                credential,
+                requestedUsername: null,
+                requestedFullName: null,
+                allowCreateWhenMissingAccount: false);
+        }
+
+        public async Task<LoginResponse> CompleteExternalProfileAsync(
+            ExternalLoginProviderEnum provider,
+            string credential,
+            string username,
+            string fullName)
+        {
+            var startResult = await HandleExternalLoginAsync(
+                provider,
+                credential,
+                requestedUsername: username,
+                requestedFullName: fullName,
+                allowCreateWhenMissingAccount: true);
+
+            if (startResult.Login == null)
+            {
+                throw new InternalServerException("Unable to complete external sign-in.");
+            }
+
+            return startResult.Login;
+        }
+
+        private async Task<ExternalLoginStartResponse> HandleExternalLoginAsync(
+            ExternalLoginProviderEnum provider,
+            string credential,
+            string? requestedUsername,
+            string? requestedFullName,
+            bool allowCreateWhenMissingAccount)
+        {
+            var verification = await VerifyExternalIdentityAsync(provider, credential);
+            var nowUtc = DateTime.UtcNow;
+
+            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                var externalLogin = await _externalLoginRepository.GetByProviderUserIdAsync(
+                    provider,
+                    verification.NormalizedProviderUserId);
+                Account account;
+                var isNewAccount = false;
+
+                if (externalLogin != null)
+                {
+                    account = externalLogin.Account
+                        ?? await _accountRepository.GetAccountById(externalLogin.AccountId)
+                        ?? throw new UnauthorizedException("Unable to sign in with this account.");
+                }
+                else
+                {
+                    var existingAccount = await _accountRepository.GetAccountByEmail(verification.NormalizedEmail);
+                    if (existingAccount == null)
+                    {
+                        if (!allowCreateWhenMissingAccount)
+                        {
+                            var suggestedUsername = await GenerateUniqueUsernameAsync(
+                                BuildUsernameBase(verification.Identity, verification.NormalizedEmail));
+                            var suggestedFullName = BuildDisplayName(
+                                verification.Identity,
+                                verification.NormalizedEmail,
+                                suggestedUsername);
+
+                            return new ExternalLoginStartResponse
+                            {
+                                RequiresProfileCompletion = true,
+                                Profile = new ExternalProfilePrefillResponse
+                                {
+                                    Provider = provider.ToString(),
+                                    Email = verification.NormalizedEmail,
+                                    SuggestedUsername = suggestedUsername,
+                                    SuggestedFullName = LimitLength(suggestedFullName, ExternalProfileFullNameMaxLength),
+                                    AvatarUrl = null
+                                }
+                            };
+                        }
+
+                        account = await CreateExternalAccountAsync(
+                            verification.Identity,
+                            verification.NormalizedEmail,
+                            nowUtc,
+                            requestedUsername,
+                            requestedFullName);
+                        await _accountRepository.AddAccount(account);
+                        isNewAccount = true;
+                    }
+                    else
+                    {
+                        account = existingAccount;
+                    }
+
+                    EnsureAccountAllowedForExternalLink(account);
+
+                    if (account.Status == AccountStatusEnum.EmailNotVerified)
+                    {
+                        account.Status = AccountStatusEnum.Active;
+                    }
+
+                    externalLogin = new ExternalLogin
+                    {
+                        Id = Guid.NewGuid(),
+                        AccountId = account.AccountId,
+                        Provider = provider,
+                        ProviderUserId = verification.NormalizedProviderUserId,
+                        CreatedAt = nowUtc,
+                        LastLoginAt = nowUtc
+                    };
+
+                    await _externalLoginRepository.AddAsync(externalLogin);
+                }
+
+                await EnsureAccountHasAuthMethodOrThrowAsync(
+                    account,
+                    hasPendingExternalLogin: externalLogin != null);
+                EnsureAccountCanLoginWithExternal(account);
+
+                var resolvedExternalLogin = externalLogin
+                    ?? throw new InternalServerException("Unable to establish external login.");
+                resolvedExternalLogin.LastLoginAt = nowUtc;
+
+                account.LastActiveAt = nowUtc;
+                account.RefreshToken = GenerateRefreshToken();
+                account.RefreshTokenExpiryTime = nowUtc.AddDays(7);
+                account.UpdatedAt = nowUtc;
+                if (!isNewAccount)
+                {
+                    await _accountRepository.UpdateAccount(account);
+                }
+
+                return new ExternalLoginStartResponse
+                {
+                    RequiresProfileCompletion = false,
+                    Login = await BuildLoginResponseAsync(account)
+                };
+            });
+        }
+
+        private async Task<VerifiedExternalIdentity> VerifyExternalIdentityAsync(
+            ExternalLoginProviderEnum provider,
+            string credential)
+        {
             if (!_externalIdentityProviders.TryGetValue(provider, out var identityProvider))
             {
                 throw new BadRequestException($"Provider '{provider}' is not supported.");
@@ -173,72 +334,16 @@ namespace SocialNetwork.Application.Services.AuthServices
                 throw new UnauthorizedException("External account identifier is invalid.");
             }
 
-            var nowUtc = DateTime.UtcNow;
-
-            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            var normalizedEmail = NormalizeEmail(identity.Email);
+            if (string.IsNullOrWhiteSpace(normalizedEmail))
             {
-                var externalLogin = await _externalLoginRepository.GetByProviderUserIdAsync(provider, normalizedProviderUserId);
-                Account account;
+                throw new UnauthorizedException("Provider email is invalid.");
+            }
 
-                if (externalLogin != null)
-                {
-                    account = externalLogin.Account
-                        ?? await _accountRepository.GetAccountById(externalLogin.AccountId)
-                        ?? throw new UnauthorizedException("Unable to sign in with this account.");
-                }
-                else
-                {
-                    var normalizedEmail = NormalizeEmail(identity.Email);
-                    if (string.IsNullOrWhiteSpace(normalizedEmail))
-                    {
-                        throw new UnauthorizedException("Provider email is invalid.");
-                    }
-
-                    var existingAccount = await _accountRepository.GetAccountByEmail(normalizedEmail);
-                    if (existingAccount == null)
-                    {
-                        account = await CreateExternalAccountAsync(identity, normalizedEmail, nowUtc);
-                        await _accountRepository.AddAccount(account);
-                    }
-                    else
-                    {
-                        account = existingAccount;
-                    }
-
-                    EnsureAccountAllowedForExternalLink(account);
-
-                    if (account.Status == AccountStatusEnum.EmailNotVerified)
-                    {
-                        account.Status = AccountStatusEnum.Active;
-                    }
-
-                    externalLogin = new ExternalLogin
-                    {
-                        Id = Guid.NewGuid(),
-                        AccountId = account.AccountId,
-                        Provider = provider,
-                        ProviderUserId = normalizedProviderUserId,
-                        CreatedAt = nowUtc,
-                        LastLoginAt = nowUtc
-                    };
-
-                    await _externalLoginRepository.AddAsync(externalLogin);
-                }
-
-                await EnsureAccountHasAuthMethodOrThrowAsync(account);
-                EnsureAccountCanLoginWithExternal(account);
-
-                externalLogin.LastLoginAt = nowUtc;
-
-                account.LastActiveAt = nowUtc;
-                account.RefreshToken = GenerateRefreshToken();
-                account.RefreshTokenExpiryTime = nowUtc.AddDays(7);
-                account.UpdatedAt = nowUtc;
-
-                await _accountRepository.UpdateAccount(account);
-
-                return await BuildLoginResponseAsync(account);
-            });
+            return new VerifiedExternalIdentity(
+                identity,
+                normalizedProviderUserId,
+                normalizedEmail);
         }
 
         public async Task<IReadOnlyList<ExternalLoginSummaryResponse>> GetExternalLoginsAsync(Guid accountId)
@@ -355,19 +460,37 @@ namespace SocialNetwork.Application.Services.AuthServices
             response.Cookies.Delete("refreshToken");
         }
 
-        private async Task<Account> CreateExternalAccountAsync(ExternalAuthIdentity identity, string normalizedEmail, DateTime nowUtc)
+        private async Task<Account> CreateExternalAccountAsync(
+            ExternalAuthIdentity identity,
+            string normalizedEmail,
+            DateTime nowUtc,
+            string? requestedUsername,
+            string? requestedFullName)
         {
-            var baseUsername = BuildUsernameBase(identity, normalizedEmail);
-            var username = await GenerateUniqueUsernameAsync(baseUsername);
-            var fullName = BuildDisplayName(identity, normalizedEmail, username);
+            var normalizedRequestedUsername = NormalizeUsername(requestedUsername ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(normalizedRequestedUsername))
+            {
+                throw new BadRequestException("Username is required.");
+            }
+
+            if (await _accountRepository.IsUsernameExist(normalizedRequestedUsername))
+            {
+                throw new BadRequestException("Username already exists.");
+            }
+
+            var normalizedRequestedFullName = NormalizeFullName(requestedFullName);
+            if (string.IsNullOrWhiteSpace(normalizedRequestedFullName))
+            {
+                throw new BadRequestException("Full name is required.");
+            }
 
             var account = new Account
             {
                 AccountId = Guid.NewGuid(),
-                Username = username,
+                Username = normalizedRequestedUsername,
                 Email = normalizedEmail,
-                FullName = fullName,
-                AvatarUrl = identity.AvatarUrl,
+                FullName = LimitLength(normalizedRequestedFullName, MaxFullNameLength),
+                AvatarUrl = null,
                 PasswordHash = null,
                 RoleId = (int)RoleEnum.User,
                 Status = AccountStatusEnum.Active,
@@ -418,7 +541,7 @@ namespace SocialNetwork.Application.Services.AuthServices
                 .Where(ch => char.IsLetterOrDigit(ch) || ch == '_')
                 .ToArray());
 
-            if (filtered.Length < 3)
+            if (filtered.Length < 6)
             {
                 filtered = $"user{RandomNumberGenerator.GetInt32(1000, 9999)}";
             }
@@ -435,16 +558,26 @@ namespace SocialNetwork.Application.Services.AuthServices
         {
             if (!string.IsNullOrWhiteSpace(identity.FullName))
             {
-                return identity.FullName.Trim();
+                return LimitLength(identity.FullName.Trim(), MaxFullNameLength);
             }
 
             var emailName = normalizedEmail.Split('@')[0].Trim();
             if (!string.IsNullOrWhiteSpace(emailName))
             {
-                return emailName;
+                return LimitLength(emailName, MaxFullNameLength);
             }
 
-            return username;
+            return LimitLength(username, MaxFullNameLength);
+        }
+
+        private static string LimitLength(string value, int maxLength)
+        {
+            if (value.Length <= maxLength)
+            {
+                return value;
+            }
+
+            return value[..maxLength];
         }
 
         private static bool HasPassword(Account account)
@@ -452,9 +585,11 @@ namespace SocialNetwork.Application.Services.AuthServices
             return !string.IsNullOrWhiteSpace(account.PasswordHash);
         }
 
-        private async Task EnsureAccountHasAuthMethodOrThrowAsync(Account account)
+        private async Task EnsureAccountHasAuthMethodOrThrowAsync(
+            Account account,
+            bool hasPendingExternalLogin = false)
         {
-            if (HasPassword(account))
+            if (HasPassword(account) || hasPendingExternalLogin)
             {
                 return;
             }
@@ -541,6 +676,11 @@ namespace SocialNetwork.Application.Services.AuthServices
             return (email ?? string.Empty).Trim().ToLowerInvariant();
         }
 
+        private static string NormalizeFullName(string? fullName)
+        {
+            return (fullName ?? string.Empty).Trim();
+        }
+
         private static string NormalizeProviderUserId(string providerUserId)
         {
             return (providerUserId ?? string.Empty).Trim();
@@ -570,6 +710,23 @@ namespace SocialNetwork.Application.Services.AuthServices
         private static string GenerateRefreshToken()
         {
             return Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+        }
+
+        private sealed class VerifiedExternalIdentity
+        {
+            public ExternalAuthIdentity Identity { get; }
+            public string NormalizedProviderUserId { get; }
+            public string NormalizedEmail { get; }
+
+            public VerifiedExternalIdentity(
+                ExternalAuthIdentity identity,
+                string normalizedProviderUserId,
+                string normalizedEmail)
+            {
+                Identity = identity;
+                NormalizedProviderUserId = normalizedProviderUserId;
+                NormalizedEmail = normalizedEmail;
+            }
         }
     }
 }
