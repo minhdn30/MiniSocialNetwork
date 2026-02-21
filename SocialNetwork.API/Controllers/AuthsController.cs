@@ -34,17 +34,20 @@ namespace SocialNetwork.API.Controllers
         };
 
         private readonly IAuthService _authService;
+        private readonly IPasswordResetService _passwordResetService;
         private readonly IEmailVerificationService _emailVerificationService;
         private readonly IConfiguration _configuration;
         private readonly IHostEnvironment _environment;
 
         public AuthsController(
             IAuthService authService,
+            IPasswordResetService passwordResetService,
             IEmailVerificationService emailVerificationService,
             IConfiguration configuration,
             IHostEnvironment environment)
         {
             _authService = authService;
+            _passwordResetService = passwordResetService;
             _emailVerificationService = emailVerificationService;
             _configuration = configuration;
             _environment = environment;
@@ -217,6 +220,37 @@ namespace SocialNetwork.API.Controllers
             if (!result) return BadRequest(new { message = "Code is invalid or expired." });
 
             return Ok(new { message = "Email verification successful." });
+        }
+
+        [HttpPost("forgot-password/send-code")]
+        public async Task<IActionResult> SendForgotPasswordCode([FromBody] ForgotPasswordRequest request)
+        {
+            await _passwordResetService.SendResetPasswordCodeAsync(request.Email, GetClientIpAddress());
+            return Ok(new { message = "If the email exists, a reset code has been sent." });
+        }
+
+        [HttpPost("forgot-password/verify-code")]
+        public async Task<IActionResult> VerifyForgotPasswordCode([FromBody] ForgotPasswordVerifyRequest request)
+        {
+            var isValid = await _passwordResetService.VerifyResetPasswordCodeAsync(request.Email, request.Code);
+            if (!isValid)
+            {
+                return BadRequest(new { message = "Code is invalid or expired." });
+            }
+
+            return Ok(new { message = "Code verified successfully." });
+        }
+
+        [HttpPost("forgot-password/reset")]
+        public async Task<IActionResult> ResetForgottenPassword([FromBody] ForgotPasswordResetRequest request)
+        {
+            await _passwordResetService.ResetPasswordAsync(
+                request.Email,
+                request.Code,
+                request.NewPassword,
+                request.ConfirmPassword);
+
+            return Ok(new { message = "Password reset successful." });
         }
 
         [HttpPost("login")]
