@@ -128,6 +128,7 @@ namespace SocialNetwork.API
             });
 
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
             builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();

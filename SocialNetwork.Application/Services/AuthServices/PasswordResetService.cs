@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
+using SocialNetwork.Application.Services.EmailVerificationServices;
+using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
@@ -7,16 +9,18 @@ using SocialNetwork.Infrastructure.Services.Email;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
-namespace SocialNetwork.Application.Services.EmailVerificationServices
+namespace SocialNetwork.Application.Services.AuthServices
 {
-    public class EmailVerificationService : IEmailVerificationService
+    public class PasswordResetService : IPasswordResetService
     {
         private const int OtpDigits = 6;
         private const int OtpSaltBytes = 16;
         private const int LegacyOtpHashBytes = 32;
         private const int LegacyPbkdf2Iterations = 100000;
+        private const int PasswordMinLength = 6;
 
         private readonly IEmailService _emailService;
         private readonly IAccountRepository _accountRepository;
@@ -25,38 +29,44 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
         private readonly IUnitOfWork _unitOfWork;
         private readonly EmailVerificationSecurityOptions _securityOptions;
 
-        public EmailVerificationService(
+        public PasswordResetService(
             IEmailService emailService,
+            IAccountRepository accountRepository,
             IEmailVerificationRepository emailVerificationRepository,
             IEmailVerificationRateLimitService rateLimitService,
-            IAccountRepository accountRepository,
             IUnitOfWork unitOfWork,
             IOptions<EmailVerificationSecurityOptions> securityOptions)
         {
             _emailService = emailService;
+            _accountRepository = accountRepository;
             _emailVerificationRepository = emailVerificationRepository;
             _rateLimitService = rateLimitService;
-            _accountRepository = accountRepository;
             _unitOfWork = unitOfWork;
             _securityOptions = NormalizeOptions(securityOptions.Value);
         }
 
-        public async Task SendVerificationEmailAsync(string email, string? requesterIpAddress = null)
+        public async Task SendResetPasswordCodeAsync(string email, string? requesterIpAddress = null)
         {
             var normalizedEmail = NormalizeEmail(email);
             var normalizedIpAddress = NormalizeIp(requesterIpAddress);
             var nowUtc = DateTime.UtcNow;
 
-            var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
-            if (account == null || account.Status != AccountStatusEnum.EmailNotVerified)
+            if (string.IsNullOrWhiteSpace(normalizedEmail))
             {
-                throw new BadRequestException("Unable to send verification code for this email.");
+                throw new BadRequestException("Email is required.");
+            }
+
+            var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
+            if (account == null || account.Status == AccountStatusEnum.Deleted)
+            {
+                // Prevent account enumeration.
+                return;
             }
 
             await _emailVerificationRepository.EnsureExistsByEmailAsync(normalizedEmail, nowUtc);
 
             var verification = await _emailVerificationRepository.GetLatestByEmailAsync(normalizedEmail)
-                ?? throw new BadRequestException("Unable to prepare verification request. Please try again.");
+                ?? throw new BadRequestException("Unable to prepare reset request. Please try again.");
 
             if (verification.LockedUntil.HasValue && verification.LockedUntil.Value > nowUtc)
             {
@@ -72,7 +82,6 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
             }
             catch (InternalServerException)
             {
-                // Redis unavailable: fallback to SQL-backed limits to keep feature available.
                 EnforceSendRateLimitFallback(verification, nowUtc);
             }
 
@@ -86,9 +95,11 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
             verification.LastSentAt = nowUtc;
             verification.SendCountInWindow += 1;
             verification.DailySendCount += 1;
+            verification.FailedAttempts = 0;
+            verification.LockedUntil = null;
             verification.ConsumedAt = null;
 
-            string body = $@"
+            var body = $@"
 <html>
 <head>
 <style>
@@ -140,35 +151,40 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
 </head>
 <body>
 <div class='container'>
-<div class='header'>Verify Your Email</div>
+<div class='header'>Reset Your Password</div>
 <div class='content'>
 Hello,<br/><br/>
-Your email verification code (OTP) is:
+Your password reset code is:
 </div>
 <div class='otp'>{code}</div>
 <div class='content'>
-This code is valid for <strong>{_securityOptions.OtpExpiresMinutes} minutes</strong>. Please do not share it with anyone.
+This code is valid for <strong>{_securityOptions.OtpExpiresMinutes} minutes</strong>. If you did not request a password reset, please ignore this email.
 </div>
 <div class='footer'>
-If you did not request this code, please ignore this email.<br/>
-© 2025 MiniSocialNetwork
+© 2026 MiniSocialNetwork
 </div>
 </div>
 </body>
 </html>
 ";
 
-            await _emailService.SendEmailAsync(normalizedEmail, "CloudM - Email Verification", body, isHtml: true);
+            await _emailService.SendEmailAsync(normalizedEmail, "CloudM - Password Reset", body, isHtml: true);
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task<bool> VerifyEmailAsync(string email, string code)
+        public async Task<bool> VerifyResetPasswordCodeAsync(string email, string code)
         {
             var normalizedEmail = NormalizeEmail(email);
             var normalizedCode = NormalizeCode(code);
             var nowUtc = DateTime.UtcNow;
 
             if (!IsValidOtpFormat(normalizedCode))
+            {
+                return false;
+            }
+
+            var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
+            if (account == null || account.Status == AccountStatusEnum.Deleted)
             {
                 return false;
             }
@@ -192,44 +208,96 @@ If you did not request this code, please ignore this email.<br/>
                 return false;
             }
 
-            if (!VerifyCodeHash(normalizedCode, verification.CodeHash, verification.CodeSalt))
+            if (VerifyCodeHash(normalizedCode, verification.CodeHash, verification.CodeSalt))
             {
-                verification.FailedAttempts += 1;
-
-                if (verification.FailedAttempts >= _securityOptions.MaxFailedAttempts)
-                {
-                    verification.LockedUntil = nowUtc.AddMinutes(_securityOptions.LockMinutes);
-                    await _emailVerificationRepository.UpdateEmailVerificationAsync(verification);
-                    await _unitOfWork.CommitAsync();
-
-                    throw new BadRequestException(
-                        $"Too many invalid attempts. Please wait {GetRemainingSeconds(verification.LockedUntil.Value, nowUtc)} seconds before trying again.");
-                }
-
-                await _emailVerificationRepository.UpdateEmailVerificationAsync(verification);
-                await _unitOfWork.CommitAsync();
-                return false;
+                return true;
             }
 
-            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            await HandleInvalidCodeAttemptAsync(verification, nowUtc);
+            return false;
+        }
+
+        public async Task ResetPasswordAsync(string email, string code, string newPassword, string confirmPassword)
+        {
+            var normalizedEmail = NormalizeEmail(email);
+            var normalizedCode = NormalizeCode(code);
+            var normalizedNewPassword = NormalizePassword(newPassword);
+            var normalizedConfirmPassword = NormalizePassword(confirmPassword);
+            var nowUtc = DateTime.UtcNow;
+
+            ValidatePassword(normalizedNewPassword, normalizedConfirmPassword);
+
+            if (!IsValidOtpFormat(normalizedCode))
+            {
+                throw new BadRequestException("Invalid or expired reset code.");
+            }
+
+            var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
+            if (account == null || account.Status == AccountStatusEnum.Deleted)
+            {
+                throw new BadRequestException("Invalid or expired reset code.");
+            }
+
+            var verification = await _emailVerificationRepository.GetLatestByEmailAsync(normalizedEmail);
+            if (verification == null)
+            {
+                throw new BadRequestException("Invalid or expired reset code.");
+            }
+
+            if (verification.LockedUntil.HasValue && verification.LockedUntil.Value > nowUtc)
+            {
+                throw new BadRequestException(
+                    $"Too many invalid attempts. Please wait {GetRemainingSeconds(verification.LockedUntil.Value, nowUtc)} seconds before trying again.");
+            }
+
+            if (verification.ExpiredAt <= nowUtc)
+            {
+                await _emailVerificationRepository.DeleteEmailVerificationAsync(normalizedEmail);
+                await _unitOfWork.CommitAsync();
+                throw new BadRequestException("Invalid or expired reset code.");
+            }
+
+            if (!VerifyCodeHash(normalizedCode, verification.CodeHash, verification.CodeSalt))
+            {
+                await HandleInvalidCodeAttemptAsync(verification, nowUtc);
+                throw new BadRequestException("Invalid or expired reset code.");
+            }
+
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
                 var claimed = await _emailVerificationRepository.TryMarkAsConsumedAsync(verification.Id, nowUtc);
                 if (!claimed)
                 {
-                    throw new BadRequestException("Verification code has already been used. Please request a new code.");
+                    throw new BadRequestException("Reset code has already been used. Please request a new code.");
                 }
 
-                var account = await _accountRepository.GetAccountByEmail(normalizedEmail);
-                if (account != null && account.Status == AccountStatusEnum.EmailNotVerified)
-                {
-                    account.Status = AccountStatusEnum.Active;
-                    account.UpdatedAt = nowUtc;
-                    await _accountRepository.UpdateAccount(account);
-                }
+                account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(normalizedNewPassword);
+                account.UpdatedAt = nowUtc;
+                account.RefreshToken = null;
+                account.RefreshTokenExpiryTime = null;
+                await _accountRepository.UpdateAccount(account);
 
                 await _emailVerificationRepository.DeleteEmailVerificationAsync(normalizedEmail);
-                return account != null;
+                return true;
             });
+        }
+
+        private async Task HandleInvalidCodeAttemptAsync(EmailVerification verification, DateTime nowUtc)
+        {
+            verification.FailedAttempts += 1;
+
+            if (verification.FailedAttempts >= _securityOptions.MaxFailedAttempts)
+            {
+                verification.LockedUntil = nowUtc.AddMinutes(_securityOptions.LockMinutes);
+                await _emailVerificationRepository.UpdateEmailVerificationAsync(verification);
+                await _unitOfWork.CommitAsync();
+
+                throw new BadRequestException(
+                    $"Too many invalid attempts. Please wait {GetRemainingSeconds(verification.LockedUntil.Value, nowUtc)} seconds before trying again.");
+            }
+
+            await _emailVerificationRepository.UpdateEmailVerificationAsync(verification);
+            await _unitOfWork.CommitAsync();
         }
 
         private static string NormalizeEmail(string email)
@@ -240,6 +308,11 @@ If you did not request this code, please ignore this email.<br/>
         private static string NormalizeCode(string code)
         {
             return (code ?? string.Empty).Trim();
+        }
+
+        private static string NormalizePassword(string password)
+        {
+            return password ?? string.Empty;
         }
 
         private static string? NormalizeIp(string? ipAddress)
@@ -277,7 +350,6 @@ If you did not request this code, please ignore this email.<br/>
         {
             var saltBytes = RandomNumberGenerator.GetBytes(OtpSaltBytes);
             var hashBytes = ComputeHmacHash(code, saltBytes);
-
             return (Convert.ToBase64String(hashBytes), Convert.ToBase64String(saltBytes));
         }
 
@@ -294,7 +366,6 @@ If you did not request this code, please ignore this email.<br/>
                     return true;
                 }
 
-                // Backward-compatible verification for OTPs issued before HMAC migration.
                 var legacyPepperedCode = $"{code}:{_securityOptions.OtpPepper}";
                 var legacyHashBytes = Rfc2898DeriveBytes.Pbkdf2(
                     legacyPepperedCode,
@@ -318,11 +389,6 @@ If you did not request this code, please ignore this email.<br/>
             return hmac.ComputeHash(payload);
         }
 
-        private static int GetRemainingSeconds(DateTime futureTime, DateTime nowUtc)
-        {
-            return Math.Max(1, (int)Math.Ceiling((futureTime - nowUtc).TotalSeconds));
-        }
-
         private static byte[] BuildOtpPayload(string code, byte[] saltBytes)
         {
             var codeBytes = Encoding.UTF8.GetBytes(code);
@@ -330,11 +396,15 @@ If you did not request this code, please ignore this email.<br/>
             Buffer.BlockCopy(saltBytes, 0, payload, 0, saltBytes.Length);
             payload[saltBytes.Length] = (byte)':';
             Buffer.BlockCopy(codeBytes, 0, payload, saltBytes.Length + 1, codeBytes.Length);
-
             return payload;
         }
 
-        private void EnforceSendRateLimitFallback(SocialNetwork.Domain.Entities.EmailVerification verification, DateTime nowUtc)
+        private static int GetRemainingSeconds(DateTime futureTime, DateTime nowUtc)
+        {
+            return Math.Max(1, (int)Math.Ceiling((futureTime - nowUtc).TotalSeconds));
+        }
+
+        private void EnforceSendRateLimitFallback(EmailVerification verification, DateTime nowUtc)
         {
             if (verification.LastSentAt > nowUtc.AddSeconds(-_securityOptions.ResendCooldownSeconds))
             {
@@ -354,7 +424,7 @@ If you did not request this code, please ignore this email.<br/>
             }
         }
 
-        private void ResetSendCountersIfNeeded(SocialNetwork.Domain.Entities.EmailVerification verification, DateTime nowUtc)
+        private void ResetSendCountersIfNeeded(EmailVerification verification, DateTime nowUtc)
         {
             if (verification.SendWindowStartedAt <= nowUtc.AddMinutes(-_securityOptions.SendWindowMinutes))
             {
@@ -376,23 +446,40 @@ If you did not request this code, please ignore this email.<br/>
             options.MaxSendsPerWindow = options.MaxSendsPerWindow <= 0 ? 3 : options.MaxSendsPerWindow;
             options.SendWindowMinutes = options.SendWindowMinutes <= 0 ? 15 : options.SendWindowMinutes;
             options.MaxSendsPerDay = options.MaxSendsPerDay <= 0 ? 10 : options.MaxSendsPerDay;
-            options.MaxSendsPerIpWindow = options.MaxSendsPerIpWindow <= 0 ? 10 : options.MaxSendsPerIpWindow;
-            options.IpSendWindowMinutes = options.IpSendWindowMinutes <= 0 ? 15 : options.IpSendWindowMinutes;
-            options.MaxSendsPerIpDay = options.MaxSendsPerIpDay <= 0 ? 200 : options.MaxSendsPerIpDay;
-            options.MaxSendsPerEmailIpWindow = options.MaxSendsPerEmailIpWindow < 0 ? 5 : options.MaxSendsPerEmailIpWindow;
-            options.EmailIpSendWindowMinutes = options.EmailIpSendWindowMinutes <= 0 ? 15 : options.EmailIpSendWindowMinutes;
-            options.MaxGlobalSendsPerWindow = options.MaxGlobalSendsPerWindow <= 0 ? 1000 : options.MaxGlobalSendsPerWindow;
-            options.GlobalSendWindowMinutes = options.GlobalSendWindowMinutes <= 0 ? 60 : options.GlobalSendWindowMinutes;
-            options.IpLockMinutes = options.IpLockMinutes <= 0 ? 15 : options.IpLockMinutes;
             options.MaxFailedAttempts = options.MaxFailedAttempts <= 0 ? 5 : options.MaxFailedAttempts;
             options.LockMinutes = options.LockMinutes <= 0 ? 15 : options.LockMinutes;
-            options.CleanupIntervalMinutes = options.CleanupIntervalMinutes <= 0 ? 30 : options.CleanupIntervalMinutes;
-            options.RetentionHours = options.RetentionHours <= 0 ? 24 : options.RetentionHours;
             options.OtpPepper = string.IsNullOrWhiteSpace(options.OtpPepper)
                 ? "CHANGE_ME_OTP_PEPPER"
                 : options.OtpPepper;
-
             return options;
+        }
+
+        private static void ValidatePassword(string newPassword, string confirmPassword)
+        {
+            if (string.IsNullOrWhiteSpace(newPassword))
+            {
+                throw new BadRequestException("New password is required.");
+            }
+
+            if (newPassword.Length < PasswordMinLength)
+            {
+                throw new BadRequestException($"Password must be at least {PasswordMinLength} characters long.");
+            }
+
+            if (newPassword.Contains(' '))
+            {
+                throw new BadRequestException("Password cannot contain spaces.");
+            }
+
+            if (Regex.IsMatch(newPassword, @"[\u00C0-\u024F\u1E00-\u1EFF]"))
+            {
+                throw new BadRequestException("Password cannot contain Vietnamese accents.");
+            }
+
+            if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+            {
+                throw new BadRequestException("Password and Confirm Password do not match.");
+            }
         }
     }
 }
