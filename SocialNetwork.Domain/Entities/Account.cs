@@ -45,6 +45,8 @@ namespace SocialNetwork.Domain.Entities
         public ICollection<Follow> Followers { get; set; } = new List<Follow>(); // Accounts that follow this account
         public ICollection<Follow> Followings { get; set; } = new List<Follow>(); // Accounts that this account follows
         public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
+        public virtual ICollection<Story> Stories { get; set; } = new List<Story>();
+        public virtual ICollection<StoryView> StoryViews { get; set; } = new List<StoryView>();
         public virtual ICollection<ExternalLogin> ExternalLogins { get; set; } = new List<ExternalLogin>();
 
         // Comment-related
