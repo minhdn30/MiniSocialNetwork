@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Moq;
+using AutoMapper;
 using SocialNetwork.Application.DTOs.StoryDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Application.Services.StoryServices;
@@ -21,6 +22,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<ICloudinaryService> _cloudinaryServiceMock;
         private readonly Mock<IFileTypeDetector> _fileTypeDetectorMock;
         private readonly Mock<IUnitOfWork> _unitOfWorkMock;
+        private readonly Mock<IMapper> _mapperMock;
         private readonly StoryService _storyService;
 
         public StoryServiceTests()
@@ -30,19 +32,36 @@ namespace SocialNetwork.Tests.Services
             _cloudinaryServiceMock = new Mock<ICloudinaryService>();
             _fileTypeDetectorMock = new Mock<IFileTypeDetector>();
             _unitOfWorkMock = new Mock<IUnitOfWork>();
+            _mapperMock = new Mock<IMapper>();
 
             _unitOfWorkMock
                 .Setup(x => x.ExecuteInTransactionAsync(
                     It.IsAny<Func<Task<StoryDetailResponse>>>(),
                     It.IsAny<Func<Task>?>()))
                 .Returns((Func<Task<StoryDetailResponse>> operation, Func<Task>? _) => operation());
+            _mapperMock
+                .Setup(x => x.Map<StoryDetailResponse>(It.IsAny<Story>()))
+                .Returns<Story>(story => new StoryDetailResponse
+                {
+                    StoryId = story.StoryId,
+                    AccountId = story.AccountId,
+                    ContentType = (int)story.ContentType,
+                    MediaUrl = story.MediaUrl,
+                    ThumbnailUrl = story.ThumbnailUrl,
+                    TextContent = story.TextContent,
+                    Privacy = (int)story.Privacy,
+                    CreatedAt = story.CreatedAt,
+                    ExpiresAt = story.ExpiresAt,
+                    IsDeleted = story.IsDeleted
+                });
 
             _storyService = new StoryService(
                 _storyRepositoryMock.Object,
                 _accountRepositoryMock.Object,
                 _cloudinaryServiceMock.Object,
                 _fileTypeDetectorMock.Object,
-                _unitOfWorkMock.Object);
+                _unitOfWorkMock.Object,
+                _mapperMock.Object);
         }
 
         [Fact]
@@ -163,7 +182,7 @@ namespace SocialNetwork.Tests.Services
             _fileTypeDetectorMock.Verify(x => x.GetMediaTypeAsync(mediaFile), Times.Once);
             _cloudinaryServiceMock.Verify(x => x.UploadImageAsync(mediaFile), Times.Once);
             _storyRepositoryMock.Verify(x => x.AddStoryAsync(It.IsAny<Story>()), Times.Once);
-            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Never);
         }
 
         [Fact]
@@ -199,10 +218,6 @@ namespace SocialNetwork.Tests.Services
             _storyRepositoryMock
                 .Setup(x => x.AddStoryAsync(It.IsAny<Story>()))
                 .Callback<Story>(story => capturedStory = story)
-                .Returns(Task.CompletedTask);
-
-            _unitOfWorkMock
-                .Setup(x => x.CommitAsync())
                 .Returns(Task.CompletedTask);
 
             // Act
@@ -326,6 +341,177 @@ namespace SocialNetwork.Tests.Services
             // Assert
             await act.Should().ThrowAsync<BadRequestException>()
                 .WithMessage("TextContent is only allowed for text story.");
+        }
+
+        [Fact]
+        public async Task UpdateStoryPrivacyAsync_WhenStoryNotFound_ThrowsNotFoundException()
+        {
+            // Arrange
+            var storyId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var request = new StoryPrivacyUpdateRequest
+            {
+                Privacy = (int)StoryPrivacyEnum.Private
+            };
+
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync((Story?)null);
+
+            // Act
+            var act = () => _storyService.UpdateStoryPrivacyAsync(storyId, currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<NotFoundException>()
+                .WithMessage($"Story with ID {storyId} not found.");
+        }
+
+        [Fact]
+        public async Task UpdateStoryPrivacyAsync_WhenCurrentUserNotOwner_ThrowsForbiddenException()
+        {
+            // Arrange
+            var storyId = Guid.NewGuid();
+            var ownerId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var request = new StoryPrivacyUpdateRequest
+            {
+                Privacy = (int)StoryPrivacyEnum.Private
+            };
+
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync(new Story
+                {
+                    StoryId = storyId,
+                    AccountId = ownerId,
+                    Privacy = StoryPrivacyEnum.Public,
+                    ExpiresAt = DateTime.UtcNow.AddHours(2),
+                    CreatedAt = DateTime.UtcNow.AddHours(-1)
+                });
+
+            // Act
+            var act = () => _storyService.UpdateStoryPrivacyAsync(storyId, currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<ForbiddenException>()
+                .WithMessage("You are not authorized to edit this story.");
+        }
+
+        [Fact]
+        public async Task UpdateStoryPrivacyAsync_WhenValidRequest_UpdatesPrivacyAndCommits()
+        {
+            // Arrange
+            var storyId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var story = new Story
+            {
+                StoryId = storyId,
+                AccountId = currentId,
+                ContentType = StoryContentTypeEnum.Image,
+                MediaUrl = "https://cdn.example.com/story.jpg",
+                Privacy = StoryPrivacyEnum.Public,
+                ExpiresAt = DateTime.UtcNow.AddHours(2),
+                CreatedAt = DateTime.UtcNow.AddHours(-1)
+            };
+            var request = new StoryPrivacyUpdateRequest
+            {
+                Privacy = (int)StoryPrivacyEnum.FollowOnly
+            };
+
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync(story);
+            _storyRepositoryMock
+                .Setup(x => x.UpdateStoryAsync(story))
+                .Returns(Task.CompletedTask);
+            _unitOfWorkMock
+                .Setup(x => x.CommitAsync())
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _storyService.UpdateStoryPrivacyAsync(storyId, currentId, request);
+
+            // Assert
+            story.Privacy.Should().Be(StoryPrivacyEnum.FollowOnly);
+            result.Privacy.Should().Be((int)StoryPrivacyEnum.FollowOnly);
+            _storyRepositoryMock.Verify(x => x.UpdateStoryAsync(story), Times.Once);
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task SoftDeleteStoryAsync_WhenStoryNotFound_ThrowsNotFoundException()
+        {
+            // Arrange
+            var storyId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync((Story?)null);
+
+            // Act
+            var act = () => _storyService.SoftDeleteStoryAsync(storyId, currentId);
+
+            // Assert
+            await act.Should().ThrowAsync<NotFoundException>()
+                .WithMessage($"Story with ID {storyId} not found.");
+        }
+
+        [Fact]
+        public async Task SoftDeleteStoryAsync_WhenCurrentUserNotOwner_ThrowsForbiddenException()
+        {
+            // Arrange
+            var storyId = Guid.NewGuid();
+            var ownerId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync(new Story
+                {
+                    StoryId = storyId,
+                    AccountId = ownerId,
+                    IsDeleted = false
+                });
+
+            // Act
+            var act = () => _storyService.SoftDeleteStoryAsync(storyId, currentId);
+
+            // Assert
+            await act.Should().ThrowAsync<ForbiddenException>()
+                .WithMessage("You are not authorized to delete this story.");
+        }
+
+        [Fact]
+        public async Task SoftDeleteStoryAsync_WhenCurrentUserIsOwner_SoftDeletesAndCommits()
+        {
+            // Arrange
+            var storyId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var story = new Story
+            {
+                StoryId = storyId,
+                AccountId = currentId,
+                IsDeleted = false
+            };
+
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync(story);
+            _storyRepositoryMock
+                .Setup(x => x.UpdateStoryAsync(story))
+                .Returns(Task.CompletedTask);
+            _unitOfWorkMock
+                .Setup(x => x.CommitAsync())
+                .Returns(Task.CompletedTask);
+
+            // Act
+            await _storyService.SoftDeleteStoryAsync(storyId, currentId);
+
+            // Assert
+            story.IsDeleted.Should().BeTrue();
+            _storyRepositoryMock.Verify(x => x.UpdateStoryAsync(story), Times.Once);
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
         }
     }
 }
