@@ -256,6 +256,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 FollowerPrivacy = s?.FollowerPrivacy ?? AccountPrivacyEnum.Public,
                 FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public,
                 GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
+                OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,
             };
         }
 
@@ -314,7 +315,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
                 DefaultPostPrivacy = s?.DefaultPostPrivacy ?? PostPrivacyEnum.Public,
                 FollowerPrivacy = s?.FollowerPrivacy ?? AccountPrivacyEnum.Public,
                 FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public,
-                GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone
+                GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
+                OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly
             };
         }
 

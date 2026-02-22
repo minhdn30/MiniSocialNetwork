@@ -105,6 +105,30 @@ namespace SocialNetwork.API.Controllers
         {
             var accountId = User.GetAccountId();
             if (accountId == null) return Unauthorized();
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.PhonePrivacy.HasValue && !IsValidEnumValue(request.PhonePrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for PhonePrivacy." });
+
+            if (request.AddressPrivacy.HasValue && !IsValidEnumValue(request.AddressPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for AddressPrivacy." });
+
+            if (request.DefaultPostPrivacy.HasValue && !IsValidEnumValue(request.DefaultPostPrivacy.Value))
+                return BadRequest(new { message = "Invalid PostPrivacyEnum value." });
+
+            if (request.FollowerPrivacy.HasValue && !IsValidEnumValue(request.FollowerPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for FollowerPrivacy." });
+
+            if (request.FollowingPrivacy.HasValue && !IsValidEnumValue(request.FollowingPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for FollowingPrivacy." });
+
+            if (request.GroupChatInvitePermission.HasValue && !IsValidEnumValue(request.GroupChatInvitePermission.Value))
+                return BadRequest(new { message = "Invalid GroupChatInvitePermissionEnum value." });
+
+            if (request.OnlineStatusVisibility.HasValue && !IsValidEnumValue(request.OnlineStatusVisibility.Value))
+                return BadRequest(new { message = "Invalid OnlineStatusVisibilityEnum value." });
+
             var result = await _accountSettingService.UpdateSettingsAsync(accountId.Value, request);
             return Ok(result);
         }

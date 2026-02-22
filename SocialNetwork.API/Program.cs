@@ -29,6 +29,7 @@ using SocialNetwork.Application.Services.MessageHiddenServices;
 using SocialNetwork.Application.Services.MessageReactServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PinnedMessageServices;
+using SocialNetwork.Application.Services.PresenceServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
@@ -52,6 +53,7 @@ using SocialNetwork.Infrastructure.Repositories.PinnedMessages;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.Presences;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Linq;
@@ -114,6 +116,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IMessageHiddenRepository, MessageHiddenRepository>();
             builder.Services.AddScoped<IMessageReactRepository, MessageReactRepository>();
             builder.Services.AddScoped<IPinnedMessageRepository, PinnedMessageRepository>();
+            builder.Services.AddScoped<IOnlinePresenceRepository, OnlinePresenceRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // Services
@@ -123,6 +126,8 @@ namespace SocialNetwork.API
                 builder.Configuration.GetSection("EmailVerification"));
             builder.Services.Configure<GoogleAuthOptions>(
                 builder.Configuration.GetSection("ExternalAuth:Google"));
+            builder.Services.Configure<OnlinePresenceOptions>(
+                builder.Configuration.GetSection("OnlinePresence"));
             builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
             {
                 var redisConnectionString =
@@ -161,7 +166,9 @@ namespace SocialNetwork.API
 
             // Realtime Services
             builder.Services.AddScoped<IRealtimeService, RealtimeService>();
+            builder.Services.AddScoped<IOnlinePresenceService, OnlinePresenceService>();
             builder.Services.AddHostedService<EmailVerificationCleanupHostedService>();
+            builder.Services.AddHostedService<OnlinePresenceCleanupHostedService>();
 
             // Helpers
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();

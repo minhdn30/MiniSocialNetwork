@@ -138,7 +138,7 @@ namespace SocialNetwork.Application.Services.AuthServices
 
             account.RefreshToken = GenerateRefreshToken();
             account.RefreshTokenExpiryTime = nowUtc.AddDays(7);
-            account.LastActiveAt = nowUtc;
+            account.LastOnlineAt = nowUtc;
             account.UpdatedAt = nowUtc;
 
             await _accountRepository.UpdateAccount(account);
@@ -291,7 +291,7 @@ namespace SocialNetwork.Application.Services.AuthServices
                     ?? throw new InternalServerException("Unable to establish external login.");
                 resolvedExternalLogin.LastLoginAt = nowUtc;
 
-                account.LastActiveAt = nowUtc;
+                account.LastOnlineAt = nowUtc;
                 account.RefreshToken = GenerateRefreshToken();
                 account.RefreshTokenExpiryTime = nowUtc.AddDays(7);
                 account.UpdatedAt = nowUtc;

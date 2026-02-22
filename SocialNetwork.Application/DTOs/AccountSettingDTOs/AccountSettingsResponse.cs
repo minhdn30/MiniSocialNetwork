@@ -16,5 +16,6 @@ namespace SocialNetwork.Application.DTOs.AccountSettingDTOs
         public AccountPrivacyEnum FollowerPrivacy { get; set; }
         public AccountPrivacyEnum FollowingPrivacy { get; set; }
         public GroupChatInvitePermissionEnum GroupChatInvitePermission { get; set; }
+        public OnlineStatusVisibilityEnum OnlineStatusVisibility { get; set; }
     }
 }

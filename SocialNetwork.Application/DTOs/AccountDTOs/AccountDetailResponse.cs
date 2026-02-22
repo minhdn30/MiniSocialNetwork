@@ -29,7 +29,7 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public DateTime CreatedAt { get; set; }
         public AccountSettingsResponse? Settings { get; set; }
         public DateTime? UpdatedAt { get; set; }
-        public DateTime? LastActiveAt { get; set; }
+        public DateTime? LastOnlineAt { get; set; }
 
     }
 }
