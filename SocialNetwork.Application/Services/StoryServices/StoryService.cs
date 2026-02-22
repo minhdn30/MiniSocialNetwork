@@ -1,5 +1,6 @@
 using SocialNetwork.Application.DTOs.StoryDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
+using AutoMapper;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
@@ -17,19 +18,22 @@ namespace SocialNetwork.Application.Services.StoryServices
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
 
         public StoryService(
             IStoryRepository storyRepository,
             IAccountRepository accountRepository,
             ICloudinaryService cloudinaryService,
             IFileTypeDetector fileTypeDetector,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IMapper mapper)
         {
             _storyRepository = storyRepository;
             _accountRepository = accountRepository;
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
             _unitOfWork = unitOfWork;
+            _mapper = mapper;
         }
 
         public async Task<StoryDetailResponse> CreateStoryAsync(Guid currentId, StoryCreateRequest request)
@@ -86,12 +90,8 @@ namespace SocialNetwork.Application.Services.StoryServices
             MediaTypeEnum? uploadedMediaType = null;
             if (contentType != StoryContentTypeEnum.Text)
             {
-                if (request.MediaFile == null)
-                {
-                    throw new BadRequestException("MediaFile is required for image/video story.");
-                }
-
-                var detectedType = await _fileTypeDetector.GetMediaTypeAsync(request.MediaFile);
+                var mediaFile = request.MediaFile!;
+                var detectedType = await _fileTypeDetector.GetMediaTypeAsync(mediaFile);
                 if (contentType == StoryContentTypeEnum.Image && detectedType != MediaTypeEnum.Image)
                 {
                     throw new BadRequestException("MediaFile must be an image for image story.");
@@ -104,8 +104,8 @@ namespace SocialNetwork.Application.Services.StoryServices
 
                 uploadedMediaType = detectedType;
                 uploadedMediaUrl = contentType == StoryContentTypeEnum.Image
-                    ? await _cloudinaryService.UploadImageAsync(request.MediaFile)
-                    : await _cloudinaryService.UploadVideoAsync(request.MediaFile);
+                    ? await _cloudinaryService.UploadImageAsync(mediaFile)
+                    : await _cloudinaryService.UploadVideoAsync(mediaFile);
 
                 if (string.IsNullOrWhiteSpace(uploadedMediaUrl))
                 {
@@ -137,21 +137,8 @@ namespace SocialNetwork.Application.Services.StoryServices
                 };
 
                 await _storyRepository.AddStoryAsync(story);
-                await _unitOfWork.CommitAsync();
 
-                return new StoryDetailResponse
-                {
-                    StoryId = story.StoryId,
-                    AccountId = story.AccountId,
-                    ContentType = (int)story.ContentType,
-                    MediaUrl = story.MediaUrl,
-                    ThumbnailUrl = story.ThumbnailUrl,
-                    TextContent = story.TextContent,
-                    Privacy = (int)story.Privacy,
-                    CreatedAt = story.CreatedAt,
-                    ExpiresAt = story.ExpiresAt,
-                    IsDeleted = story.IsDeleted
-                };
+                return _mapper.Map<StoryDetailResponse>(story);
             }, async () =>
             {
                 if (string.IsNullOrWhiteSpace(uploadedMediaUrl) || !uploadedMediaType.HasValue)
@@ -167,6 +154,60 @@ namespace SocialNetwork.Application.Services.StoryServices
 
                 await _cloudinaryService.DeleteMediaAsync(publicId, uploadedMediaType.Value);
             });
+        }
+
+        public async Task<StoryDetailResponse> UpdateStoryPrivacyAsync(Guid storyId, Guid currentId, StoryPrivacyUpdateRequest request)
+        {
+            if (!request.Privacy.HasValue || !Enum.IsDefined(typeof(StoryPrivacyEnum), request.Privacy.Value))
+            {
+                throw new BadRequestException("Invalid story privacy setting.");
+            }
+
+            var story = await _storyRepository.GetStoryByIdAsync(storyId);
+            if (story == null || story.IsDeleted)
+            {
+                throw new NotFoundException($"Story with ID {storyId} not found.");
+            }
+
+            if (story.AccountId != currentId)
+            {
+                throw new ForbiddenException("You are not authorized to edit this story.");
+            }
+
+            if (story.ExpiresAt <= DateTime.UtcNow)
+            {
+                throw new BadRequestException("Story has expired and cannot be edited.");
+            }
+
+            var privacy = (StoryPrivacyEnum)request.Privacy.Value;
+            if (story.Privacy == privacy)
+            {
+                return _mapper.Map<StoryDetailResponse>(story);
+            }
+
+            story.Privacy = privacy;
+            await _storyRepository.UpdateStoryAsync(story);
+            await _unitOfWork.CommitAsync();
+
+            return _mapper.Map<StoryDetailResponse>(story);
+        }
+
+        public async Task SoftDeleteStoryAsync(Guid storyId, Guid currentId)
+        {
+            var story = await _storyRepository.GetStoryByIdAsync(storyId);
+            if (story == null || story.IsDeleted)
+            {
+                throw new NotFoundException($"Story with ID {storyId} not found.");
+            }
+
+            if (story.AccountId != currentId)
+            {
+                throw new ForbiddenException("You are not authorized to delete this story.");
+            }
+
+            story.IsDeleted = true;
+            await _storyRepository.UpdateStoryAsync(story);
+            await _unitOfWork.CommitAsync();
         }
     }
 }
