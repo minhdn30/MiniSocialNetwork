@@ -22,6 +22,8 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<Post> Posts { get; set; }
         public virtual DbSet<PostMedia> PostMedias { get; set; }
         public virtual DbSet<PostReact> PostReacts { get; set; }
+        public virtual DbSet<Story> Stories { get; set; }
+        public virtual DbSet<StoryView> StoryViews { get; set; }
         public virtual DbSet<Comment> Comments { get; set; }
         public virtual DbSet<CommentReact> CommentReacts { get; set; }
         public virtual DbSet<Conversation> Conversations { get; set; }
@@ -239,6 +241,91 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasOne(r => r.Post)
                 .WithMany(p => p.Reacts)
                 .HasForeignKey(r => r.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+
+            // =====================
+            // STORY
+            // =====================
+            modelBuilder.Entity<Story>()
+                .HasKey(s => s.StoryId);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.TextContent)
+                .HasMaxLength(1000);
+
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.IsDeleted, s.ExpiresAt, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Active");
+
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.AccountId, s.IsDeleted, s.ExpiresAt, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Account_Archive");
+
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.AccountId, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Account_Created");
+
+            modelBuilder.Entity<Story>()
+                .ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Stories_ExpiresAt",
+                        "\"ExpiresAt\" > \"CreatedAt\"");
+
+                    table.HasCheckConstraint(
+                        "CK_Stories_ContentPayload",
+                        "((\"ContentType\" IN (0,1) AND \"MediaUrl\" IS NOT NULL AND \"TextContent\" IS NULL) OR (\"ContentType\" = 2 AND \"TextContent\" IS NOT NULL AND length(btrim(\"TextContent\")) > 0 AND \"MediaUrl\" IS NULL))");
+                });
+
+            modelBuilder.Entity<Story>()
+                .HasOne(s => s.Account)
+                .WithMany(a => a.Stories)
+                .HasForeignKey(s => s.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Story>()
+                .HasMany(s => s.Views)
+                .WithOne(v => v.Story)
+                .HasForeignKey(v => v.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // STORY VIEW
+            // =====================
+            modelBuilder.Entity<StoryView>()
+                .HasKey(v => new { v.StoryId, v.ViewerAccountId });
+
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.StoryId, v.ViewedAt })
+                .HasDatabaseName("IX_StoryViews_Story_ViewedAt");
+
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.StoryId, v.ReactType })
+                .HasDatabaseName("IX_StoryViews_Story_ReactType");
+
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.ViewerAccountId, v.ViewedAt })
+                .HasDatabaseName("IX_StoryViews_Viewer_ViewedAt");
+
+            modelBuilder.Entity<StoryView>()
+                .ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_StoryViews_ReactPair",
+                        "((\"ReactType\" IS NULL AND \"ReactedAt\" IS NULL) OR (\"ReactType\" IS NOT NULL AND \"ReactedAt\" IS NOT NULL))");
+                });
+
+            modelBuilder.Entity<StoryView>()
+                .HasOne(v => v.Story)
+                .WithMany(s => s.Views)
+                .HasForeignKey(v => v.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StoryView>()
+                .HasOne(v => v.ViewerAccount)
+                .WithMany(a => a.StoryViews)
+                .HasForeignKey(v => v.ViewerAccountId)
                 .OnDelete(DeleteBehavior.Cascade);
 
 
