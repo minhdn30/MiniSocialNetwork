@@ -255,6 +255,22 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasMaxLength(1000);
 
             modelBuilder.Entity<Story>()
+                .Property(s => s.BackgroundColorKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.FontTextKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.FontSizeKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.TextColorKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
                 .HasIndex(s => new { s.IsDeleted, s.ExpiresAt, s.CreatedAt })
                 .HasDatabaseName("IX_Stories_Active");
 
@@ -275,7 +291,7 @@ namespace SocialNetwork.Infrastructure.Data
 
                     table.HasCheckConstraint(
                         "CK_Stories_ContentPayload",
-                        "((\"ContentType\" IN (0,1) AND \"MediaUrl\" IS NOT NULL AND \"TextContent\" IS NULL) OR (\"ContentType\" = 2 AND \"TextContent\" IS NOT NULL AND length(btrim(\"TextContent\")) > 0 AND \"MediaUrl\" IS NULL))");
+                        "((\"ContentType\" IN (0,1) AND \"MediaUrl\" IS NOT NULL AND \"TextContent\" IS NULL AND \"BackgroundColorKey\" IS NULL AND \"FontTextKey\" IS NULL AND \"FontSizeKey\" IS NULL AND \"TextColorKey\" IS NULL) OR (\"ContentType\" = 2 AND \"TextContent\" IS NOT NULL AND length(btrim(\"TextContent\")) > 0 AND \"MediaUrl\" IS NULL))");
                 });
 
             modelBuilder.Entity<Story>()
@@ -308,6 +324,11 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasIndex(v => new { v.ViewerAccountId, v.ViewedAt })
                 .HasDatabaseName("IX_StoryViews_Viewer_ViewedAt");
 
+            // Index for viewer + story existence checks (used in story ring unseen computation)
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.ViewerAccountId, v.StoryId })
+                .HasDatabaseName("IX_StoryViews_Viewer_Story");
+
             modelBuilder.Entity<StoryView>()
                 .ToTable(table =>
                 {
@@ -338,6 +359,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Comment>()
                 .HasIndex(c => new { c.PostId, c.ParentCommentId, c.CreatedAt })
                 .HasDatabaseName("IX_Comment_Post_Parent_Created");
+
+            // Index for per-post interactions by account (feed affinity query)
+            modelBuilder.Entity<Comment>()
+                .HasIndex(c => new { c.PostId, c.AccountId, c.CreatedAt })
+                .HasDatabaseName("IX_Comment_Post_Account_Created");
 
             modelBuilder.Entity<Comment>()
                 .HasIndex(c => new { c.ParentCommentId, c.CreatedAt })
