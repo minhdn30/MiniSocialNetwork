@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SocialNetwork.Infrastructure.Data;
@@ -11,9 +12,11 @@ using SocialNetwork.Infrastructure.Data;
 namespace SocialNetwork.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260223124234_UpdateStoryTextStyleKeys")]
+    partial class UpdateStoryTextStyleKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -178,9 +181,6 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("ParentCommentId", "CreatedAt")
                         .HasDatabaseName("IX_Comment_Parent_Created");
-
-                    b.HasIndex("PostId", "AccountId", "CreatedAt")
-                        .HasDatabaseName("IX_Comment_Post_Account_Created");
 
                     b.HasIndex("PostId", "ParentCommentId", "CreatedAt")
                         .HasDatabaseName("IX_Comment_Post_Parent_Created");
@@ -799,9 +799,6 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("StoryId", "ViewedAt")
                         .HasDatabaseName("IX_StoryViews_Story_ViewedAt");
-
-                    b.HasIndex("ViewerAccountId", "StoryId")
-                        .HasDatabaseName("IX_StoryViews_Viewer_Story");
 
                     b.HasIndex("ViewerAccountId", "ViewedAt")
                         .HasDatabaseName("IX_StoryViews_Viewer_ViewedAt");

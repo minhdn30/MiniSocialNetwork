@@ -15,5 +15,6 @@ namespace SocialNetwork.Infrastructure.Models
         public string? AvatarUrl { get; set; }
         public AccountStatusEnum Status { get; set; }
         public bool IsFollowedByCurrentUser { get; set; } = false;
+        public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
     }
 }

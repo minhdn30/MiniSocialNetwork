@@ -10,12 +10,12 @@ using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.Application.Services.StoryServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Comments;
-using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
@@ -37,6 +37,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<IMapper> _mockMapper;
         private readonly Mock<IUnitOfWork> _mockUnitOfWork;
         private readonly Mock<IRealtimeService> _mockRealtimeService;
+        private readonly Mock<IStoryService> _mockStoryService;
         private readonly PostService _postService;
 
         public PostServiceTests()
@@ -51,6 +52,7 @@ namespace SocialNetwork.Tests.Services
             _mockMapper = new Mock<IMapper>();
             _mockUnitOfWork = new Mock<IUnitOfWork>();
             _mockRealtimeService = new Mock<IRealtimeService>();
+            _mockStoryService = new Mock<IStoryService>();
 
             _postService = new PostService(
                 _mockPostReactRepo.Object,
@@ -62,7 +64,8 @@ namespace SocialNetwork.Tests.Services
                 _mockFileTypeDetector.Object,
                 _mockMapper.Object,
                 _mockUnitOfWork.Object,
-                _mockRealtimeService.Object
+                _mockRealtimeService.Object,
+                _mockStoryService.Object
             );
         }
 
@@ -326,13 +329,61 @@ namespace SocialNetwork.Tests.Services
         {
             // Arrange
             var currentId = Guid.NewGuid();
+            var authorA = Guid.NewGuid();
+            var authorB = Guid.NewGuid();
             var feed = new List<PostFeedModel>
             {
-                new PostFeedModel { PostId = Guid.NewGuid() },
-                new PostFeedModel { PostId = Guid.NewGuid() }
+                new PostFeedModel
+                {
+                    PostId = Guid.NewGuid(),
+                    CreatedAt = DateTime.UtcNow.AddHours(-2),
+                    Author = new AccountOnFeedModel
+                    {
+                        AccountId = authorA,
+                        Username = "author.a",
+                        FullName = "Author A",
+                        Status = AccountStatusEnum.Active
+                    },
+                    Medias = new List<MediaPostPersonalListModel>
+                    {
+                        new MediaPostPersonalListModel
+                        {
+                            MediaId = Guid.NewGuid(),
+                            MediaUrl = "https://cdn.example.com/a.jpg",
+                            Type = MediaTypeEnum.Image
+                        }
+                    }
+                },
+                new PostFeedModel
+                {
+                    PostId = Guid.NewGuid(),
+                    CreatedAt = DateTime.UtcNow.AddHours(-1),
+                    Author = new AccountOnFeedModel
+                    {
+                        AccountId = authorB,
+                        Username = "author.b",
+                        FullName = "Author B",
+                        Status = AccountStatusEnum.Active
+                    },
+                    Medias = new List<MediaPostPersonalListModel>
+                    {
+                        new MediaPostPersonalListModel
+                        {
+                            MediaId = Guid.NewGuid(),
+                            MediaUrl = "https://cdn.example.com/b.jpg",
+                            Type = MediaTypeEnum.Image
+                        }
+                    }
+                }
             };
 
             _mockPostRepo.Setup(x => x.GetFeedByScoreAsync(currentId, null, null, 10)).ReturnsAsync(feed);
+            _mockStoryService.Setup(x => x.GetStoryRingStatesForAuthorsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new Dictionary<Guid, StoryRingStateEnum>
+                {
+                    { authorA, StoryRingStateEnum.Unseen },
+                    { authorB, StoryRingStateEnum.Seen }
+                });
 
             // Act
             var result = await _postService.GetFeedByScoreAsync(currentId, null, null, 10);
@@ -340,6 +391,9 @@ namespace SocialNetwork.Tests.Services
             // Assert
             result.Should().NotBeNull();
             result.Should().HaveCount(2);
+            result.Should().Contain(x => x.Author.AccountId == authorA && x.Author.StoryRingState == StoryRingStateEnum.Unseen);
+            result.Should().Contain(x => x.Author.AccountId == authorB && x.Author.StoryRingState == StoryRingStateEnum.Seen);
+            result.Should().OnlyContain(x => x.Medias != null && x.Medias.Count == 1);
         }
 
         [Fact]
@@ -356,6 +410,7 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             _mockPostRepo.Verify(x => x.GetFeedByScoreAsync(currentId, null, null, 10), Times.Once);
+            _mockStoryService.Verify(x => x.GetStoryRingStatesForAuthorsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
         }
 
         [Fact]
@@ -372,6 +427,7 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             _mockPostRepo.Verify(x => x.GetFeedByScoreAsync(currentId, null, null, 50), Times.Once);
+            _mockStoryService.Verify(x => x.GetStoryRingStatesForAuthorsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
         }
 
         #endregion

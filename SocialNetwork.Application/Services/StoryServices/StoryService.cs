@@ -67,11 +67,6 @@ namespace SocialNetwork.Application.Services.StoryServices
                 {
                     throw new BadRequestException("MediaFile is not allowed for text story.");
                 }
-
-                if (!string.IsNullOrWhiteSpace(request.ThumbnailUrl))
-                {
-                    throw new BadRequestException("ThumbnailUrl is not allowed for text story.");
-                }
             }
             else
             {
@@ -83,6 +78,14 @@ namespace SocialNetwork.Application.Services.StoryServices
                 if (!string.IsNullOrWhiteSpace(request.TextContent))
                 {
                     throw new BadRequestException("TextContent is only allowed for text story.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.BackgroundColorKey)
+                    || !string.IsNullOrWhiteSpace(request.FontTextKey)
+                    || !string.IsNullOrWhiteSpace(request.FontSizeKey)
+                    || !string.IsNullOrWhiteSpace(request.TextColorKey))
+                {
+                    throw new BadRequestException("Text style keys are only allowed for text story.");
                 }
             }
 
@@ -113,9 +116,18 @@ namespace SocialNetwork.Application.Services.StoryServices
                 }
             }
 
-            var normalizedThumbnailUrl = string.IsNullOrWhiteSpace(request.ThumbnailUrl)
+            var normalizedBackgroundColorKey = string.IsNullOrWhiteSpace(request.BackgroundColorKey)
                 ? null
-                : request.ThumbnailUrl.Trim();
+                : request.BackgroundColorKey.Trim();
+            var normalizedFontTextKey = string.IsNullOrWhiteSpace(request.FontTextKey)
+                ? null
+                : request.FontTextKey.Trim();
+            var normalizedFontSizeKey = string.IsNullOrWhiteSpace(request.FontSizeKey)
+                ? null
+                : request.FontSizeKey.Trim();
+            var normalizedTextColorKey = string.IsNullOrWhiteSpace(request.TextColorKey)
+                ? null
+                : request.TextColorKey.Trim();
             var normalizedTextContent = string.IsNullOrWhiteSpace(request.TextContent)
                 ? null
                 : request.TextContent.Trim();
@@ -128,8 +140,11 @@ namespace SocialNetwork.Application.Services.StoryServices
                     AccountId = currentId,
                     ContentType = contentType,
                     MediaUrl = contentType == StoryContentTypeEnum.Text ? null : uploadedMediaUrl,
-                    ThumbnailUrl = contentType == StoryContentTypeEnum.Text ? null : normalizedThumbnailUrl,
                     TextContent = contentType == StoryContentTypeEnum.Text ? normalizedTextContent : null,
+                    BackgroundColorKey = contentType == StoryContentTypeEnum.Text ? normalizedBackgroundColorKey : null,
+                    FontTextKey = contentType == StoryContentTypeEnum.Text ? normalizedFontTextKey : null,
+                    FontSizeKey = contentType == StoryContentTypeEnum.Text ? normalizedFontSizeKey : null,
+                    TextColorKey = contentType == StoryContentTypeEnum.Text ? normalizedTextColorKey : null,
                     Privacy = privacy,
                     ExpiresAt = now.AddHours((int)expiresEnum),
                     CreatedAt = now,
@@ -208,6 +223,51 @@ namespace SocialNetwork.Application.Services.StoryServices
             story.IsDeleted = true;
             await _storyRepository.UpdateStoryAsync(story);
             await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<IReadOnlyDictionary<Guid, StoryRingStateEnum>> GetStoryRingStatesForAuthorsAsync(
+            Guid currentId,
+            IEnumerable<Guid> authorIds)
+        {
+            var normalizedAuthorIds = (authorIds ?? Enumerable.Empty<Guid>())
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (normalizedAuthorIds.Count == 0)
+            {
+                return new Dictionary<Guid, StoryRingStateEnum>();
+            }
+
+            var result = normalizedAuthorIds.ToDictionary(
+                id => id,
+                _ => StoryRingStateEnum.None);
+
+            var stats = await _storyRepository.GetStoryRingStatsByAuthorAsync(
+                currentId,
+                normalizedAuthorIds,
+                DateTime.UtcNow);
+
+            foreach (var stat in stats)
+            {
+                if (!result.ContainsKey(stat.AccountId))
+                {
+                    continue;
+                }
+
+                if (stat.VisibleCount <= 0)
+                {
+                    result[stat.AccountId] = StoryRingStateEnum.None;
+                    continue;
+                }
+
+                result[stat.AccountId] =
+                    stat.UnseenCount > 0
+                        ? StoryRingStateEnum.Unseen
+                        : StoryRingStateEnum.Seen;
+            }
+
+            return result;
         }
     }
 }
