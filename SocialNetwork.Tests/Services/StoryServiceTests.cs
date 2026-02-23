@@ -47,8 +47,11 @@ namespace SocialNetwork.Tests.Services
                     AccountId = story.AccountId,
                     ContentType = (int)story.ContentType,
                     MediaUrl = story.MediaUrl,
-                    ThumbnailUrl = story.ThumbnailUrl,
                     TextContent = story.TextContent,
+                    BackgroundColorKey = story.BackgroundColorKey,
+                    FontTextKey = story.FontTextKey,
+                    FontSizeKey = story.FontSizeKey,
+                    TextColorKey = story.TextColorKey,
                     Privacy = (int)story.Privacy,
                     CreatedAt = story.CreatedAt,
                     ExpiresAt = story.ExpiresAt,
@@ -128,7 +131,6 @@ namespace SocialNetwork.Tests.Services
             {
                 ContentType = (int)StoryContentTypeEnum.Image,
                 MediaFile = mediaFile,
-                ThumbnailUrl = "  https://cdn.example.com/thumb.jpg  ",
                 TextContent = null,
                 Privacy = (int)StoryPrivacyEnum.FollowOnly,
                 ExpiresEnum = (int)StoryExpiresEnum.Hours6
@@ -166,8 +168,11 @@ namespace SocialNetwork.Tests.Services
             capturedStory!.AccountId.Should().Be(accountId);
             capturedStory.ContentType.Should().Be(StoryContentTypeEnum.Image);
             capturedStory.MediaUrl.Should().Be("https://cdn.example.com/image.jpg");
-            capturedStory.ThumbnailUrl.Should().Be("https://cdn.example.com/thumb.jpg");
             capturedStory.TextContent.Should().BeNull();
+            capturedStory.BackgroundColorKey.Should().BeNull();
+            capturedStory.FontTextKey.Should().BeNull();
+            capturedStory.FontSizeKey.Should().BeNull();
+            capturedStory.TextColorKey.Should().BeNull();
             capturedStory.Privacy.Should().Be(StoryPrivacyEnum.FollowOnly);
             capturedStory.ExpiresAt.Should().BeCloseTo(capturedStory.CreatedAt.AddHours(6), TimeSpan.FromSeconds(1));
 
@@ -238,8 +243,11 @@ namespace SocialNetwork.Tests.Services
             {
                 ContentType = (int)StoryContentTypeEnum.Text,
                 MediaFile = null,
-                ThumbnailUrl = null,
                 TextContent = "  hello story  ",
+                BackgroundColorKey = "  bg-midnight  ",
+                FontTextKey = "  font-modern  ",
+                FontSizeKey = "  size-lg  ",
+                TextColorKey = "  text-ivory  ",
                 Privacy = null,
                 ExpiresEnum = (int)StoryExpiresEnum.Hours12
             };
@@ -269,18 +277,55 @@ namespace SocialNetwork.Tests.Services
             capturedStory.Should().NotBeNull();
             capturedStory!.ContentType.Should().Be(StoryContentTypeEnum.Text);
             capturedStory.MediaUrl.Should().BeNull();
-            capturedStory.ThumbnailUrl.Should().BeNull();
             capturedStory.TextContent.Should().Be("hello story");
+            capturedStory.BackgroundColorKey.Should().Be("bg-midnight");
+            capturedStory.FontTextKey.Should().Be("font-modern");
+            capturedStory.FontSizeKey.Should().Be("size-lg");
+            capturedStory.TextColorKey.Should().Be("text-ivory");
             capturedStory.Privacy.Should().Be(StoryPrivacyEnum.Public); // default when null
             capturedStory.ExpiresAt.Should().BeCloseTo(capturedStory.CreatedAt.AddHours(12), TimeSpan.FromSeconds(1));
 
             result.MediaUrl.Should().BeNull();
-            result.ThumbnailUrl.Should().BeNull();
             result.TextContent.Should().Be("hello story");
+            result.BackgroundColorKey.Should().Be("bg-midnight");
+            result.FontTextKey.Should().Be("font-modern");
+            result.FontSizeKey.Should().Be("size-lg");
+            result.TextColorKey.Should().Be("text-ivory");
             result.Privacy.Should().Be((int)StoryPrivacyEnum.Public);
             _fileTypeDetectorMock.Verify(x => x.GetMediaTypeAsync(It.IsAny<IFormFile>()), Times.Never);
             _cloudinaryServiceMock.Verify(x => x.UploadImageAsync(It.IsAny<IFormFile>()), Times.Never);
             _cloudinaryServiceMock.Verify(x => x.UploadVideoAsync(It.IsAny<IFormFile>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreateStoryAsync_WithImageStoryAndTextStyleKeys_ThrowsBadRequestException()
+        {
+            // Arrange
+            var accountId = Guid.NewGuid();
+            var mediaFileMock = new Mock<IFormFile>();
+            mediaFileMock.SetupGet(x => x.Length).Returns(1024);
+            var request = new StoryCreateRequest
+            {
+                ContentType = (int)StoryContentTypeEnum.Image,
+                MediaFile = mediaFileMock.Object,
+                BackgroundColorKey = "bg-midnight",
+                ExpiresEnum = (int)StoryExpiresEnum.Hours24
+            };
+
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountById(accountId))
+                .ReturnsAsync(new Account
+                {
+                    AccountId = accountId,
+                    Status = AccountStatusEnum.Active
+                });
+
+            // Act
+            var act = () => _storyService.CreateStoryAsync(accountId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("Text style keys are only allowed for text story.");
         }
 
         [Fact]
