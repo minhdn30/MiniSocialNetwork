@@ -13,7 +13,7 @@ using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Application.Services.RealtimeServices;
-using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,7 +39,7 @@ namespace SocialNetwork.Application.Services.CommentServices
 
         public CommentService(ICommentRepository commentRepository, ICommentReactRepository commentReactRepository, IPostRepository postRepository,
             IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper, IRealtimeService realtimeService,
-            IUnitOfWork unitOfWork, IStoryService? storyService = null, IStoryRingStateHelper? storyRingStateHelper = null)
+            IUnitOfWork unitOfWork, IStoryViewService? storyViewService = null, IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _commentRepository = commentRepository;
             _commentReactRepository = commentReactRepository;
@@ -49,7 +49,7 @@ namespace SocialNetwork.Application.Services.CommentServices
             _mapper = mapper;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
-            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyService);
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
         }
 
         public async Task<CommentResponse> AddCommentAsync(Guid postId, Guid accountId, CommentCreateRequest request)

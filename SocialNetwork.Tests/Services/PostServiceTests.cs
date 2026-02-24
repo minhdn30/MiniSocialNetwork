@@ -10,7 +10,7 @@ using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
-using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -37,7 +37,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<IMapper> _mockMapper;
         private readonly Mock<IUnitOfWork> _mockUnitOfWork;
         private readonly Mock<IRealtimeService> _mockRealtimeService;
-        private readonly Mock<IStoryService> _mockStoryService;
+        private readonly Mock<IStoryViewService> _mockStoryViewService;
         private readonly PostService _postService;
 
         public PostServiceTests()
@@ -52,7 +52,7 @@ namespace SocialNetwork.Tests.Services
             _mockMapper = new Mock<IMapper>();
             _mockUnitOfWork = new Mock<IUnitOfWork>();
             _mockRealtimeService = new Mock<IRealtimeService>();
-            _mockStoryService = new Mock<IStoryService>();
+            _mockStoryViewService = new Mock<IStoryViewService>();
 
             _postService = new PostService(
                 _mockPostReactRepo.Object,
@@ -65,7 +65,7 @@ namespace SocialNetwork.Tests.Services
                 _mockMapper.Object,
                 _mockUnitOfWork.Object,
                 _mockRealtimeService.Object,
-                _mockStoryService.Object
+                _mockStoryViewService.Object
             );
         }
 
@@ -378,7 +378,7 @@ namespace SocialNetwork.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetFeedByScoreAsync(currentId, null, null, 10)).ReturnsAsync(feed);
-            _mockStoryService.Setup(x => x.GetStoryRingStatesForAuthorsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
+            _mockStoryViewService.Setup(x => x.GetStoryRingStatesForAuthorsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
                 .ReturnsAsync(new Dictionary<Guid, StoryRingStateEnum>
                 {
                     { authorA, StoryRingStateEnum.Unseen },
@@ -410,7 +410,7 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             _mockPostRepo.Verify(x => x.GetFeedByScoreAsync(currentId, null, null, 10), Times.Once);
-            _mockStoryService.Verify(x => x.GetStoryRingStatesForAuthorsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
+            _mockStoryViewService.Verify(x => x.GetStoryRingStatesForAuthorsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
         }
 
         [Fact]
@@ -427,7 +427,7 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             _mockPostRepo.Verify(x => x.GetFeedByScoreAsync(currentId, null, null, 50), Times.Once);
-            _mockStoryService.Verify(x => x.GetStoryRingStatesForAuthorsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
+            _mockStoryViewService.Verify(x => x.GetStoryRingStatesForAuthorsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
         }
 
         #endregion

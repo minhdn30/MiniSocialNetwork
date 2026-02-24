@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.StoryDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Enums;
 
 namespace SocialNetwork.API.Controllers
@@ -12,10 +14,12 @@ namespace SocialNetwork.API.Controllers
     public class StoriesController : ControllerBase
     {
         private readonly IStoryService _storyService;
+        private readonly IStoryViewService _storyViewService;
 
-        public StoriesController(IStoryService storyService)
+        public StoriesController(IStoryService storyService, IStoryViewService storyViewService)
         {
             _storyService = storyService;
+            _storyViewService = storyViewService;
         }
 
         [Authorize]
@@ -99,6 +103,55 @@ namespace SocialNetwork.API.Controllers
 
             await _storyService.SoftDeleteStoryAsync(storyId, currentId.Value);
             return NoContent();
+        }
+
+        [Authorize]
+        [HttpGet("viewable-authors")]
+        public async Task<ActionResult<PagedResponse<StoryAuthorItemResponse>>> GetViewableAuthors(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            var result = await _storyViewService.GetViewableAuthorsAsync(currentId.Value, page, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("authors/{authorId}/active")]
+        public async Task<ActionResult<StoryAuthorActiveResponse>> GetActiveStoriesByAuthor([FromRoute] Guid authorId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            var result = await _storyViewService.GetActiveStoriesByAuthorAsync(currentId.Value, authorId);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("views")]
+        public async Task<ActionResult<StoryMarkViewedResponse>> MarkStoriesViewed([FromBody] StoryMarkViewedRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            var result = await _storyViewService.MarkStoriesViewedAsync(currentId.Value, request);
+            return Ok(result);
         }
     }
 }

@@ -16,7 +16,7 @@ using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
-using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -45,7 +45,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
         public ConversationService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IMessageRepository messageRepository, IAccountRepository accountRepository, IFollowRepository followRepository,
             IUnitOfWork unitOfWork, ICloudinaryService cloudinaryService, IMapper mapper, IRealtimeService realtimeService,
-            IStoryService? storyService = null, IStoryRingStateHelper? storyRingStateHelper = null)
+            IStoryViewService? storyViewService = null, IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
@@ -56,7 +56,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
             _cloudinaryService = cloudinaryService;
             _mapper = mapper;
             _realtimeService = realtimeService;
-            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyService);
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
         }
         public async Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId)
         {

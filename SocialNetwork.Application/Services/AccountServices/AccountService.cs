@@ -10,7 +10,7 @@ using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
-using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -49,7 +49,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             IPostRepository postRepository,
             IUnitOfWork unitOfWork,
             IRealtimeService realtimeService,
-            IStoryService? storyService = null,
+            IStoryViewService? storyViewService = null,
             IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _accountRepository = accountRepository;
@@ -60,7 +60,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             _postRepository = postRepository;
             _unitOfWork = unitOfWork;
             _realtimeService = realtimeService;
-            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyService);
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {

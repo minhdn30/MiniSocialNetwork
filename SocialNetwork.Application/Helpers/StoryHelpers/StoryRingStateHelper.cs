@@ -1,4 +1,4 @@
-﻿using SocialNetwork.Application.Services.StoryServices;
+﻿using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
@@ -9,17 +9,17 @@ namespace SocialNetwork.Application.Helpers.StoryHelpers
 {
     public class StoryRingStateHelper : IStoryRingStateHelper
     {
-        private readonly IStoryService? _storyService;
+        private readonly IStoryViewService? _storyViewService;
         private readonly Dictionary<(Guid CurrentId, Guid TargetId), StoryRingStateEnum> _cache = new();
 
-        public StoryRingStateHelper(IStoryService? storyService = null)
+        public StoryRingStateHelper(IStoryViewService? storyViewService = null)
         {
-            _storyService = storyService;
+            _storyViewService = storyViewService;
         }
 
         public async Task<StoryRingStateEnum> ResolveAsync(Guid? currentId, Guid targetId)
         {
-            if (!currentId.HasValue || targetId == Guid.Empty || _storyService == null)
+            if (!currentId.HasValue || targetId == Guid.Empty || _storyViewService == null)
             {
                 return StoryRingStateEnum.None;
             }
@@ -30,7 +30,7 @@ namespace SocialNetwork.Application.Helpers.StoryHelpers
                 return cachedState;
             }
 
-            var stateMap = await _storyService.GetStoryRingStatesForAuthorsAsync(currentId.Value, new[] { targetId });
+            var stateMap = await _storyViewService.GetStoryRingStatesForAuthorsAsync(currentId.Value, new[] { targetId });
             var resolvedState = stateMap.TryGetValue(targetId, out var ringState)
                 ? ringState
                 : StoryRingStateEnum.None;
@@ -56,7 +56,7 @@ namespace SocialNetwork.Application.Helpers.StoryHelpers
                 return new Dictionary<Guid, StoryRingStateEnum>();
             }
 
-            if (_storyService == null)
+            if (_storyViewService == null)
             {
                 return normalizedTargetIds.ToDictionary(id => id, _ => StoryRingStateEnum.None);
             }
@@ -67,7 +67,7 @@ namespace SocialNetwork.Application.Helpers.StoryHelpers
 
             if (missingIds.Count > 0)
             {
-                var stateMap = await _storyService.GetStoryRingStatesForAuthorsAsync(currentId, missingIds);
+                var stateMap = await _storyViewService.GetStoryRingStatesForAuthorsAsync(currentId, missingIds);
                 foreach (var targetId in missingIds)
                 {
                     _cache[(currentId, targetId)] = stateMap.TryGetValue(targetId, out var ringState)

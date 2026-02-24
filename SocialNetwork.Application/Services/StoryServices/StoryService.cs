@@ -1,6 +1,6 @@
+using AutoMapper;
 using SocialNetwork.Application.DTOs.StoryDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
-using AutoMapper;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
@@ -152,7 +152,6 @@ namespace SocialNetwork.Application.Services.StoryServices
                 };
 
                 await _storyRepository.AddStoryAsync(story);
-
                 return _mapper.Map<StoryDetailResponse>(story);
             }, async () =>
             {
@@ -223,51 +222,6 @@ namespace SocialNetwork.Application.Services.StoryServices
             story.IsDeleted = true;
             await _storyRepository.UpdateStoryAsync(story);
             await _unitOfWork.CommitAsync();
-        }
-
-        public async Task<IReadOnlyDictionary<Guid, StoryRingStateEnum>> GetStoryRingStatesForAuthorsAsync(
-            Guid currentId,
-            IEnumerable<Guid> authorIds)
-        {
-            var normalizedAuthorIds = (authorIds ?? Enumerable.Empty<Guid>())
-                .Where(id => id != Guid.Empty)
-                .Distinct()
-                .ToList();
-
-            if (normalizedAuthorIds.Count == 0)
-            {
-                return new Dictionary<Guid, StoryRingStateEnum>();
-            }
-
-            var result = normalizedAuthorIds.ToDictionary(
-                id => id,
-                _ => StoryRingStateEnum.None);
-
-            var stats = await _storyRepository.GetStoryRingStatsByAuthorAsync(
-                currentId,
-                normalizedAuthorIds,
-                DateTime.UtcNow);
-
-            foreach (var stat in stats)
-            {
-                if (!result.ContainsKey(stat.AccountId))
-                {
-                    continue;
-                }
-
-                if (stat.VisibleCount <= 0)
-                {
-                    result[stat.AccountId] = StoryRingStateEnum.None;
-                    continue;
-                }
-
-                result[stat.AccountId] =
-                    stat.UnseenCount > 0
-                        ? StoryRingStateEnum.Unseen
-                        : StoryRingStateEnum.Seen;
-            }
-
-            return result;
         }
     }
 }

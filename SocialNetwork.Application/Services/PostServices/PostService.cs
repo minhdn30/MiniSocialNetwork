@@ -11,7 +11,7 @@ using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
-using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -55,7 +55,7 @@ namespace SocialNetwork.Application.Services.PostServices
                            IMapper mapper,
                            IUnitOfWork unitOfWork,
                            IRealtimeService realtimeService,
-                           IStoryService storyService,
+                           IStoryViewService storyViewService,
                            IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _postRepository = postRepository;
@@ -68,7 +68,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _realtimeService = realtimeService;
-            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyService);
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
         }
         public async Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId)
         {
