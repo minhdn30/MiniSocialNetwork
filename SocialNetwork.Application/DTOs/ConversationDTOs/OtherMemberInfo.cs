@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using SocialNetwork.Domain.Enums;
 
 namespace SocialNetwork.Application.DTOs.ConversationDTOs
 {
@@ -14,5 +15,6 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public string? Nickname { get; set; }
         public string? AvatarUrl { get; set; }
         public bool IsActive { get; set; }
+        public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
     }
 }

@@ -4,6 +4,7 @@ using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.ConversationDTOs;
 using SocialNetwork.Application.DTOs.ConversationMemberDTOs;
 using SocialNetwork.Application.DTOs.MessageDTOs;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
@@ -15,6 +16,7 @@ using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
+using SocialNetwork.Application.Services.StoryServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,9 +41,11 @@ namespace SocialNetwork.Application.Services.ConversationServices
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IMapper _mapper;
         private readonly IRealtimeService _realtimeService;
+        private readonly IStoryRingStateHelper _storyRingStateHelper;
         public ConversationService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IMessageRepository messageRepository, IAccountRepository accountRepository, IFollowRepository followRepository,
-            IUnitOfWork unitOfWork, ICloudinaryService cloudinaryService, IMapper mapper, IRealtimeService realtimeService)
+            IUnitOfWork unitOfWork, ICloudinaryService cloudinaryService, IMapper mapper, IRealtimeService realtimeService,
+            IStoryService? storyService = null, IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
@@ -52,6 +56,7 @@ namespace SocialNetwork.Application.Services.ConversationServices
             _cloudinaryService = cloudinaryService;
             _mapper = mapper;
             _realtimeService = realtimeService;
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyService);
         }
         public async Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId)
         {
@@ -437,6 +442,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 LastMessageSeenCount = item.LastMessageSeenCount
             }).ToList();
 
+            await ApplyStoryRingForOtherMembersAsync(currentId, responseItems.Select(x => x.OtherMember));
+
             return new PagedResponse<ConversationListItemResponse>(responseItems, page, pageSize, totalCount);
         }
 
@@ -479,6 +486,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                             IsActive = repoMeta.OtherMember.IsActive
                         } : null
                     };
+
+                    await ApplyStoryRingForOtherMemberAsync(currentId, metaData.OtherMember);
 
                     var members = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
                     var ownerId = metaData.Owner;
@@ -546,7 +555,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                         Username = otherAccount.Username,
                         FullName = otherAccount.FullName,
                         AvatarUrl = otherAccount.AvatarUrl,
-                        IsActive = true
+                        IsActive = true,
+                        StoryRingState = await ResolveStoryRingStateAsync(currentId, otherAccount.AccountId)
                     }
                 },
                 Messages = new CursorResponse<MessageBasicModel>(new List<MessageBasicModel>(), null, null, false, false)
@@ -676,6 +686,8 @@ namespace SocialNetwork.Application.Services.ConversationServices
                     } : null
                 };
 
+                await ApplyStoryRingForOtherMemberAsync(currentId, metaData.OtherMember);
+
                 var members = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
                 var ownerId = metaData.Owner;
                 metaData.Members = members.Select(m => new ConversationMemberInfo
@@ -701,6 +713,48 @@ namespace SocialNetwork.Application.Services.ConversationServices
                 MetaData = metaData,
                 Messages = new CursorResponse<MessageBasicModel>(items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer)
             };
+        }
+
+        private async Task ApplyStoryRingForOtherMembersAsync(Guid currentId, IEnumerable<OtherMemberInfo?> otherMembers)
+        {
+            var targets = (otherMembers ?? Enumerable.Empty<OtherMemberInfo?>())
+                .Where(x => x != null && x.AccountId != Guid.Empty)
+                .Cast<OtherMemberInfo>()
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            var targetIds = targets
+                .Select(x => x.AccountId)
+                .Distinct()
+                .ToList();
+
+            var stateMap = await _storyRingStateHelper.ResolveManyAsync(currentId, targetIds);
+
+            foreach (var member in targets)
+            {
+                member.StoryRingState = stateMap.TryGetValue(member.AccountId, out var ringState)
+                    ? ringState
+                    : StoryRingStateEnum.None;
+            }
+        }
+
+        private async Task ApplyStoryRingForOtherMemberAsync(Guid currentId, OtherMemberInfo? otherMember)
+        {
+            if (otherMember == null || otherMember.AccountId == Guid.Empty)
+            {
+                return;
+            }
+
+            otherMember.StoryRingState = await ResolveStoryRingStateAsync(currentId, otherMember.AccountId);
+        }
+
+        private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid currentId, Guid targetAccountId)
+        {
+            return await _storyRingStateHelper.ResolveAsync(currentId, targetAccountId);
         }
 
         public async Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize)

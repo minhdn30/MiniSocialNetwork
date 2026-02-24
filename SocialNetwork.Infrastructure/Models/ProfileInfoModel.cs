@@ -25,6 +25,7 @@ namespace SocialNetwork.Infrastructure.Models
         public int FollowingCount { get; set; }
         public bool IsFollowedByCurrentUser { get; set; }
         public bool IsCurrentUser { get; set; }
+        public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
 
         // Settings (Projected for optimization)
         public AccountPrivacyEnum PhonePrivacy { get; set; }

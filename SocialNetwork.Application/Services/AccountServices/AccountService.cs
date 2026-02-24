@@ -6,9 +6,11 @@ using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.Application.Services.StoryServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -36,6 +38,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         private readonly IPostRepository _postRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRealtimeService _realtimeService;
+        private readonly IStoryRingStateHelper _storyRingStateHelper;
 
         public AccountService(
             IAccountRepository accountRepository, 
@@ -45,7 +48,9 @@ namespace SocialNetwork.Application.Services.AccountServices
             IFollowRepository followRepository, 
             IPostRepository postRepository,
             IUnitOfWork unitOfWork,
-            IRealtimeService realtimeService)
+            IRealtimeService realtimeService,
+            IStoryService? storyService = null,
+            IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _accountRepository = accountRepository;
             _accountSettingRepository = accountSettingRepository;
@@ -55,6 +60,7 @@ namespace SocialNetwork.Application.Services.AccountServices
             _postRepository = postRepository;
             _unitOfWork = unitOfWork;
             _realtimeService = realtimeService;
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyService);
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {
@@ -299,6 +305,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                 throw new NotFoundException($"Account with ID {accountId} not found or inactive.");
             }
 
+            var storyRingState = await ResolveStoryRingStateAsync(profileModel.AccountId, currentId);
+
             var result = new ProfileInfoResponse
             {
                 AccountInfo = new ProfileDetailResponse
@@ -313,7 +321,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                     CoverUrl = profileModel.CoverUrl,
                     Gender = profileModel.Gender,
                     Address = profileModel.Address,
-                    CreatedAt = profileModel.CreatedAt
+                    CreatedAt = profileModel.CreatedAt,
+                    StoryRingState = storyRingState
                 },
                 FollowInfo = new FollowCountResponse
                 {
@@ -372,6 +381,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                 throw new NotFoundException($"Account with username '{username}' not found or inactive.");
             }
 
+            var storyRingState = await ResolveStoryRingStateAsync(profileModel.AccountId, currentId);
+
             var result = new ProfileInfoResponse
             {
                 AccountInfo = new ProfileDetailResponse
@@ -386,7 +397,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                     CoverUrl = profileModel.CoverUrl,
                     Gender = profileModel.Gender,
                     Address = profileModel.Address,
-                    CreatedAt = profileModel.CreatedAt
+                    CreatedAt = profileModel.CreatedAt,
+                    StoryRingState = storyRingState
                 },
                 FollowInfo = new FollowCountResponse
                 {
@@ -454,7 +466,19 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId)
         {
-            return await _accountRepository.GetProfilePreviewAsync(targetId, currentId);
+            var result = await _accountRepository.GetProfilePreviewAsync(targetId, currentId);
+            if (result == null)
+            {
+                return null;
+            }
+
+            result.Account.StoryRingState = await ResolveStoryRingStateAsync(result.Account.AccountId, currentId);
+            return result;
+        }
+
+        private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid targetId, Guid? currentId)
+        {
+            return await _storyRingStateHelper.ResolveAsync(currentId, targetId);
         }
 
         public async Task ReactivateAccountAsync(Guid accountId)
