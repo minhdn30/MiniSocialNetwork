@@ -10,6 +10,7 @@ using Npgsql;
 using SocialNetwork.API.Hubs;
 using SocialNetwork.API.Middleware;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
 using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services.AccountServices;
@@ -175,6 +176,7 @@ namespace SocialNetwork.API
             builder.Services.AddHostedService<OnlinePresenceCleanupHostedService>();
 
             // Helpers
+            builder.Services.AddScoped<IStoryRingStateHelper, StoryRingStateHelper>();
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
 
             // JWT

@@ -7,6 +7,7 @@ using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
@@ -43,7 +44,7 @@ namespace SocialNetwork.Application.Services.PostServices
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRealtimeService _realtimeService;
-        private readonly IStoryService _storyService;
+        private readonly IStoryRingStateHelper _storyRingStateHelper;
         public PostService(IPostReactRepository postReactRepository,
                            IPostMediaRepository postMediaRepository,
                            IPostRepository postRepository,
@@ -54,7 +55,8 @@ namespace SocialNetwork.Application.Services.PostServices
                            IMapper mapper,
                            IUnitOfWork unitOfWork,
                            IRealtimeService realtimeService,
-                           IStoryService storyService)
+                           IStoryService storyService,
+                           IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
@@ -66,7 +68,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _realtimeService = realtimeService;
-            _storyService = storyService;
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyService);
         }
         public async Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId)
         {
@@ -88,6 +90,8 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with ID {postId} not found or has been deleted.");
             }
+
+            await ApplyStoryRingStateForOwnerAsync(currentId, post.Owner);
             return post;
         }
 
@@ -98,6 +102,8 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with code {postCode} not found or has been deleted.");
             }
+
+            await ApplyStoryRingStateForOwnerAsync(currentId, post.Owner);
             return post;
         }
 
@@ -427,9 +433,7 @@ namespace SocialNetwork.Application.Services.PostServices
                 .Distinct()
                 .ToList();
 
-            var storyRingStateMap = await _storyService.GetStoryRingStatesForAuthorsAsync(
-                currentId,
-                authorIds);
+            var storyRingStateMap = await _storyRingStateHelper.ResolveManyAsync(currentId, authorIds);
 
             foreach (var post in feed)
             {
@@ -439,6 +443,16 @@ namespace SocialNetwork.Application.Services.PostServices
             }
 
             return feed;
+        }
+
+        private async Task ApplyStoryRingStateForOwnerAsync(Guid currentId, AccountBasicInfoModel? owner)
+        {
+            if (owner == null || owner.AccountId == Guid.Empty)
+            {
+                return;
+            }
+
+            owner.StoryRingState = await _storyRingStateHelper.ResolveAsync(currentId, owner.AccountId);
         }
     }
 }

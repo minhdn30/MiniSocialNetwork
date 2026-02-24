@@ -14,5 +14,6 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         public string? AvatarUrl { get; set; }
         public string FullName { get; set; } = null!;
         public AccountStatusEnum Status { get; set; }
+        public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
     }
 }
