@@ -24,5 +24,6 @@ namespace SocialNetwork.Infrastructure.Models
         public bool IsPinned { get; set; }
         public ReactEnum? CurrentUserReactType { get; set; }
         public ReplyInfoModel? ReplyTo { get; set; }
+        public StoryReplyInfoModel? StoryReplyInfo { get; set; }
     }
 }
