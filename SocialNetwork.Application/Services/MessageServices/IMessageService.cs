@@ -16,5 +16,6 @@ namespace SocialNetwork.Application.Services.MessageServices
         Task<SendMessageResponse> SendMessageInGroupAsync(Guid senderId, Guid conversationId, SendMessageRequest request);
         Task<string> GetMediaDownloadUrlAsync(Guid messageMediaId, Guid accountId);
         Task<RecallMessageResponse> RecallMessageAsync(Guid messageId, Guid accountId);
+        Task<SendMessageResponse> SendStoryReplyAsync(Guid senderId, SendStoryReplyRequest request);
     }
 }

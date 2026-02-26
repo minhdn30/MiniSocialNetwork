@@ -17,6 +17,7 @@ using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
+using SocialNetwork.Infrastructure.Repositories.Stories;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Tests.Helpers;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
@@ -32,6 +33,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<IAccountRepository> _accountRepositoryMock;
         private readonly Mock<ICloudinaryService> _cloudinaryServiceMock;
         private readonly Mock<IFileTypeDetector> _fileTypeDetectorMock;
+        private readonly Mock<IStoryRepository> _storyRepositoryMock;
         private readonly Mock<IMapper> _mapperMock;
         private readonly Mock<IRealtimeService> _realtimeServiceMock;
         private readonly Mock<IUnitOfWork> _unitOfWorkMock;
@@ -46,6 +48,7 @@ namespace SocialNetwork.Tests.Services
             _accountRepositoryMock = new Mock<IAccountRepository>();
             _cloudinaryServiceMock = new Mock<ICloudinaryService>();
             _fileTypeDetectorMock = new Mock<IFileTypeDetector>();
+            _storyRepositoryMock = new Mock<IStoryRepository>();
             _mapperMock = new Mock<IMapper>();
             _realtimeServiceMock = new Mock<IRealtimeService>();
             _unitOfWorkMock = new Mock<IUnitOfWork>();
@@ -59,6 +62,7 @@ namespace SocialNetwork.Tests.Services
                 _mapperMock.Object,
                 _cloudinaryServiceMock.Object,
                 _fileTypeDetectorMock.Object,
+                _storyRepositoryMock.Object,
                 _realtimeServiceMock.Object,
                 _unitOfWorkMock.Object
             );

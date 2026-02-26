@@ -38,5 +38,29 @@ namespace SocialNetwork.Infrastructure.Repositories.Stories
                                s.CreatedAt >= cutoff &&
                                !s.IsDeleted);
         }
+
+        public async Task<bool> ExistsAndActiveAsync(Guid storyId)
+        {
+            return await _context.Stories
+                .AnyAsync(s => s.StoryId == storyId &&
+                               s.ExpiresAt > DateTime.UtcNow &&
+                               !s.IsDeleted);
+        }
+
+        public async Task<HashSet<Guid>> GetActiveStoryIdsAsync(IEnumerable<Guid> storyIds)
+        {
+            var idList = storyIds.ToList();
+            if (!idList.Any()) return new HashSet<Guid>();
+
+            var activeIds = await _context.Stories
+                .AsNoTracking()
+                .Where(s => idList.Contains(s.StoryId) &&
+                            s.ExpiresAt > DateTime.UtcNow &&
+                            !s.IsDeleted)
+                .Select(s => s.StoryId)
+                .ToListAsync();
+
+            return activeIds.ToHashSet();
+        }
     }
 }

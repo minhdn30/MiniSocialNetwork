@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace SocialNetwork.Infrastructure.Repositories.Messages
@@ -213,6 +214,71 @@ namespace SocialNetwork.Infrastructure.Repositories.Messages
                     if (message.ReplyTo?.Sender != null && memberNicknames.TryGetValue(message.ReplyTo.ReplySenderId, out var nickname) && !string.IsNullOrEmpty(nickname))
                     {
                         message.ReplyTo.Sender.DisplayName = nickname;
+                    }
+                }
+
+                // Post-process: resolve story reply expiry (batch, only when StoryReply messages exist)
+                var storyReplyMessages = messages
+                    .Where(m => m.MessageType == MessageTypeEnum.StoryReply && !string.IsNullOrEmpty(m.SystemMessageDataJson))
+                    .ToList();
+                if (storyReplyMessages.Any())
+                {
+                    var storyIds = new List<Guid>();
+                    var parsedSnapshots = new Dictionary<Guid, JsonElement>();
+                    foreach (var msg in storyReplyMessages)
+                    {
+                        try
+                        {
+                            var doc = JsonDocument.Parse(msg.SystemMessageDataJson!);
+                            parsedSnapshots[msg.MessageId] = doc.RootElement;
+                            if (doc.RootElement.TryGetProperty("storyId", out var sidProp) && Guid.TryParse(sidProp.GetString(), out var sid))
+                            {
+                                storyIds.Add(sid);
+                            }
+                        }
+                        catch { /* skip malformed JSON */ }
+                    }
+
+                    var followedIdsQuery = _context.Follows
+                        .AsNoTracking()
+                        .Where(f => f.FollowerId == currentId)
+                        .Select(f => f.FollowedId);
+
+                    var activeStoryIdsList = storyIds.Any()
+                        ? await _context.Stories.AsNoTracking()
+                            .Where(s => storyIds.Contains(s.StoryId) 
+                                        && s.ExpiresAt > DateTime.UtcNow 
+                                        && !s.IsDeleted
+                                        && s.Account.Status == AccountStatusEnum.Active
+                                        && (
+                                            s.AccountId == currentId ||
+                                            s.Privacy == StoryPrivacyEnum.Public ||
+                                            (s.Privacy == StoryPrivacyEnum.FollowOnly && followedIdsQuery.Contains(s.AccountId))
+                                        ))
+                            .Select(s => s.StoryId)
+                            .ToListAsync()
+                        : new List<Guid>();
+                    var activeStoryIds = activeStoryIdsList.ToHashSet();
+
+                    foreach (var msg in storyReplyMessages)
+                    {
+                        if (!parsedSnapshots.TryGetValue(msg.MessageId, out var root)) continue;
+                        var storyId = Guid.Empty;
+                        if (root.TryGetProperty("storyId", out var sp)) Guid.TryParse(sp.GetString(), out storyId);
+                        var isExpired = storyId == Guid.Empty || !activeStoryIds.Contains(storyId);
+
+                        msg.StoryReplyInfo = new StoryReplyInfoModel
+                        {
+                            StoryId = storyId,
+                            IsStoryExpired = isExpired,
+                            MediaUrl = isExpired ? null : (root.TryGetProperty("mediaUrl", out var mu) ? mu.GetString() : null),
+                            ContentType = root.TryGetProperty("contentType", out var ct) ? ct.GetInt32() : 0,
+                            TextContent = isExpired ? null : (root.TryGetProperty("textContent", out var tc) ? tc.GetString() : null),
+                            BackgroundColorKey = isExpired ? null : (root.TryGetProperty("backgroundColorKey", out var bg) ? bg.GetString() : null),
+                            TextColorKey = isExpired ? null : (root.TryGetProperty("textColorKey", out var tk) ? tk.GetString() : null),
+                            FontTextKey = isExpired ? null : (root.TryGetProperty("fontTextKey", out var ft) ? ft.GetString() : null),
+                            FontSizeKey = isExpired ? null : (root.TryGetProperty("fontSizeKey", out var fz) ? fz.GetString() : null),
+                        };
                     }
                 }
             }
