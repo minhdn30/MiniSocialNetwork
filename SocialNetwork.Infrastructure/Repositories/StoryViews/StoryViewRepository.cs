@@ -94,12 +94,12 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                 return new List<StoryActiveItemModel>();
             }
 
-            var viewedStoryIds = _context.StoryViews
+            var userViewMap = await _context.StoryViews
                 .AsNoTracking()
                 .Where(v => v.ViewerAccountId == currentId)
-                .Select(v => v.StoryId);
+                .ToDictionaryAsync(v => v.StoryId, v => v.ReactType);
 
-            return await BuildVisibleStoriesQuery(currentId, nowUtc)
+            var stories = await BuildVisibleStoriesQuery(currentId, nowUtc)
                 .Where(s => s.AccountId == authorId)
                 .OrderBy(s => s.CreatedAt)
                 .ThenBy(s => s.StoryId)
@@ -120,9 +120,20 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                     Privacy = s.Privacy,
                     CreatedAt = s.CreatedAt,
                     ExpiresAt = s.ExpiresAt,
-                    IsViewedByCurrentUser = viewedStoryIds.Contains(s.StoryId)
+                    IsViewedByCurrentUser = false // Will be updated below
                 })
                 .ToListAsync();
+
+            foreach (var s in stories)
+            {
+                if (userViewMap.TryGetValue(s.StoryId, out var reactType))
+                {
+                    s.IsViewedByCurrentUser = true;
+                    s.CurrentUserReactType = reactType;
+                }
+            }
+
+            return stories;
         }
 
         public async Task<Dictionary<Guid, StoryViewSummaryModel>> GetStoryViewSummariesAsync(
@@ -301,6 +312,18 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                     UnseenCount = g.Count(x => !x.IsViewed)
                 })
                 .ToListAsync();
+        }
+
+        public async Task<StoryView?> GetStoryViewAsync(Guid storyId, Guid viewerAccountId)
+        {
+            return await _context.StoryViews
+                .FirstOrDefaultAsync(v => v.StoryId == storyId && v.ViewerAccountId == viewerAccountId);
+        }
+
+        public async Task UpdateStoryViewAsync(StoryView storyView)
+        {
+            _context.StoryViews.Update(storyView);
+            await Task.CompletedTask;
         }
 
         private IQueryable<Story> BuildVisibleStoriesQuery(Guid currentId, DateTime nowUtc)

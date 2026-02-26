@@ -30,5 +30,7 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
             Guid currentId,
             IReadOnlyCollection<Guid> authorIds,
             DateTime nowUtc);
+        Task<StoryView?> GetStoryViewAsync(Guid storyId, Guid viewerAccountId);
+        Task UpdateStoryViewAsync(StoryView storyView);
     }
 }

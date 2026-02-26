@@ -20,5 +20,6 @@ namespace SocialNetwork.Infrastructure.Models
         public DateTime CreatedAt { get; set; }
         public DateTime ExpiresAt { get; set; }
         public bool IsViewedByCurrentUser { get; set; }
+        public ReactEnum? CurrentUserReactType { get; set; }
     }
 }

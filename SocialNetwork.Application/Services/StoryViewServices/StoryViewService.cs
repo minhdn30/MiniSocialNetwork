@@ -2,8 +2,11 @@ using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.StoryDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
+using SocialNetwork.Infrastructure.Repositories.Stories;
 using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
+using SocialNetwork.Infrastructure.Models;
+using AutoMapper;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Application.Services.StoryViewServices
@@ -15,14 +18,20 @@ namespace SocialNetwork.Application.Services.StoryViewServices
         private const int DefaultTopViewersCount = 3;
 
         private readonly IStoryViewRepository _storyViewRepository;
+        private readonly IStoryRepository _storyRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
 
         public StoryViewService(
             IStoryViewRepository storyViewRepository,
-            IUnitOfWork unitOfWork)
+            IStoryRepository storyRepository,
+            IUnitOfWork unitOfWork,
+            IMapper mapper)
         {
             _storyViewRepository = storyViewRepository;
+            _storyRepository = storyRepository;
             _unitOfWork = unitOfWork;
+            _mapper = mapper;
         }
 
         public async Task<PagedResponse<StoryAuthorItemResponse>> GetViewableAuthorsAsync(Guid currentId, int page, int pageSize)
@@ -81,7 +90,8 @@ namespace SocialNetwork.Application.Services.StoryViewServices
                 Privacy = (int)item.Privacy,
                 CreatedAt = item.CreatedAt,
                 ExpiresAt = item.ExpiresAt,
-                IsViewedByCurrentUser = item.IsViewedByCurrentUser
+                IsViewedByCurrentUser = item.IsViewedByCurrentUser,
+                CurrentUserReactType = item.CurrentUserReactType.HasValue ? (int)item.CurrentUserReactType.Value : null
             }).ToList();
 
             if (authorId == currentId)
@@ -229,6 +239,81 @@ namespace SocialNetwork.Application.Services.StoryViewServices
             }
 
             return result;
+        }
+
+        public async Task<StoryActiveItemResponse> ReactStoryAsync(Guid currentId, Guid storyId, StoryReactRequest request)
+        {
+            var story = await _storyRepository.GetStoryByIdAsync(storyId);
+            if (story == null || story.IsDeleted)
+            {
+                throw new NotFoundException("Story not found or expired.");
+            }
+
+            if (story.ExpiresAt <= DateTime.UtcNow)
+            {
+                throw new BadRequestException("Story has expired.");
+            }
+
+            if (!Enum.IsDefined(typeof(ReactEnum), request.ReactType))
+            {
+                throw new BadRequestException("Invalid reaction type.");
+            }
+
+            var reactType = (ReactEnum)request.ReactType;
+            var storyView = await _storyViewRepository.GetStoryViewAsync(storyId, currentId);
+
+            if (storyView == null)
+            {
+                // Create new view with reaction
+                storyView = new StoryView
+                {
+                    StoryId = storyId,
+                    ViewerAccountId = currentId,
+                    ViewedAt = DateTime.UtcNow,
+                    ReactType = reactType,
+                    ReactedAt = DateTime.UtcNow
+                };
+                await _storyViewRepository.AddStoryViewsAsync(new[] { storyView });
+            }
+            else
+            {
+                // Logic Toggle React
+                if (storyView.ReactType == reactType)
+                {
+                    // Unreact
+                    storyView.ReactType = null;
+                    storyView.ReactedAt = null;
+                }
+                else
+                {
+                    // Upsert react
+                    storyView.ReactType = reactType;
+                    storyView.ReactedAt = DateTime.UtcNow;
+                }
+                await _storyViewRepository.UpdateStoryViewAsync(storyView);
+            }
+
+            await _unitOfWork.CommitAsync();
+
+            var model = new StoryActiveItemModel
+            {
+                StoryId = story.StoryId,
+                AccountId = story.AccountId,
+                ContentType = story.ContentType,
+                MediaUrl = story.MediaUrl,
+                TextContent = story.TextContent,
+                BackgroundColorKey = story.BackgroundColorKey,
+                FontTextKey = story.FontTextKey,
+                FontSizeKey = story.FontSizeKey,
+                TextColorKey = story.TextColorKey,
+                Privacy = story.Privacy,
+                CreatedAt = story.CreatedAt,
+                ExpiresAt = story.ExpiresAt,
+                IsViewedByCurrentUser = true,
+                CurrentUserReactType = storyView.ReactType
+            };
+
+            return _mapper.Map<StoryActiveItemResponse>(model);
         }
     }
 }

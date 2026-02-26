@@ -116,6 +116,7 @@ namespace SocialNetwork.Application.Mapping
             CreateMap<PinnedMessageModel, PinnedMessageResponse>();
             CreateMap<CommentWithReplyCountModel, CommentResponse>();
             CreateMap<ReplyCommentModel, CommentResponse>();
+            CreateMap<StoryActiveItemModel, StoryActiveItemResponse>();
 
             
         }

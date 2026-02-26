@@ -153,5 +153,24 @@ namespace SocialNetwork.API.Controllers
             var result = await _storyViewService.MarkStoriesViewedAsync(currentId.Value, request);
             return Ok(result);
         }
+
+        [Authorize]
+        [HttpPost("{storyId}/react")]
+        public async Task<ActionResult<StoryActiveItemResponse>> ReactStory([FromRoute] Guid storyId, [FromBody] StoryReactRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            var result = await _storyViewService.ReactStoryAsync(currentId.Value, storyId, request);
+            return Ok(result);
+        }
     }
 }

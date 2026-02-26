@@ -14,6 +14,7 @@ namespace SocialNetwork.Application.DTOs.StoryDTOs
         public DateTime CreatedAt { get; set; }
         public DateTime ExpiresAt { get; set; }
         public bool IsViewedByCurrentUser { get; set; }
+        public int? CurrentUserReactType { get; set; }
         public StoryViewSummaryResponse? ViewSummary { get; set; }
     }
 }
