@@ -291,7 +291,7 @@ namespace SocialNetwork.Infrastructure.Data
 
                     table.HasCheckConstraint(
                         "CK_Stories_ContentPayload",
-                        "((\"ContentType\" IN (0,1) AND \"MediaUrl\" IS NOT NULL AND \"TextContent\" IS NULL AND \"BackgroundColorKey\" IS NULL AND \"FontTextKey\" IS NULL AND \"FontSizeKey\" IS NULL AND \"TextColorKey\" IS NULL) OR (\"ContentType\" = 2 AND \"TextContent\" IS NOT NULL AND length(btrim(\"TextContent\")) > 0 AND \"MediaUrl\" IS NULL))");
+                        "((\"ContentType\" IN (0,1) AND \"MediaUrl\" IS NOT NULL AND \"TextContent\" IS NULL AND \"FontTextKey\" IS NULL AND \"FontSizeKey\" IS NULL AND \"TextColorKey\" IS NULL) OR (\"ContentType\" = 2 AND \"TextContent\" IS NOT NULL AND length(btrim(\"TextContent\")) > 0 AND \"MediaUrl\" IS NULL))");
                 });
 
             modelBuilder.Entity<Story>()
