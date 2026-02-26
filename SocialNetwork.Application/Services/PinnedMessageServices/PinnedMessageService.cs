@@ -6,14 +6,12 @@ using SocialNetwork.Application.DTOs.PinnedMessageDTOs;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
-using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.Messages;
 using SocialNetwork.Infrastructure.Repositories.PinnedMessages;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
-using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -33,7 +31,6 @@ namespace SocialNetwork.Application.Services.PinnedMessageServices
         private readonly IRealtimeService _realtimeService;
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly AppDbContext _context;
 
         public PinnedMessageService(
             IPinnedMessageRepository pinnedMessageRepository,
@@ -43,8 +40,7 @@ namespace SocialNetwork.Application.Services.PinnedMessageServices
             IAccountRepository accountRepository,
             IRealtimeService realtimeService,
             IMapper mapper,
-            IUnitOfWork unitOfWork,
-            AppDbContext context)
+            IUnitOfWork unitOfWork)
         {
             _pinnedMessageRepository = pinnedMessageRepository;
             _messageRepository = messageRepository;
@@ -54,78 +50,21 @@ namespace SocialNetwork.Application.Services.PinnedMessageServices
             _realtimeService = realtimeService;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
-            _context = context;
         }
 
         public async Task<IEnumerable<PinnedMessageResponse>> GetPinnedMessagesAsync(Guid conversationId, Guid currentAccountId)
         {
             // verify membership
-            if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentAccountId))
+            var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentAccountId);
+            if (member == null || member.HasLeft)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
-            // get ClearedAt for this user
-            var member = await _context.ConversationMembers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(cm => cm.ConversationId == conversationId &&
-                            cm.AccountId == currentAccountId &&
-                            !cm.HasLeft);
-            var clearedAt = member?.ClearedAt;
+            var clearedAt = member.ClearedAt;
 
-            // query pinned messages with filters: ClearedAt + HiddenBy
-            var pinnedMessages = await _context.PinnedMessages
-                .AsNoTracking()
-                .Where(pm => pm.ConversationId == conversationId)
-                // filter ClearedAt (personal)
-                .Where(pm => clearedAt == null || pm.Message.SentAt >= clearedAt)
-                // filter HiddenBy (personal)
-                .Where(pm => !pm.Message.HiddenBy.Any(hb => hb.AccountId == currentAccountId))
-                .OrderByDescending(pm => pm.PinnedAt)
-                .Select(pm => new PinnedMessageResponse
-                {
-                    MessageId = pm.MessageId,
-                    ConversationId = pm.ConversationId,
-                    // if recalled, hide content
-                    Content = pm.Message.IsRecalled ? null : pm.Message.Content,
-                    MessageType = pm.Message.MessageType,
-                    SentAt = pm.Message.SentAt,
-                    IsRecalled = pm.Message.IsRecalled,
+            // query pinned messages with filters: ClearedAt + HiddenBy via Repository
+            var pinnedMessages = await _pinnedMessageRepository.GetPinnedMessagesByConversationIdAsync(conversationId, clearedAt, currentAccountId);
 
-                    // original sender
-                    Sender = new AccountChatInfoResponse
-                    {
-                        AccountId = pm.Message.Account.AccountId,
-                        Username = pm.Message.Account.Username,
-                        FullName = pm.Message.Account.FullName,
-                        AvatarUrl = pm.Message.Account.AvatarUrl,
-                    },
-
-                    // media (null if recalled)
-                    Medias = pm.Message.IsRecalled ? null : pm.Message.Medias
-                        .OrderBy(mm => mm.CreatedAt)
-                        .Select(mm => new MessageMediaResponse
-                        {
-                            MessageMediaId = mm.MessageMediaId,
-                            MediaUrl = mm.MediaUrl,
-                            ThumbnailUrl = mm.ThumbnailUrl,
-                            MediaType = mm.MediaType,
-                            FileName = mm.FileName,
-                            FileSize = mm.FileSize,
-                        })
-                        .ToList(),
-
-                    // pin metadata
-                    PinnedByAccount = new AccountChatInfoResponse
-                    {
-                        AccountId = pm.PinnedByAccount.AccountId,
-                        Username = pm.PinnedByAccount.Username,
-                        FullName = pm.PinnedByAccount.FullName,
-                        AvatarUrl = pm.PinnedByAccount.AvatarUrl,
-                    },
-                    PinnedAt = pm.PinnedAt,
-                })
-                .ToListAsync();
-
-            return pinnedMessages;
+            return _mapper.Map<IEnumerable<PinnedMessageResponse>>(pinnedMessages);
         }
 
         public async Task PinMessageAsync(Guid conversationId, Guid messageId, Guid currentAccountId)
@@ -256,7 +195,9 @@ namespace SocialNetwork.Application.Services.PinnedMessageServices
             {
                 // group: only admins can pin/unpin
                 var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, currentAccountId);
-                if (member == null || !member.IsAdmin)
+                var ownerId = conversation.Owner ?? (conversation.CreatedBy != Guid.Empty ? conversation.CreatedBy : Guid.Empty);
+                var isOwner = ownerId != Guid.Empty && ownerId == currentAccountId;
+                if (member == null || (!member.IsAdmin && !isOwner))
                     throw new ForbiddenException("Only group admins can pin or unpin messages.");
             }
             // 1:1 chat: anyone can pin/unpin (no check needed)

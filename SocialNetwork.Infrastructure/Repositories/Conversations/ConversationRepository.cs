@@ -81,7 +81,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
         {
             var baseQuery = _context.ConversationMembers
                 .AsNoTracking()
-                .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted 
+                .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted && !cm.HasLeft
                 && cm.Conversation.Messages.Any(m => (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) 
                 && !m.HiddenBy.Any(hb => hb.AccountId == currentId)));
 
@@ -118,6 +118,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 cm.Conversation.ConversationName,
                 cm.Conversation.ConversationAvatar,
                 cm.Conversation.Theme,
+                Owner = cm.Conversation.IsGroup
+                    ? (cm.Conversation.Owner ?? cm.Conversation.CreatedBy)
+                    : (Guid?)null,
+                cm.IsAdmin,
+                IsOwner = cm.Conversation.IsGroup && ((cm.Conversation.Owner ?? cm.Conversation.CreatedBy) == currentId),
                 cm.LastSeenAt,
                 cm.IsMuted,
                 // Correlation subquery for sorting by last message
@@ -163,6 +168,56 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
             var otherMemberMap = otherMembers
                 .GroupBy(x => x.ConversationId)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.Info).FirstOrDefault());
+
+            // Fetch GroupAvatars separately
+            var groupConvIds = pagedData.Where(x => x.IsGroup).Select(x => x.ConversationId).ToList();
+            var groupAvatarsLookup = new Dictionary<Guid, List<string>>();
+            if (groupConvIds.Count > 0)
+            {
+                List<GroupAvatarProjection> groupMembersInfo;
+                try
+                {
+                    // Optimized path: limit to top 4 members per conversation in SQL.
+                    groupMembersInfo = await _context.ConversationMembers
+                        .AsNoTracking()
+                        .Where(cm => groupConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft)
+                        .GroupBy(cm => cm.ConversationId)
+                        .SelectMany(g => g
+                            .OrderBy(cm => cm.JoinedAt)
+                            .Take(4)
+                            .Select(cm => new GroupAvatarProjection
+                            {
+                                ConversationId = cm.ConversationId,
+                                JoinedAt = cm.JoinedAt,
+                                AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
+                            }))
+                        .ToListAsync();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Fallback path: preserve existing behavior if provider cannot translate the optimized query.
+                    groupMembersInfo = await _context.ConversationMembers
+                        .AsNoTracking()
+                        .Where(cm => groupConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft)
+                        .Select(cm => new GroupAvatarProjection
+                        {
+                            ConversationId = cm.ConversationId,
+                            JoinedAt = cm.JoinedAt,
+                            AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
+                        })
+                        .ToListAsync();
+                }
+
+                groupAvatarsLookup = groupMembersInfo
+                    .GroupBy(x => x.ConversationId)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.OrderBy(x => x.JoinedAt)
+                              .Select(x => x.AvatarUrl)
+                              .Take(4)
+                              .ToList()
+                    );
+            }
 
             // Batch fetch latest message reference per conversation (top 1 by SentAt desc, MessageId desc)
             var lastMessageRefs = await _context.ConversationMembers
@@ -212,14 +267,38 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                                 Username = msg.Account.Username,
                                 IsActive = msg.Account.Status == AccountStatusEnum.Active
                             },
-                            Medias = msg.Medias.Select(med => new MessageMediaBasicModel
-                            {
-                                MessageMediaId = med.MessageMediaId,
-                                MediaUrl = med.MediaUrl,
-                                MediaType = med.MediaType
-                            }).ToList()
+                            Medias = new List<MessageMediaBasicModel>()
                         }))
                     .ToListAsync();
+
+                // Batch-load medias for last messages to avoid per-message correlated subqueries
+                var mediaRows = await _context.MessageMedias
+                    .AsNoTracking()
+                    .Where(med => lastMessageIds.Contains(med.MessageId))
+                    .Select(med => new
+                    {
+                        med.MessageId,
+                        Media = new MessageMediaBasicModel
+                        {
+                            MessageMediaId = med.MessageMediaId,
+                            MediaUrl = med.MediaUrl,
+                            MediaType = med.MediaType
+                        }
+                    })
+                    .ToListAsync();
+                var mediaLookup = mediaRows
+                    .GroupBy(x => x.MessageId)
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.Media).ToList());
+
+                for (var i = 0; i < lastMessageRows.Count; i++)
+                {
+                    var row = lastMessageRows[i];
+                    if (mediaLookup.TryGetValue(row.Message.MessageId, out var medias))
+                    {
+                        row.Message.Medias = medias;
+                        lastMessageRows[i] = row;
+                    }
+                }
             }
 
             var lastMessageMap = lastMessageRows
@@ -294,6 +373,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
 
                 seenByMap.TryGetValue(item.ConversationId, out var seenBy);
                 var seenCount = seenCountMap.TryGetValue(item.ConversationId, out var count) ? count : 0;
+                groupAvatarsLookup.TryGetValue(item.ConversationId, out var groupAvatars);
 
                 return new ConversationListModel
                 {
@@ -305,6 +385,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     ConversationName = item.ConversationName,
                     ConversationAvatar = item.ConversationAvatar,
                     Theme = item.Theme,
+                    Owner = item.Owner,
+                    CurrentUserRole = (item.IsAdmin || item.IsOwner) ? 1 : 0,
                     LastSeenAt = item.LastSeenAt,
                     IsMuted = item.IsMuted,
                     UnreadCount = unreadCount,
@@ -312,8 +394,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                     LastMessage = lastMessage,
                     LastMessageSentAt = item.LastMessageSentAt,
                     LastMessageSeenBy = seenBy != null && seenBy.Count > 0 ? seenBy : null,
-                    LastMessageSeenCount = seenCount
-                    
+                    LastMessageSeenCount = seenCount,
+                    GroupAvatars = groupAvatars
                 };
             }).ToList();
 
@@ -354,6 +436,17 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
 
             string? displayName = cm.Conversation.IsGroup ? cm.Conversation.ConversationName : (otherMember?.Nickname ?? otherMember?.Username);
             string? displayAvatar = cm.Conversation.IsGroup ? cm.Conversation.ConversationAvatar : otherMember?.AvatarUrl;
+            List<string>? groupAvatars = null;
+            if (cm.Conversation.IsGroup)
+            {
+                groupAvatars = await _context.ConversationMembers
+                    .AsNoTracking()
+                    .Where(g_cm => g_cm.ConversationId == conversationId && g_cm.AccountId != currentId && !g_cm.HasLeft)
+                    .OrderBy(g_cm => g_cm.JoinedAt)
+                    .Select(g_cm => g_cm.Account.AvatarUrl ?? string.Empty)
+                    .Take(4)
+                    .ToListAsync();
+            }
 
             return new ConversationListModel
             {
@@ -365,10 +458,15 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                 ConversationName = cm.Conversation.ConversationName,
                 ConversationAvatar = cm.Conversation.ConversationAvatar,
                 Theme = cm.Conversation.Theme,
+                Owner = cm.Conversation.IsGroup
+                    ? (cm.Conversation.Owner ?? cm.Conversation.CreatedBy)
+                    : (Guid?)null,
+                CurrentUserRole = (cm.IsAdmin || (cm.Conversation.IsGroup && ((cm.Conversation.Owner ?? cm.Conversation.CreatedBy) == currentId))) ? 1 : 0,
                 LastSeenAt = cm.LastSeenAt,
                 UnreadCount = unreadCount,
                 IsRead = unreadCount == 0,
-                IsMuted = cm.IsMuted
+                IsMuted = cm.IsMuted,
+                GroupAvatars = groupAvatars
             };
         }
 
@@ -416,6 +514,13 @@ namespace SocialNetwork.Infrastructure.Repositories.Conversations
                         && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value)
                     )
                 );
+        }
+
+        private sealed class GroupAvatarProjection
+        {
+            public Guid ConversationId { get; set; }
+            public DateTime JoinedAt { get; set; }
+            public string AvatarUrl { get; set; } = string.Empty;
         }
     }
 }

@@ -1,3 +1,4 @@
+using SocialNetwork.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,5 +15,6 @@ namespace SocialNetwork.Infrastructure.Models
         public string? Nickname { get; set; }
         public string? AvatarUrl { get; set; }
         public bool IsActive { get; set; }
+        public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
     }
 }

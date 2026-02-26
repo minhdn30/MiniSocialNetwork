@@ -2,6 +2,7 @@
 using SocialNetwork.Application.DTOs.AccountDTOs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -12,6 +13,7 @@ using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -33,10 +35,11 @@ namespace SocialNetwork.Application.Services.CommentServices
         private readonly IMapper _mapper;
         private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IStoryRingStateHelper _storyRingStateHelper;
 
         public CommentService(ICommentRepository commentRepository, ICommentReactRepository commentReactRepository, IPostRepository postRepository,
             IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper, IRealtimeService realtimeService,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork, IStoryViewService? storyViewService = null, IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _commentRepository = commentRepository;
             _commentReactRepository = commentReactRepository;
@@ -46,6 +49,7 @@ namespace SocialNetwork.Application.Services.CommentServices
             _mapper = mapper;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
         }
 
         public async Task<CommentResponse> AddCommentAsync(Guid postId, Guid accountId, CommentCreateRequest request)
@@ -96,6 +100,7 @@ namespace SocialNetwork.Application.Services.CommentServices
                 if (account != null)
                 {
                     result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+                    result.Owner.StoryRingState = await ResolveStoryRingStateAsync(accountId, accountId);
                 }
 
                 result.TotalCommentCount = await _commentRepository.CountCommentsByPostId(postId);
@@ -154,6 +159,7 @@ namespace SocialNetwork.Application.Services.CommentServices
             if (account != null)
             {
                 result.Owner = _mapper.Map<AccountBasicInfoResponse>(account);
+                result.Owner.StoryRingState = await ResolveStoryRingStateAsync(accountId, accountId);
             }
 
             result.ReactCount = await _commentReactRepository.CountCommentReactAsync(comment.CommentId);
@@ -254,6 +260,8 @@ namespace SocialNetwork.Application.Services.CommentServices
                 return response;
             }).ToList();
 
+            await ApplyStoryRingStatesForCommentOwnersAsync(currentId, responseItems);
+
             return new PagedResponse<CommentResponse>
             {
                 Items = responseItems,
@@ -283,6 +291,8 @@ namespace SocialNetwork.Application.Services.CommentServices
                 response.CanDelete = currentId != null && (item.Owner.AccountId == currentId || item.PostOwnerId == currentId);
                 return response;
             }).ToList();
+
+            await ApplyStoryRingStatesForCommentOwnersAsync(currentId, responseItems);
 
             return new PagedResponse<CommentResponse>
             {
@@ -315,6 +325,44 @@ namespace SocialNetwork.Application.Services.CommentServices
                 if (currentId == null || (currentId != post.AccountId && !await _followRepository.IsFollowingAsync(currentId.Value, post.AccountId)))
                     throw new ForbiddenException($"Only followers can {action} this post.");
             }
+        }
+
+        private async Task ApplyStoryRingStatesForCommentOwnersAsync(Guid? currentId, List<CommentResponse> comments)
+        {
+            if (!currentId.HasValue || comments.Count == 0)
+            {
+                return;
+            }
+
+            var ownerIds = comments
+                .Select(x => x.Owner?.AccountId ?? Guid.Empty)
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (ownerIds.Count == 0)
+            {
+                return;
+            }
+
+            var stateMap = await _storyRingStateHelper.ResolveManyAsync(currentId.Value, ownerIds);
+
+            foreach (var comment in comments)
+            {
+                if (comment.Owner == null)
+                {
+                    continue;
+                }
+
+                comment.Owner.StoryRingState = stateMap.TryGetValue(comment.Owner.AccountId, out var ringState)
+                    ? ringState
+                    : StoryRingStateEnum.None;
+            }
+        }
+
+        private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid currentId, Guid targetAccountId)
+        {
+            return await _storyRingStateHelper.ResolveAsync(currentId, targetAccountId);
         }
     }
 }

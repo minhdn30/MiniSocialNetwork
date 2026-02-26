@@ -6,8 +6,10 @@ using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.ConversationMemberServices;
 using SocialNetwork.Application.Services.ConversationServices;
 using SocialNetwork.Application.Services.MessageHiddenServices;
+using SocialNetwork.Application.Services.MessageReactServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PinnedMessageServices;
+using SocialNetwork.Domain.Enums;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -16,6 +18,7 @@ namespace SocialNetwork.API.Controllers
     public class MessagesController : ControllerBase
     {
         private readonly IMessageService _messageService;
+        private readonly IMessageReactService _messageReactService;
         private readonly IMessageHiddenService _messageHiddenService;
         private readonly IConversationService _conversationService;
         private readonly IConversationMemberService _conversationMemberService;
@@ -23,26 +26,33 @@ namespace SocialNetwork.API.Controllers
 
         public MessagesController(
             IMessageService messageService, 
+            IMessageReactService messageReactService,
             IMessageHiddenService messageHiddenService,
             IConversationService conversationService, 
             IConversationMemberService conversationMemberService,
             IPinnedMessageService pinnedMessageService)
         {
             _messageService = messageService;
+            _messageReactService = messageReactService;
             _messageHiddenService = messageHiddenService;
             _conversationService = conversationService;
             _conversationMemberService = conversationMemberService;
             _pinnedMessageService = pinnedMessageService;
         }
 
+        private static bool IsMessagePayloadEmpty(string? content, List<IFormFile>? mediaFiles)
+        {
+            return string.IsNullOrWhiteSpace(content) && (mediaFiles == null || !mediaFiles.Any());
+        }
+
         [Authorize]
         [HttpGet("{conversationId}")]
-        public async Task<IActionResult> GetMessagesByConversationId(Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> GetMessagesByConversationId(Guid conversationId, [FromQuery] string? cursor = null, [FromQuery] int pageSize = 20)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
-            var result = await _messageService.GetMessagesByConversationIdAsync(conversationId, currentId.Value, page, pageSize);
+            var result = await _messageService.GetMessagesByConversationIdAsync(conversationId, currentId.Value, cursor, pageSize);
             return Ok(result);
         }
 
@@ -54,6 +64,19 @@ namespace SocialNetwork.API.Controllers
             var senderId = User.GetAccountId();
             if (senderId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.ReceiverId == Guid.Empty)
+                return BadRequest(new { message = "Receiver account is required." });
+
+            if (senderId.Value == request.ReceiverId)
+                return BadRequest(new { message = "You cannot send a message to yourself." });
+
+            if (IsMessagePayloadEmpty(request.Content, request.MediaFiles))
+                return BadRequest(new { message = "Message content and media files cannot both be empty." });
+
             var result = await _messageService.SendMessageInPrivateChatAsync(senderId.Value, request);
             return Ok(result);
         }
@@ -71,6 +94,12 @@ namespace SocialNetwork.API.Controllers
             var senderId = User.GetAccountId();
             if (senderId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (IsMessagePayloadEmpty(request.Content, request.MediaFiles))
+                return BadRequest(new { message = "Message content and media files cannot both be empty." });
             
             var result = await _messageService.SendMessageInGroupAsync(senderId.Value, conversationId, request);
             return Ok(result);
@@ -98,6 +127,18 @@ namespace SocialNetwork.API.Controllers
 
             var result = await _messageService.RecallMessageAsync(messageId, currentId.Value);
             return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("media/{messageMediaId}/download-url")]
+        public async Task<IActionResult> GetMediaDownloadUrl(Guid messageMediaId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var downloadUrl = await _messageService.GetMediaDownloadUrlAsync(messageMediaId, currentId.Value);
+            return Ok(new { url = downloadUrl });
         }
 
         // PINNED MESSAGES
@@ -140,5 +181,45 @@ namespace SocialNetwork.API.Controllers
             await _pinnedMessageService.UnpinMessageAsync(conversationId, messageId, currentId.Value);
             return Ok(new { message = "Message unpinned successfully." });
         }
+        [Authorize]
+        [HttpGet("{messageId}/react")]
+        public async Task<IActionResult> GetMessageReact(Guid messageId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _messageReactService.GetMessageReactStateAsync(messageId, currentId.Value);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPut("{messageId}/react")]
+        public async Task<IActionResult> SetMessageReact(Guid messageId, [FromBody] SetMessageReactRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (request == null)
+                return BadRequest(new { message = "React payload is required." });
+            if (!Enum.IsDefined(typeof(ReactEnum), request.ReactType))
+                return BadRequest(new { message = "Invalid react type." });
+
+            var result = await _messageReactService.SetMessageReactAsync(messageId, currentId.Value, request.ReactType);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpDelete("{messageId}/react")]
+        public async Task<IActionResult> RemoveMessageReact(Guid messageId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _messageReactService.RemoveMessageReactAsync(messageId, currentId.Value);
+            return Ok(result);
+        }
+
     }
 }

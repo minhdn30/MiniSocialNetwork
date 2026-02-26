@@ -10,6 +10,7 @@ using Npgsql;
 using SocialNetwork.API.Hubs;
 using SocialNetwork.API.Middleware;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
 using SocialNetwork.Application.Mapping;
 using SocialNetwork.Application.Services.AccountServices;
@@ -26,11 +27,15 @@ using SocialNetwork.Application.Services.FollowServices;
 using SocialNetwork.Application.Services.JwtServices;
 using SocialNetwork.Application.Services.MessageMediaServices;
 using SocialNetwork.Application.Services.MessageHiddenServices;
+using SocialNetwork.Application.Services.MessageReactServices;
 using SocialNetwork.Application.Services.MessageServices;
 using SocialNetwork.Application.Services.PinnedMessageServices;
+using SocialNetwork.Application.Services.PresenceServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.API.Services;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Domain.Exceptions;
@@ -41,6 +46,7 @@ using SocialNetwork.Infrastructure.Repositories.Comments;
 using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.EmailVerifications;
+using SocialNetwork.Infrastructure.Repositories.ExternalLogins;
 using SocialNetwork.Infrastructure.Repositories.Follows;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
@@ -50,11 +56,15 @@ using SocialNetwork.Infrastructure.Repositories.PinnedMessages;
 using SocialNetwork.Infrastructure.Repositories.PostMedias;
 using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
+using SocialNetwork.Infrastructure.Repositories.Presences;
+using SocialNetwork.Infrastructure.Repositories.Stories;
+using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using StackExchange.Redis;
 
 
 namespace SocialNetwork.API
@@ -65,7 +75,9 @@ namespace SocialNetwork.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            builder.Configuration.AddUserSecrets<Program>();
+            builder.Configuration
+                .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true)
+                .AddUserSecrets<Program>();
 
             var connectionString = BuildConnectionString(builder.Configuration, builder.Environment);
             if (string.IsNullOrWhiteSpace(connectionString))
@@ -95,11 +107,14 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IAccountSettingRepository, AccountSettingRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
+            builder.Services.AddScoped<IExternalLoginRepository, ExternalLoginRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
             builder.Services.AddScoped<ICommentRepository, CommentRepository>();
             builder.Services.AddScoped<IPostRepository, PostRepository>();
             builder.Services.AddScoped<IPostMediaRepository, PostMediaRepository>();
             builder.Services.AddScoped<IPostReactRepository, PostReactRepository>();
+            builder.Services.AddScoped<IStoryRepository, StoryRepository>();
+            builder.Services.AddScoped<IStoryViewRepository, StoryViewRepository>();
             builder.Services.AddScoped<ICommentReactRepository, CommentReactRepository>();
             builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
             builder.Services.AddScoped<IConversationMemberRepository, ConversationMemberRepository>();
@@ -108,19 +123,44 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IMessageHiddenRepository, MessageHiddenRepository>();
             builder.Services.AddScoped<IMessageReactRepository, MessageReactRepository>();
             builder.Services.AddScoped<IPinnedMessageRepository, PinnedMessageRepository>();
+            builder.Services.AddScoped<IOnlinePresenceRepository, OnlinePresenceRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // Services
+            builder.Services.Configure<LoginSecurityOptions>(
+                builder.Configuration.GetSection("LoginSecurity"));
+            builder.Services.Configure<EmailVerificationSecurityOptions>(
+                builder.Configuration.GetSection("EmailVerification"));
+            builder.Services.Configure<GoogleAuthOptions>(
+                builder.Configuration.GetSection("ExternalAuth:Google"));
+            builder.Services.Configure<OnlinePresenceOptions>(
+                builder.Configuration.GetSection("OnlinePresence"));
+            builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+            {
+                var redisConnectionString =
+                    builder.Configuration.GetConnectionString("Redis")
+                    ?? builder.Configuration["Redis:ConnectionString"]
+                    ?? "localhost:6379,abortConnect=false";
+
+                return ConnectionMultiplexer.Connect(redisConnectionString);
+            });
+
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<IExternalIdentityProvider, GoogleExternalIdentityProvider>();
+            builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
+            builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
             builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
             builder.Services.AddTransient<IEmailService, EmailService>();
             builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
+            builder.Services.AddScoped<IEmailVerificationRateLimitService, RedisEmailVerificationRateLimitService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IFollowService, FollowService>();
             builder.Services.AddScoped<IPostService, PostService>();
+            builder.Services.AddScoped<IStoryService, StoryService>();
+            builder.Services.AddScoped<IStoryViewService, StoryViewService>();
             builder.Services.AddScoped<ICommentService, CommentService>();
             builder.Services.AddScoped<IPostReactService, PostReactService>();
             builder.Services.AddScoped<ICommentReactService, CommentReactService>();
@@ -128,14 +168,19 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IConversationService, ConversationService>();
             builder.Services.AddScoped<IConversationMemberService, ConversationMemberService>();
             builder.Services.AddScoped<IMessageService, MessageService>();
+            builder.Services.AddScoped<IMessageReactService, MessageReactService>();
             builder.Services.AddScoped<IMessageHiddenService, MessageHiddenService>();
             builder.Services.AddScoped<IMessageMediaService, MessageMediaService>();
             builder.Services.AddScoped<IPinnedMessageService, PinnedMessageService>();
 
             // Realtime Services
             builder.Services.AddScoped<IRealtimeService, RealtimeService>();
+            builder.Services.AddScoped<IOnlinePresenceService, OnlinePresenceService>();
+            builder.Services.AddHostedService<EmailVerificationCleanupHostedService>();
+            builder.Services.AddHostedService<OnlinePresenceCleanupHostedService>();
 
             // Helpers
+            builder.Services.AddScoped<IStoryRingStateHelper, StoryRingStateHelper>();
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
 
             // JWT

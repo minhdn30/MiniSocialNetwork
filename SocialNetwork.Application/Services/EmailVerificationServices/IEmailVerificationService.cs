@@ -8,7 +8,7 @@ namespace SocialNetwork.Application.Services.EmailVerificationServices
 {
     public interface IEmailVerificationService
     {
-        Task SendVerificationEmailAsync(string email);
+        Task SendVerificationEmailAsync(string email, string? requesterIpAddress = null);
         Task<bool> VerifyEmailAsync(string email, string code);
     }
 }

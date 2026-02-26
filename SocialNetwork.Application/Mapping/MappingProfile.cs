@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using SocialNetwork.Application.DTOs.AccountDTOs;
+using SocialNetwork.Application.DTOs.PinnedMessageDTOs;
 using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommentDTOs;
@@ -9,6 +10,7 @@ using SocialNetwork.Application.DTOs.MessageDTOs;
 using SocialNetwork.Application.DTOs.MessageMediaDTOs;
 using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
+using SocialNetwork.Application.DTOs.StoryDTOs;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -69,6 +71,7 @@ namespace SocialNetwork.Application.Mapping
             //Post Media mappings
             CreateMap<PostMediaCreateRequest, PostMedia>();
             CreateMap<PostMedia, PostMediaDetailResponse>();
+            
 
             //Comment mappings
             CreateMap<CommentCreateRequest, Comment>()
@@ -103,11 +106,19 @@ namespace SocialNetwork.Application.Mapping
             //Message Media mappings
             CreateMap<MessageMedia, MessageMediaResponse>();
 
+            //Story mappings
+            CreateMap<Story, StoryDetailResponse>();
+            
             // Infrastructure model mappings
             CreateMap<AccountBasicInfoModel, AccountBasicInfoResponse>();
             CreateMap<AccountChatInfoModel, AccountChatInfoResponse>();
+            CreateMap<MessageMediaBasicModel, MessageMediaResponse>();
+            CreateMap<PinnedMessageModel, PinnedMessageResponse>();
             CreateMap<CommentWithReplyCountModel, CommentResponse>();
             CreateMap<ReplyCommentModel, CommentResponse>();
+            CreateMap<StoryActiveItemModel, StoryActiveItemResponse>();
+
+            
         }
     }
 }

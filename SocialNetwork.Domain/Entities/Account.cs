@@ -30,23 +30,24 @@ namespace SocialNetwork.Domain.Entities
         [MaxLength(15)]
         public string? Phone { get; set; }
         public bool? Gender { get; set; }
-        [Required]
-        public string PasswordHash { get; set; } = null!;
+        public string? PasswordHash { get; set; }
         [MaxLength(255)]
         public string? Address { get; set; }
         public int RoleId { get; set; }
         public AccountStatusEnum Status { get; set; } = 0;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
-        public bool IsEmailVerified { get; set; } = false;
         [MaxLength(256)]
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiryTime { get; set; }
-        public DateTime? LastActiveAt { get; set; }
+        public DateTime? LastOnlineAt { get; set; }
         public virtual Role Role { get; set; } = null!;
         public ICollection<Follow> Followers { get; set; } = new List<Follow>(); // Accounts that follow this account
         public ICollection<Follow> Followings { get; set; } = new List<Follow>(); // Accounts that this account follows
         public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
+        public virtual ICollection<Story> Stories { get; set; } = new List<Story>();
+        public virtual ICollection<StoryView> StoryViews { get; set; } = new List<StoryView>();
+        public virtual ICollection<ExternalLogin> ExternalLogins { get; set; } = new List<ExternalLogin>();
 
         // Comment-related
         public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
@@ -58,6 +59,7 @@ namespace SocialNetwork.Domain.Entities
         public virtual ICollection<ConversationMember> Conversations { get; set; } = new List<ConversationMember>();
         public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
         public virtual ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();
+        public virtual ICollection<Conversation> OwnedConversations { get; set; } = new List<Conversation>();
         public virtual AccountSettings Settings { get; set; } = null!;
 
     }

@@ -64,6 +64,9 @@ namespace SocialNetwork.Application.Services.RealtimeServices
         // notify active clients in the conversation room when a message is recalled
         Task NotifyMessageRecalledAsync(Guid conversationId, Guid messageId, Guid recalledByAccountId, DateTime recalledAt);
 
+        // notify active clients in the conversation room when message reactions are updated
+        Task NotifyMessageReactUpdatedAsync(Guid conversationId, Guid messageId, Guid updatedByAccountId);
+
         // notify when a new message is sent (includes per-member mute status)
         Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message);
 
@@ -75,6 +78,9 @@ namespace SocialNetwork.Application.Services.RealtimeServices
 
         // notify active clients in the conversation room when the conversation theme was changed
         Task NotifyConversationThemeUpdatedAsync(Guid conversationId, string? theme, Guid updatedBy);
+
+        // notify active clients in the conversation room when group name/avatar/owner was changed
+        Task NotifyGroupConversationInfoUpdatedAsync(Guid conversationId, string? conversationName, string? conversationAvatar, Guid? ownerAccountId, Guid updatedBy);
 
         // notify a specific user that a conversation should be removed from their chat list
         Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason);

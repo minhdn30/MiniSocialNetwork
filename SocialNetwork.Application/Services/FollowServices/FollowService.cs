@@ -40,9 +40,6 @@ namespace SocialNetwork.Application.Services.FollowServices
 
         public async Task<FollowCountResponse> FollowAsync(Guid followerId, Guid targetId)
         {
-            if (followerId == targetId)
-                throw new BadRequestException("You cannot follow yourself.");
-
             // Use the optimized IsAccountIdExist which already checks for existence and Active status
             if (!await _accountRepository.IsAccountIdExist(targetId))
                 throw new BadRequestException("This user is unavailable or does not exist.");

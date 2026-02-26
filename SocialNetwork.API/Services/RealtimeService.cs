@@ -190,6 +190,17 @@ namespace SocialNetwork.API.Services
                 .SendAsync("ReceiveMessageRecalled", payload);
         }
 
+        public async Task NotifyMessageReactUpdatedAsync(Guid conversationId, Guid messageId, Guid updatedByAccountId)
+        {
+            await _chatHubContext.Clients.Group(conversationId.ToString())
+                .SendAsync("ReceiveMessageReactUpdated", new
+                {
+                    ConversationId = conversationId,
+                    MessageId = messageId,
+                    UpdatedByAccountId = updatedByAccountId
+                });
+        }
+
         public async Task NotifyConversationMuteUpdatedAsync(Guid accountId, Guid conversationId, bool isMuted)
         {
             await _userHubContext.Clients.User(accountId.ToString())
@@ -224,6 +235,19 @@ namespace SocialNetwork.API.Services
                 {
                     ConversationId = conversationId,
                     Theme = theme,
+                    UpdatedBy = updatedBy
+                });
+        }
+
+        public async Task NotifyGroupConversationInfoUpdatedAsync(Guid conversationId, string? conversationName, string? conversationAvatar, Guid? ownerAccountId, Guid updatedBy)
+        {
+            await _chatHubContext.Clients.Group(conversationId.ToString())
+                .SendAsync("ReceiveGroupConversationInfoUpdated", new
+                {
+                    ConversationId = conversationId,
+                    ConversationName = conversationName,
+                    ConversationAvatar = conversationAvatar,
+                    Owner = ownerAccountId,
                     UpdatedBy = updatedBy
                 });
         }

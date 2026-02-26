@@ -6,10 +6,11 @@ using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.DTOs.AuthDTOs;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.FollowDTOs;
-using SocialNetwork.Application.Helpers.ValidationHelpers;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Services.AuthServices;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -37,6 +38,7 @@ namespace SocialNetwork.Application.Services.AccountServices
         private readonly IPostRepository _postRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRealtimeService _realtimeService;
+        private readonly IStoryRingStateHelper _storyRingStateHelper;
 
         public AccountService(
             IAccountRepository accountRepository, 
@@ -46,7 +48,9 @@ namespace SocialNetwork.Application.Services.AccountServices
             IFollowRepository followRepository, 
             IPostRepository postRepository,
             IUnitOfWork unitOfWork,
-            IRealtimeService realtimeService)
+            IRealtimeService realtimeService,
+            IStoryViewService? storyViewService = null,
+            IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _accountRepository = accountRepository;
             _accountSettingRepository = accountSettingRepository;
@@ -56,11 +60,12 @@ namespace SocialNetwork.Application.Services.AccountServices
             _postRepository = postRepository;
             _unitOfWork = unitOfWork;
             _realtimeService = realtimeService;
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
         }
         public async Task<ActionResult<PagedResponse<AccountOverviewResponse>>> GetAccountsAsync(AccountPagingRequest request)
         {
             var (accounts, totalItems) = await _accountRepository.GetAccountsAsync(request.Id, request.Username, request.Email, request.Fullname, request.Phone,
-                request.RoleId, request.Gender, request.Status, request.IsEmailVerified, request.Page, request.PageSize);
+                request.RoleId, request.Gender, request.Status, request.Page, request.PageSize);
             var mappedAccounts = _mapper.Map<IEnumerable<AccountOverviewResponse>>(accounts);
             var rs = new PagedResponse<AccountOverviewResponse>
             {
@@ -96,27 +101,34 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<AccountDetailResponse> CreateAccount(AccountCreateRequest request)
         {
-            var usernameExists = await _accountRepository.IsUsernameExist(request.Username);
+            var normalizedUsername = (request.Username ?? string.Empty).Trim().ToLowerInvariant();
+            var normalizedEmail = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
+
+            var usernameExists = await _accountRepository.IsUsernameExist(normalizedUsername);
             if (usernameExists)
             {
                 throw new BadRequestException("Username already exists.");
             }
-            var emailExists = await _accountRepository.IsEmailExist(request.Email);
+            var emailExists = await _accountRepository.IsEmailExist(normalizedEmail);
             if (emailExists)
             {
                 throw new BadRequestException("Email already exists.");
             }
-            EnumValidator.ValidateEnum<RoleEnum>(request.RoleId);
+
             var account = _mapper.Map<Account>(request);
+            account.Username = normalizedUsername;
+            account.Email = normalizedEmail;
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            account.Settings ??= new AccountSettings
+            {
+                AccountId = account.AccountId
+            };
             await _accountRepository.AddAccount(account);
             await _unitOfWork.CommitAsync();
             return _mapper.Map<AccountDetailResponse>(account);
         }
         public async Task<AccountDetailResponse> UpdateAccount(Guid accountId, AccountUpdateRequest request)
         {
-            EnumValidator.ValidateEnumIfHasValue<RoleEnum>(request.RoleId);
-
             var account = await _accountRepository.GetAccountById(accountId);
             if(account  == null)
             {
@@ -232,13 +244,11 @@ namespace SocialNetwork.Application.Services.AccountServices
 
                         if (request.PhonePrivacy.HasValue)
                         {
-                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.PhonePrivacy.Value);
                             settings.PhonePrivacy = request.PhonePrivacy.Value;
                         }
 
                         if (request.AddressPrivacy.HasValue)
                         {
-                            EnumValidator.ValidateEnum<AccountPrivacyEnum>(request.AddressPrivacy.Value);
                             settings.AddressPrivacy = request.AddressPrivacy.Value;
                         }
 
@@ -295,6 +305,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                 throw new NotFoundException($"Account with ID {accountId} not found or inactive.");
             }
 
+            var storyRingState = await ResolveStoryRingStateAsync(profileModel.AccountId, currentId);
+
             var result = new ProfileInfoResponse
             {
                 AccountInfo = new ProfileDetailResponse
@@ -309,7 +321,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                     CoverUrl = profileModel.CoverUrl,
                     Gender = profileModel.Gender,
                     Address = profileModel.Address,
-                    CreatedAt = profileModel.CreatedAt
+                    CreatedAt = profileModel.CreatedAt,
+                    StoryRingState = storyRingState
                 },
                 FollowInfo = new FollowCountResponse
                 {
@@ -328,7 +341,9 @@ namespace SocialNetwork.Application.Services.AccountServices
                 AddressPrivacy = profileModel.AddressPrivacy,
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
-                FollowingPrivacy = profileModel.FollowingPrivacy
+                FollowingPrivacy = profileModel.FollowingPrivacy,
+                GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
+                OnlineStatusVisibility = profileModel.OnlineStatusVisibility
             };
 
             // enforce privacy logic
@@ -366,6 +381,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                 throw new NotFoundException($"Account with username '{username}' not found or inactive.");
             }
 
+            var storyRingState = await ResolveStoryRingStateAsync(profileModel.AccountId, currentId);
+
             var result = new ProfileInfoResponse
             {
                 AccountInfo = new ProfileDetailResponse
@@ -380,7 +397,8 @@ namespace SocialNetwork.Application.Services.AccountServices
                     CoverUrl = profileModel.CoverUrl,
                     Gender = profileModel.Gender,
                     Address = profileModel.Address,
-                    CreatedAt = profileModel.CreatedAt
+                    CreatedAt = profileModel.CreatedAt,
+                    StoryRingState = storyRingState
                 },
                 FollowInfo = new FollowCountResponse
                 {
@@ -399,7 +417,9 @@ namespace SocialNetwork.Application.Services.AccountServices
                 AddressPrivacy = profileModel.AddressPrivacy,
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
-                FollowingPrivacy = profileModel.FollowingPrivacy
+                FollowingPrivacy = profileModel.FollowingPrivacy,
+                GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
+                OnlineStatusVisibility = profileModel.OnlineStatusVisibility
             };
 
             // Enforce privacy logic
@@ -446,7 +466,19 @@ namespace SocialNetwork.Application.Services.AccountServices
         }
         public async Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId)
         {
-            return await _accountRepository.GetProfilePreviewAsync(targetId, currentId);
+            var result = await _accountRepository.GetProfilePreviewAsync(targetId, currentId);
+            if (result == null)
+            {
+                return null;
+            }
+
+            result.Account.StoryRingState = await ResolveStoryRingStateAsync(result.Account.AccountId, currentId);
+            return result;
+        }
+
+        private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid targetId, Guid? currentId)
+        {
+            return await _storyRingStateHelper.ResolveAsync(currentId, targetId);
         }
 
         public async Task ReactivateAccountAsync(Guid accountId)

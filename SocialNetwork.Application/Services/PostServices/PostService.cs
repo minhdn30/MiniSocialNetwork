@@ -7,10 +7,11 @@ using SocialNetwork.Application.DTOs.PostDTOs;
 using SocialNetwork.Application.DTOs.PostMediaDTOs;
 using SocialNetwork.Domain.Exceptions;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
+using SocialNetwork.Application.Helpers.StoryHelpers;
 using SocialNetwork.Application.Helpers.SwaggerHelpers;
-using SocialNetwork.Application.Helpers.ValidationHelpers;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using SocialNetwork.Application.Services.RealtimeServices;
+using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
@@ -43,6 +44,7 @@ namespace SocialNetwork.Application.Services.PostServices
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRealtimeService _realtimeService;
+        private readonly IStoryRingStateHelper _storyRingStateHelper;
         public PostService(IPostReactRepository postReactRepository,
                            IPostMediaRepository postMediaRepository,
                            IPostRepository postRepository,
@@ -52,7 +54,9 @@ namespace SocialNetwork.Application.Services.PostServices
                            IFileTypeDetector fileTypeDetector,
                            IMapper mapper,
                            IUnitOfWork unitOfWork,
-                           IRealtimeService realtimeService)
+                           IRealtimeService realtimeService,
+                           IStoryViewService storyViewService,
+                           IStoryRingStateHelper? storyRingStateHelper = null)
         {
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
@@ -64,6 +68,7 @@ namespace SocialNetwork.Application.Services.PostServices
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _realtimeService = realtimeService;
+            _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
         }
         public async Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId)
         {
@@ -85,6 +90,8 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with ID {postId} not found or has been deleted.");
             }
+
+            await ApplyStoryRingStateForOwnerAsync(currentId, post.Owner);
             return post;
         }
 
@@ -95,6 +102,8 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with code {postCode} not found or has been deleted.");
             }
+
+            await ApplyStoryRingStateForOwnerAsync(currentId, post.Owner);
             return post;
         }
 
@@ -107,9 +116,6 @@ namespace SocialNetwork.Application.Services.PostServices
 
             if (account.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to create posts.");
-
-            EnumValidator.ValidateEnumIfHasValue<PostPrivacyEnum>(request.Privacy, "Invalid privacy setting.");
-            EnumValidator.ValidateEnumIfHasValue<AspectRatioEnum>(request.FeedAspectRatio, "Invalid feed aspect ratio.");
 
             // Generate Unique PostCode
             string postCode = StringHelper.GeneratePostCode(10);
@@ -237,7 +243,7 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with ID {postId} not found.");
             }
-            EnumValidator.ValidateEnumIfHasValue<PostPrivacyEnum>(request.Privacy, "Invalid privacy setting.");
+
             if(post.AccountId != currentId)
             {
                 throw new ForbiddenException("You are not authorized to update this post.");
@@ -333,7 +339,7 @@ namespace SocialNetwork.Application.Services.PostServices
             {
                 throw new NotFoundException($"Post with ID {postId} not found.");
             }
-            EnumValidator.ValidateEnumIfHasValue<PostPrivacyEnum>(request.Privacy, "Invalid privacy setting.");
+
             if (post.AccountId != currentId)
             {
                 throw new ForbiddenException("You are not authorized to update this post.");
@@ -407,10 +413,46 @@ namespace SocialNetwork.Application.Services.PostServices
         }
         public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {
-            if(limit <= 0) limit = 10;
-            if(limit > 50) limit = 50;
-            var feed = await _postRepository.GetFeedByScoreAsync(currentId, cursorCreatedAt, cursorPostId, limit);
+            if (limit <= 0) limit = 10;
+            if (limit > 50) limit = 50;
+
+            var feed = await _postRepository.GetFeedByScoreAsync(
+                currentId,
+                cursorCreatedAt,
+                cursorPostId,
+                limit);
+
+            if (feed.Count == 0)
+            {
+                return feed;
+            }
+
+            var authorIds = feed
+                .Select(x => x.Author.AccountId)
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            var storyRingStateMap = await _storyRingStateHelper.ResolveManyAsync(currentId, authorIds);
+
+            foreach (var post in feed)
+            {
+                post.Author.StoryRingState = storyRingStateMap.TryGetValue(post.Author.AccountId, out var ringState)
+                    ? ringState
+                    : StoryRingStateEnum.None;
+            }
+
             return feed;
+        }
+
+        private async Task ApplyStoryRingStateForOwnerAsync(Guid currentId, AccountBasicInfoModel? owner)
+        {
+            if (owner == null || owner.AccountId == Guid.Empty)
+            {
+                return;
+            }
+
+            owner.StoryRingState = await _storyRingStateHelper.ResolveAsync(currentId, owner.AccountId);
         }
     }
 }

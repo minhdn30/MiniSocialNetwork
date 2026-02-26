@@ -54,32 +54,21 @@ namespace SocialNetwork.Application.Services.MessageServices
             _unitOfWork = unitOfWork;
         }
 
-        public async Task<PagedResponse<MessageBasicModel>> GetMessagesByConversationIdAsync(Guid conversationId, Guid currentId, int page, int pageSize)
+        public async Task<CursorResponse<MessageBasicModel>> GetMessagesByConversationIdAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize)
         {
+            if (pageSize <= 0) pageSize = 20;
+
             if(! await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
             {
                 throw new ForbiddenException("You are not a member of this conversation.");
             }
-            var (messages, totalItems) = await _messageRepository.GetMessagesByConversationId(conversationId, currentId, page, pageSize);
-            return new PagedResponse<MessageBasicModel>
-            {
-                Items = messages,
-                Page = page,
-                PageSize = pageSize,
-                TotalItems = totalItems
-            };
+            var (items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer) =
+                await _messageRepository.GetMessagesByConversationId(conversationId, currentId, cursor, pageSize);
+            return new CursorResponse<MessageBasicModel>(items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer);
         }
         public async Task<SendMessageResponse> SendMessageInPrivateChatAsync(Guid senderId, SendMessageInPrivateChatRequest request)
         {
             // === validation phase ===
-            
-            // check can't send to self
-            if(senderId == request.ReceiverId)
-                throw new BadRequestException("You cannot send a message to yourself.");
-
-            // check content + media not both empty
-            if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
-                throw new BadRequestException("Message content and media files cannot both be empty.");
 
             // batch query both sender and receiver in single query
             var accounts = await _accountRepository.GetAccountsByIds(new[] { senderId, request.ReceiverId })
@@ -129,6 +118,9 @@ namespace SocialNetwork.Application.Services.MessageServices
                         case MediaTypeEnum.Video:
                             url = await _cloudinaryService.UploadVideoAsync(file);
                             break;
+                        case MediaTypeEnum.Document:
+                            url = await _cloudinaryService.UploadRawFileAsync(file);
+                            break;
                         default:
                             continue; 
                     };
@@ -168,6 +160,37 @@ namespace SocialNetwork.Application.Services.MessageServices
                         actualConversationId = conversationId.Value;
                     }
 
+                    // Validate reply target
+                    ReplyInfoModel? replyInfo = null;
+                    if (request.ReplyToMessageId.HasValue)
+                    {
+                        var replyTarget = await _messageRepository.GetMessageByIdAsync(request.ReplyToMessageId.Value);
+                        if (replyTarget == null)
+                            throw new BadRequestException("Reply target message not found.");
+                        if (replyTarget.ConversationId != actualConversationId)
+                            throw new BadRequestException("Reply target message does not belong to this conversation.");
+                        if (replyTarget.MessageType == MessageTypeEnum.System)
+                            throw new BadRequestException("Cannot reply to a system message.");
+
+                        var replySenderMember = await _conversationMemberRepository
+                            .GetConversationMemberAsync(actualConversationId, replyTarget.AccountId);
+
+                        replyInfo = new ReplyInfoModel
+                        {
+                            MessageId = replyTarget.MessageId,
+                            Content = replyTarget.IsRecalled ? null : replyTarget.Content,
+                            IsRecalled = replyTarget.IsRecalled,
+                            IsHidden = false,
+                            MessageType = replyTarget.MessageType,
+                            ReplySenderId = replyTarget.AccountId,
+                            Sender = new ReplySenderInfoModel
+                            {
+                                Username = replyTarget.Account?.Username ?? "",
+                                DisplayName = replySenderMember?.Nickname ?? replyTarget.Account?.Username ?? ""
+                            }
+                        };
+                    }
+
                     // Create message
                     var message = new Message
                     {
@@ -177,7 +200,8 @@ namespace SocialNetwork.Application.Services.MessageServices
                         MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
                         SentAt = now,
                         IsEdited = false,
-                        IsRecalled = false
+                        IsRecalled = false,
+                        ReplyToMessageId = request.ReplyToMessageId
                     };
                     await _messageRepository.AddMessageAsync(message);
 
@@ -195,6 +219,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                     var result = _mapper.Map<SendMessageResponse>(message);
                     result.TempId = request.TempId;
                     result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
+                    result.ReplyTo = replyInfo;
                     if (mediaEntities.Any())
                     {
                         result.Medias = _mapper.Map<List<MessageMediaResponse>>(mediaEntities);
@@ -225,10 +250,6 @@ namespace SocialNetwork.Application.Services.MessageServices
         public async Task<SendMessageResponse> SendMessageInGroupAsync(Guid senderId, Guid conversationId, SendMessageRequest request)
         {
             // === validation phase ===
-            
-            // check content + media not both empty
-            if(string.IsNullOrWhiteSpace(request.Content) && (request.MediaFiles == null || !request.MediaFiles.Any()))
-                throw new BadRequestException("Message content and media files cannot both be empty.");
             
             // verify conversation exists
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
@@ -273,6 +294,9 @@ namespace SocialNetwork.Application.Services.MessageServices
                         case MediaTypeEnum.Video:
                             url = await _cloudinaryService.UploadVideoAsync(file);
                             break;
+                        case MediaTypeEnum.Document:
+                            url = await _cloudinaryService.UploadRawFileAsync(file);
+                            break;
                         default:
                             continue; 
                     };
@@ -296,6 +320,37 @@ namespace SocialNetwork.Application.Services.MessageServices
             return await _unitOfWork.ExecuteInTransactionAsync(
                 async () =>
                 {
+                    // Validate reply target
+                    ReplyInfoModel? replyInfo = null;
+                    if (request.ReplyToMessageId.HasValue)
+                    {
+                        var replyTarget = await _messageRepository.GetMessageByIdAsync(request.ReplyToMessageId.Value);
+                        if (replyTarget == null)
+                            throw new BadRequestException("Reply target message not found.");
+                        if (replyTarget.ConversationId != conversationId)
+                            throw new BadRequestException("Reply target message does not belong to this conversation.");
+                        if (replyTarget.MessageType == MessageTypeEnum.System)
+                            throw new BadRequestException("Cannot reply to a system message.");
+
+                        var replySenderMember = await _conversationMemberRepository
+                            .GetConversationMemberAsync(conversationId, replyTarget.AccountId);
+
+                        replyInfo = new ReplyInfoModel
+                        {
+                            MessageId = replyTarget.MessageId,
+                            Content = replyTarget.IsRecalled ? null : replyTarget.Content,
+                            IsRecalled = replyTarget.IsRecalled,
+                            IsHidden = false,
+                            MessageType = replyTarget.MessageType,
+                            ReplySenderId = replyTarget.AccountId,
+                            Sender = new ReplySenderInfoModel
+                            {
+                                Username = replyTarget.Account?.Username ?? "",
+                                DisplayName = replySenderMember?.Nickname ?? replyTarget.Account?.Username ?? ""
+                            }
+                        };
+                    }
+
                     // create message in existing conversation
                     var message = new Message
                     {
@@ -305,7 +360,8 @@ namespace SocialNetwork.Application.Services.MessageServices
                         MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
                         SentAt = now,
                         IsEdited = false,
-                        IsRecalled = false
+                        IsRecalled = false,
+                        ReplyToMessageId = request.ReplyToMessageId
                     };
                     await _messageRepository.AddMessageAsync(message);
                     
@@ -323,6 +379,7 @@ namespace SocialNetwork.Application.Services.MessageServices
                     var result = _mapper.Map<SendMessageResponse>(message);
                     result.TempId = request.TempId;
                     result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
+                    result.ReplyTo = replyInfo;
                     if (mediaEntities.Any())
                     {
                         result.Medias = _mapper.Map<List<MessageMediaResponse>>(mediaEntities);
@@ -347,6 +404,27 @@ namespace SocialNetwork.Application.Services.MessageServices
                     await Task.WhenAll(cleanupTasks);
                 }
             );
+        }
+
+        public async Task<string> GetMediaDownloadUrlAsync(Guid messageMediaId, Guid accountId)
+        {
+            var media = await _messageMediaRepository.GetByIdWithMessageAsync(messageMediaId);
+            if (media == null)
+                throw new NotFoundException("Attachment not found.");
+
+            var conversationId = media.Message?.ConversationId ?? Guid.Empty;
+            if (conversationId == Guid.Empty)
+                throw new NotFoundException("Conversation not found.");
+
+            var isMember = await _conversationMemberRepository.IsMemberOfConversation(conversationId, accountId);
+            if (!isMember)
+                throw new ForbiddenException("You are not allowed to access this attachment.");
+
+            var signedUrl = _cloudinaryService.GetDownloadUrl(media.MediaUrl, media.MediaType, media.FileName);
+            if (string.IsNullOrWhiteSpace(signedUrl))
+                throw new BadRequestException("Could not generate attachment download URL.");
+
+            return signedUrl;
         }
 
         public async Task<RecallMessageResponse> RecallMessageAsync(Guid messageId, Guid currentId)

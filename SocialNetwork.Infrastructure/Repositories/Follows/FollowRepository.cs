@@ -58,6 +58,28 @@ namespace SocialNetwork.Infrastructure.Repositories.Follows
                 .Select(f => f.FollowerId)
                 .ToListAsync();
         }
+
+        public async Task<HashSet<Guid>> GetConnectedAccountIdsAsync(Guid currentId, IEnumerable<Guid> targetIds)
+        {
+            var normalizedTargetIds = targetIds
+                .Where(id => id != Guid.Empty && id != currentId)
+                .Distinct()
+                .ToList();
+
+            if (normalizedTargetIds.Count == 0)
+                return new HashSet<Guid>();
+
+            var connectedIds = await _context.Follows
+                .Where(f =>
+                    (f.FollowerId == currentId && normalizedTargetIds.Contains(f.FollowedId)) ||
+                    (f.FollowedId == currentId && normalizedTargetIds.Contains(f.FollowerId)))
+                .Select(f => f.FollowerId == currentId ? f.FollowedId : f.FollowerId)
+                .Distinct()
+                .ToListAsync();
+
+            return connectedIds.ToHashSet();
+        }
+
         //get a list of your followers
         public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, bool? sortByCreatedASC, int page, int pageSize)
         {

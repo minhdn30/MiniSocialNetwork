@@ -13,13 +13,17 @@ namespace SocialNetwork.Infrastructure.Data
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
         public static string Unaccent(string text) => throw new NotSupportedException();
+        public static double Similarity(string source, string target) => throw new NotSupportedException();
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
+        public virtual DbSet<ExternalLogin> ExternalLogins { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
         public virtual DbSet<Follow> Follows { get; set; }
         public virtual DbSet<Post> Posts { get; set; }
         public virtual DbSet<PostMedia> PostMedias { get; set; }
         public virtual DbSet<PostReact> PostReacts { get; set; }
+        public virtual DbSet<Story> Stories { get; set; }
+        public virtual DbSet<StoryView> StoryViews { get; set; }
         public virtual DbSet<Comment> Comments { get; set; }
         public virtual DbSet<CommentReact> CommentReacts { get; set; }
         public virtual DbSet<Conversation> Conversations { get; set; }
@@ -70,6 +74,25 @@ namespace SocialNetwork.Infrastructure.Data
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
+            modelBuilder.Entity<ExternalLogin>(entity =>
+            {
+                entity.HasIndex(e => new { e.Provider, e.ProviderUserId })
+                      .IsUnique()
+                      .HasDatabaseName("IX_ExternalLogins_Provider_ProviderUserId_Unique");
+
+                entity.HasIndex(e => new { e.AccountId, e.Provider })
+                      .IsUnique()
+                      .HasDatabaseName("IX_ExternalLogins_AccountId_Provider_Unique");
+
+                entity.HasIndex(e => e.AccountId)
+                      .HasDatabaseName("IX_ExternalLogins_AccountId");
+
+                entity.HasOne(e => e.Account)
+                      .WithMany(a => a.ExternalLogins)
+                      .HasForeignKey(e => e.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
             // Enable extensions
             modelBuilder.HasPostgresExtension("pg_trgm");
             modelBuilder.HasPostgresExtension("unaccent");
@@ -78,12 +101,24 @@ namespace SocialNetwork.Infrastructure.Data
             // Required for functional indexes - PostgreSQL requires IMMUTABLE functions for indexes
             modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(Unaccent), new[] { typeof(string) })!)
                 .HasName("immutable_unaccent");
+            modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(Similarity), new[] { typeof(string), typeof(string) })!)
+                .HasName("similarity");
 
 
 
             modelBuilder.Entity<Role>(entity =>
             {
                 entity.HasIndex(e => e.RoleName).IsUnique();
+            });
+
+            modelBuilder.Entity<EmailVerification>(entity =>
+            {
+                entity.HasIndex(e => e.Email)
+                    .IsUnique()
+                    .HasDatabaseName("IX_EmailVerifications_Email_Unique");
+
+                entity.HasIndex(e => e.ExpiredAt)
+                    .HasDatabaseName("IX_EmailVerifications_ExpiredAt");
             });
 
             // =====================
@@ -210,6 +245,112 @@ namespace SocialNetwork.Infrastructure.Data
 
 
             // =====================
+            // STORY
+            // =====================
+            modelBuilder.Entity<Story>()
+                .HasKey(s => s.StoryId);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.TextContent)
+                .HasMaxLength(1000);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.BackgroundColorKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.FontTextKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.FontSizeKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
+                .Property(s => s.TextColorKey)
+                .HasMaxLength(100);
+
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.IsDeleted, s.ExpiresAt, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Active");
+
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.AccountId, s.IsDeleted, s.ExpiresAt, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Account_Archive");
+
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.AccountId, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Account_Created");
+
+            modelBuilder.Entity<Story>()
+                .ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Stories_ExpiresAt",
+                        "\"ExpiresAt\" > \"CreatedAt\"");
+
+                    table.HasCheckConstraint(
+                        "CK_Stories_ContentPayload",
+                        "((\"ContentType\" IN (0,1) AND \"MediaUrl\" IS NOT NULL AND \"TextContent\" IS NULL AND \"FontTextKey\" IS NULL AND \"FontSizeKey\" IS NULL AND \"TextColorKey\" IS NULL) OR (\"ContentType\" = 2 AND \"TextContent\" IS NOT NULL AND length(btrim(\"TextContent\")) > 0 AND \"MediaUrl\" IS NULL))");
+                });
+
+            modelBuilder.Entity<Story>()
+                .HasOne(s => s.Account)
+                .WithMany(a => a.Stories)
+                .HasForeignKey(s => s.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Story>()
+                .HasMany(s => s.Views)
+                .WithOne(v => v.Story)
+                .HasForeignKey(v => v.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // STORY VIEW
+            // =====================
+            modelBuilder.Entity<StoryView>()
+                .HasKey(v => new { v.StoryId, v.ViewerAccountId });
+
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.StoryId, v.ViewedAt })
+                .HasDatabaseName("IX_StoryViews_Story_ViewedAt");
+
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.StoryId, v.ReactType })
+                .HasDatabaseName("IX_StoryViews_Story_ReactType");
+
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.ViewerAccountId, v.ViewedAt })
+                .HasDatabaseName("IX_StoryViews_Viewer_ViewedAt");
+
+            // Index for viewer + story existence checks (used in story ring unseen computation)
+            modelBuilder.Entity<StoryView>()
+                .HasIndex(v => new { v.ViewerAccountId, v.StoryId })
+                .HasDatabaseName("IX_StoryViews_Viewer_Story");
+
+            modelBuilder.Entity<StoryView>()
+                .ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_StoryViews_ReactPair",
+                        "((\"ReactType\" IS NULL AND \"ReactedAt\" IS NULL) OR (\"ReactType\" IS NOT NULL AND \"ReactedAt\" IS NOT NULL))");
+                });
+
+            modelBuilder.Entity<StoryView>()
+                .HasOne(v => v.Story)
+                .WithMany(s => s.Views)
+                .HasForeignKey(v => v.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StoryView>()
+                .HasOne(v => v.ViewerAccount)
+                .WithMany(a => a.StoryViews)
+                .HasForeignKey(v => v.ViewerAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+
+            // =====================
             // COMMENT
             // =====================
             modelBuilder.Entity<Comment>()
@@ -218,6 +359,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Comment>()
                 .HasIndex(c => new { c.PostId, c.ParentCommentId, c.CreatedAt })
                 .HasDatabaseName("IX_Comment_Post_Parent_Created");
+
+            // Index for per-post interactions by account (feed affinity query)
+            modelBuilder.Entity<Comment>()
+                .HasIndex(c => new { c.PostId, c.AccountId, c.CreatedAt })
+                .HasDatabaseName("IX_Comment_Post_Account_Created");
 
             modelBuilder.Entity<Comment>()
                 .HasIndex(c => new { c.ParentCommentId, c.CreatedAt })
@@ -284,12 +430,28 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasForeignKey(c => c.CreatedBy)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Conversation → Owner (Account, group only)
+            modelBuilder.Entity<Conversation>()
+                .HasOne(c => c.OwnerAccount)
+                .WithMany(a => a.OwnedConversations)
+                .HasForeignKey(c => c.Owner)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Data consistency: private chat must not have owner, group chat must have owner.
+            modelBuilder.Entity<Conversation>()
+                .ToTable(table => table.HasCheckConstraint(
+                    "CK_Conversations_GroupOwner",
+                    "(\"IsGroup\" = FALSE AND \"Owner\" IS NULL) OR (\"IsGroup\" = TRUE AND \"Owner\" IS NOT NULL)"));
+
             // Index: sort / filter conversations
             modelBuilder.Entity<Conversation>()
                 .HasIndex(c => c.CreatedAt);
 
             modelBuilder.Entity<Conversation>()
                 .HasIndex(c => c.CreatedBy);
+
+            modelBuilder.Entity<Conversation>()
+                .HasIndex(c => c.Owner);
 
             // Trigram index for group conversation name search (ILIKE %keyword%)
             modelBuilder.Entity<Conversation>()
@@ -328,6 +490,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<ConversationMember>()
                 .HasIndex(cm => new { cm.AccountId, cm.HasLeft, cm.IsMuted, cm.ConversationId })
                 .HasDatabaseName("IX_ConversationMember_Account_State_Conversation");
+
+            // Index: member list / seen-status queries by conversation + active-state
+            modelBuilder.Entity<ConversationMember>()
+                .HasIndex(cm => new { cm.ConversationId, cm.HasLeft, cm.AccountId })
+                .HasDatabaseName("IX_ConversationMember_Conversation_HasLeft_Account");
 
             // Index: get members by conversation
             // Redundant with PK but good for clarity if needed, though PK (ConvId, AccId) already covers this
@@ -381,6 +548,13 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasForeignKey(m => m.AccountId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Message Reply (Self-Reference)
+            modelBuilder.Entity<Message>()
+                .HasOne(m => m.ReplyToMessage)
+                .WithMany()
+                .HasForeignKey(m => m.ReplyToMessageId)
+                .OnDelete(DeleteBehavior.SetNull);
+
 
 
             // =====================
@@ -392,6 +566,11 @@ namespace SocialNetwork.Infrastructure.Data
             // Index: load media by message
             modelBuilder.Entity<MessageMedia>()
                 .HasIndex(mm => mm.MessageId);
+
+            // Index: media/files panel filtering by type and ordering by media created time
+            modelBuilder.Entity<MessageMedia>()
+                .HasIndex(mm => new { mm.MediaType, mm.CreatedAt, mm.MessageId })
+                .HasDatabaseName("IX_MessageMedia_Type_Created_Message");
 
             modelBuilder.Entity<MessageMedia>()
                 .HasOne(mm => mm.Message)
@@ -429,9 +608,11 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<MessageReact>()
                 .HasKey(mr => new { mr.MessageId, mr.AccountId });
 
-            // Index: count reactions by message
+            // Composite index for reaction stats by message/type.
+            // PK (MessageId, AccountId) already covers lookups by MessageId.
             modelBuilder.Entity<MessageReact>()
-                .HasIndex(mr => mr.MessageId);
+                .HasIndex(mr => new { mr.MessageId, mr.ReactType })
+                .HasDatabaseName("IX_MessageReacts_MessageId_ReactType");
 
             // Index: get reactions by account
             modelBuilder.Entity<MessageReact>()

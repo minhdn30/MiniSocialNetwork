@@ -24,6 +24,5 @@ namespace SocialNetwork.Application.DTOs.AccountDTOs
         [Required(ErrorMessage = "Password is required.")]
         public string Password { get; set; } = null!;
         public int RoleId { get; set; }
-        public bool IsEmailVerified { get; set; }
     }
 }

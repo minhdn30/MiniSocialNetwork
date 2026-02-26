@@ -1,4 +1,5 @@
 ﻿using Npgsql;
+using NpgsqlTypes;
 using SocialNetwork.Domain.Exceptions;
 using System.Text.Json;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
@@ -56,6 +57,7 @@ namespace SocialNetwork.API.Middleware
                     default:
                         if (IsTransientDatabaseFailure(ex))
                         {
+                            _logger.LogWarning(ex, "Transient database failure detected: {Message}", ex.Message);
                             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                             await context.Response.WriteAsync(JsonSerializer.Serialize(new
                             {
@@ -69,6 +71,18 @@ namespace SocialNetwork.API.Middleware
                         {
                             _logger.LogError(ex.InnerException, "Inner exception: {Message}", ex.InnerException.Message);
                         }
+
+                        if (TryGetPostgresException(ex, out var pgEx) && pgEx != null)
+                        {
+                            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                            await context.Response.WriteAsync(JsonSerializer.Serialize(new
+                            {
+                                message = "Invalid data for database constraints.",
+                                details = pgEx.MessageText
+                            }));
+                            break;
+                        }
+
                         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                         await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Internal server error.", details = ex.Message }));
                         break;
@@ -87,8 +101,14 @@ namespace SocialNetwork.API.Middleware
             var cursor = ex;
             while (cursor != null)
             {
+                if (cursor is PostgresException postgresException)
+                {
+                    return IsTransientPostgresSqlState(postgresException.SqlState);
+                }
+
                 if (cursor is NpgsqlException)
                 {
+                    // Non-Postgres NpgsqlException types are usually transport/protocol failures.
                     return true;
                 }
 
@@ -103,6 +123,49 @@ namespace SocialNetwork.API.Middleware
             }
 
             return false;
+        }
+
+        private static bool TryGetPostgresException(Exception ex, out PostgresException? postgresException)
+        {
+            var cursor = ex;
+            while (cursor != null)
+            {
+                if (cursor is PostgresException pgEx)
+                {
+                    postgresException = pgEx;
+                    return true;
+                }
+
+                cursor = cursor.InnerException!;
+            }
+
+            postgresException = null;
+            return false;
+        }
+
+        private static bool IsTransientPostgresSqlState(string? sqlState)
+        {
+            if (string.IsNullOrWhiteSpace(sqlState))
+            {
+                return false;
+            }
+
+            if (sqlState.StartsWith("08", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (sqlState.StartsWith("53", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return string.Equals(sqlState, PostgresErrorCodes.AdminShutdown, StringComparison.Ordinal) ||
+                   string.Equals(sqlState, PostgresErrorCodes.CrashShutdown, StringComparison.Ordinal) ||
+                   string.Equals(sqlState, PostgresErrorCodes.CannotConnectNow, StringComparison.Ordinal) ||
+                   string.Equals(sqlState, PostgresErrorCodes.LockNotAvailable, StringComparison.Ordinal) ||
+                   string.Equals(sqlState, PostgresErrorCodes.SerializationFailure, StringComparison.Ordinal) ||
+                   string.Equals(sqlState, PostgresErrorCodes.DeadlockDetected, StringComparison.Ordinal);
         }
     }
 }

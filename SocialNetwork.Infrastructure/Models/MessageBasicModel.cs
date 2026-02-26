@@ -19,6 +19,10 @@ namespace SocialNetwork.Infrastructure.Models
         public bool IsRecalled { get; set; }
         public string? SystemMessageDataJson { get; set; }
         public List<MessageMediaBasicModel>? Medias { get; set; }
+        public List<MessageReactSummaryModel> Reacts { get; set; } = new();
+        public List<MessageReactAccountModel> ReactedBy { get; set; } = new();
         public bool IsPinned { get; set; }
+        public ReactEnum? CurrentUserReactType { get; set; }
+        public ReplyInfoModel? ReplyTo { get; set; }
     }
 }

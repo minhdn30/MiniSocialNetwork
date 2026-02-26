@@ -1,9 +1,5 @@
 ﻿using SocialNetwork.Domain.Enums;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace SocialNetwork.Infrastructure.Models
 {
@@ -22,6 +18,10 @@ namespace SocialNetwork.Infrastructure.Models
         public int CommentCount { get; set; }
         public bool IsReactedByCurrentUser { get; set; }
         public bool IsOwner { get; set; }
+        [JsonIgnore]
+        public int ReplyCount { get; set; }
+        [JsonIgnore]
+        public bool IsFollowedAuthor { get; set; }
 
     }
 }

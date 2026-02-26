@@ -11,7 +11,7 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
     public class ConversationMessagesResponse
     {
         public ConversationMetaData? MetaData { get; set; }
-        public PagedResponse<MessageBasicModel> Messages { get; set; } = null!;
+        public CursorResponse<MessageBasicModel> Messages { get; set; } = null!;
     }
 
     public class ConversationMetaData
@@ -22,9 +22,12 @@ namespace SocialNetwork.Application.DTOs.ConversationDTOs
         public string? Theme { get; set; }
         public string? DisplayName { get; set; }
         public string? DisplayAvatar { get; set; }
+        public Guid? Owner { get; set; }
+        public int CurrentUserRole { get; set; }
         public int MemberCount { get; set; }
         public OtherMemberInfo? OtherMember { get; set; }
         public List<string>? SampleMembers { get; set; } 
+        public List<string>? GroupAvatars { get; set; }
         public List<ConversationMemberInfo> Members { get; set; } = new();
         public List<MemberSeenStatus> MemberSeenStatuses { get; set; } = new();
     }

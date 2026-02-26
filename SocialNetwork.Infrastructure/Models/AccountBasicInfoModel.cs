@@ -16,5 +16,6 @@ namespace SocialNetwork.Infrastructure.Models
         public string? Bio { get; set; }
         public string? CoverUrl { get; set; }
         public AccountStatusEnum Status { get; set; }
+        public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
     }
 }

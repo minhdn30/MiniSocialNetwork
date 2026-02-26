@@ -13,11 +13,16 @@ namespace SocialNetwork.Application.Services.ConversationServices
     {
         Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId);
         Task<ConversationResponse> CreatePrivateConversationAsync(Guid currentId, Guid otherId);
+        Task<ConversationResponse> CreateGroupConversationAsync(Guid currentId, CreateGroupConversationRequest request);
+        Task UpdateGroupConversationInfoAsync(Guid conversationId, Guid currentId, UpdateGroupConversationRequest request);
         Task<PagedResponse<ConversationListItemResponse>> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize);
-        Task<ConversationMessagesResponse> GetConversationMessagesWithMetaDataAsync(Guid conversationId, Guid currentId, int page, int pageSize);
-        Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, int page, int pageSize);
+        Task<ConversationMessagesResponse> GetConversationMessagesWithMetaDataAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize);
+        Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, string? cursor, int pageSize);
         Task<int> GetUnreadConversationCountAsync(Guid currentId);
         Task<ConversationMessagesResponse> GetMessageContextAsync(Guid conversationId, Guid currentId, Guid messageId, int pageSize);
         Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize);
+        Task<PagedResponse<ConversationMemberInfo>> GetGroupConversationMembersAsync(Guid conversationId, Guid currentId, int page, int pageSize, bool adminOnly);
+        Task<PagedResponse<ConversationMediaItemModel>> GetConversationMediaAsync(Guid conversationId, Guid currentId, int page, int pageSize);
+        Task<PagedResponse<ConversationMediaItemModel>> GetConversationFilesAsync(Guid conversationId, Guid currentId, int page, int pageSize);
     }
 }

@@ -6,6 +6,7 @@ using SocialNetwork.Application.DTOs.AccountSettingDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.AccountServices;
 using SocialNetwork.Application.Services.AccountSettingServices;
+using SocialNetwork.Domain.Enums;
 
 namespace SocialNetwork.API.Controllers
 {
@@ -15,6 +16,12 @@ namespace SocialNetwork.API.Controllers
     {
         private readonly IAccountService _accountService;
         private readonly IAccountSettingService _accountSettingService;
+
+        private static bool IsValidEnumValue<TEnum>(TEnum value) where TEnum : struct, Enum
+        {
+            return Enum.IsDefined(typeof(TEnum), value);
+        }
+
         public AccountsController(IAccountService accountService, IAccountSettingService accountSettingService)
         {
             _accountService = accountService;
@@ -38,6 +45,12 @@ namespace SocialNetwork.API.Controllers
         [HttpPost]
         public async Task<ActionResult<AccountDetailResponse>> AddAccount([FromBody] AccountCreateRequest request)
         {
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (!Enum.IsDefined(typeof(RoleEnum), request.RoleId))
+                return BadRequest(new { message = "Invalid RoleEnum value." });
+
             var result = await _accountService.CreateAccount(request);
             return CreatedAtAction(nameof(GetAccountByGuid), new {accountId = result.AccountId}, result);
         }
@@ -45,6 +58,12 @@ namespace SocialNetwork.API.Controllers
         [HttpPut("{accountId}")]
         public async Task<ActionResult<AccountDetailResponse>> UpdateAccount([FromRoute] Guid accountId, [FromBody] AccountUpdateRequest request)
         {
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.RoleId.HasValue && !Enum.IsDefined(typeof(RoleEnum), request.RoleId.Value))
+                return BadRequest(new { message = "Invalid RoleEnum value." });
+
             var result = await _accountService.UpdateAccount(accountId, request);
             return Ok(result); 
         }
@@ -55,6 +74,16 @@ namespace SocialNetwork.API.Controllers
         {
             var accountId = User.GetAccountId();
             if (accountId == null) return Unauthorized();
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.PhonePrivacy.HasValue && !IsValidEnumValue(request.PhonePrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value." });
+
+            if (request.AddressPrivacy.HasValue && !IsValidEnumValue(request.AddressPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value." });
+
             var result = await _accountService.UpdateAccountProfile(accountId.Value, request);
             return Ok(result);
         }
@@ -76,6 +105,30 @@ namespace SocialNetwork.API.Controllers
         {
             var accountId = User.GetAccountId();
             if (accountId == null) return Unauthorized();
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.PhonePrivacy.HasValue && !IsValidEnumValue(request.PhonePrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for PhonePrivacy." });
+
+            if (request.AddressPrivacy.HasValue && !IsValidEnumValue(request.AddressPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for AddressPrivacy." });
+
+            if (request.DefaultPostPrivacy.HasValue && !IsValidEnumValue(request.DefaultPostPrivacy.Value))
+                return BadRequest(new { message = "Invalid PostPrivacyEnum value." });
+
+            if (request.FollowerPrivacy.HasValue && !IsValidEnumValue(request.FollowerPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for FollowerPrivacy." });
+
+            if (request.FollowingPrivacy.HasValue && !IsValidEnumValue(request.FollowingPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for FollowingPrivacy." });
+
+            if (request.GroupChatInvitePermission.HasValue && !IsValidEnumValue(request.GroupChatInvitePermission.Value))
+                return BadRequest(new { message = "Invalid GroupChatInvitePermissionEnum value." });
+
+            if (request.OnlineStatusVisibility.HasValue && !IsValidEnumValue(request.OnlineStatusVisibility.Value))
+                return BadRequest(new { message = "Invalid OnlineStatusVisibilityEnum value." });
+
             var result = await _accountSettingService.UpdateSettingsAsync(accountId.Value, request);
             return Ok(result);
         }
@@ -88,6 +141,16 @@ namespace SocialNetwork.API.Controllers
         {
             var accountId = User.GetAccountId();
             if (accountId == null) return Unauthorized();
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.PhonePrivacy.HasValue && !IsValidEnumValue(request.PhonePrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value." });
+
+            if (request.AddressPrivacy.HasValue && !IsValidEnumValue(request.AddressPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value." });
+
             var result = await _accountService.UpdateAccountProfile(accountId.Value, request);
             return Ok(result);
         }

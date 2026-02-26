@@ -9,6 +9,7 @@ using SocialNetwork.Application.Helpers.ClaimHelpers;
 using SocialNetwork.Application.Services.CommentServices;
 using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
+using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Models;
 
 namespace SocialNetwork.API.Controllers
@@ -69,6 +70,15 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
+                return BadRequest(new { message = "Invalid privacy setting." });
+
+            if (request.FeedAspectRatio.HasValue && !Enum.IsDefined(typeof(AspectRatioEnum), request.FeedAspectRatio.Value))
+                return BadRequest(new { message = "Invalid feed aspect ratio." });
+
             var result = await _postService.CreatePost(currentId.Value, request);
             return CreatedAtAction(nameof(GetPostById), new { postId = result.PostId }, result);
         }
@@ -82,6 +92,12 @@ namespace SocialNetwork.API.Controllers
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
+                return BadRequest(new { message = "Invalid privacy setting." });
+
             var result = await _postService.UpdatePost(postId, currentId.Value, request);
             return Ok(result);
         }
@@ -93,6 +109,12 @@ namespace SocialNetwork.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.Privacy.HasValue && !Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
+                return BadRequest(new { message = "Invalid privacy setting." });
 
             var result = await _postService.UpdatePostContent(postId, currentId.Value, request);
             return Ok(result);

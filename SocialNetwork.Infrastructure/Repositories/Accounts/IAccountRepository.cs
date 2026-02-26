@@ -21,10 +21,15 @@ namespace SocialNetwork.Infrastructure.Repositories.Accounts
         Task<Account?> GetAccountByUsername(string username);
         Task<Account?> GetByRefreshToken(string refreshToken);
         Task<(List<Account> Items, int TotalItems)> GetAccountsAsync(Guid? id, string? username, string? email,
-            string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, bool? isEmailVerified, int page, int pageSize);
+            string? fullname, string? phone, int? roleId, bool? gender, AccountStatusEnum? status, int page, int pageSize);
         Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId);
         Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId);
         Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId);
         Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds);
+        Task<List<GroupInviteAccountSearchModel>> SearchAccountsForGroupInviteAsync(
+            Guid currentId,
+            string keyword,
+            IEnumerable<Guid>? excludeAccountIds,
+            int limit = 10);
     }
 }

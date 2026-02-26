@@ -22,6 +22,10 @@ namespace SocialNetwork.Infrastructure.Models
         public string? ConversationName { get; set; }
         public string? ConversationAvatar { get; set; }
         public string? Theme { get; set; }
+        public Guid? Owner { get; set; }
+        public int CurrentUserRole { get; set; }
+        // Avatars of group members (max 4, excluding current user)
+        public List<string>? GroupAvatars { get; set; }
 
         public MessageBasicModel? LastMessage { get; set; }
         public bool IsRead { get; set; }

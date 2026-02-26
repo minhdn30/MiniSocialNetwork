@@ -62,14 +62,10 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<bool?>("Gender")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsEmailVerified")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastActiveAt")
+                    b.Property<DateTime?>("LastOnlineAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordHash")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Phone")
@@ -135,6 +131,12 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<int>("FollowingPrivacy")
                         .HasColumnType("integer");
 
+                    b.Property<int>("GroupChatInvitePermission")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OnlineStatusVisibility")
+                        .HasColumnType("integer");
+
                     b.Property<int>("PhonePrivacy")
                         .HasColumnType("integer");
 
@@ -176,6 +178,9 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("ParentCommentId", "CreatedAt")
                         .HasDatabaseName("IX_Comment_Parent_Created");
+
+                    b.HasIndex("PostId", "AccountId", "CreatedAt")
+                        .HasDatabaseName("IX_Comment_Post_Account_Created");
 
                     b.HasIndex("PostId", "ParentCommentId", "CreatedAt")
                         .HasDatabaseName("IX_Comment_Post_Parent_Created");
@@ -228,6 +233,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<bool>("IsGroup")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid?>("Owner")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Theme")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
@@ -244,7 +252,12 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("CreatedBy");
 
-                    b.ToTable("Conversations");
+                    b.HasIndex("Owner");
+
+                    b.ToTable("Conversations", t =>
+                        {
+                            t.HasCheckConstraint("CK_Conversations_GroupOwner", "(\"IsGroup\" = FALSE AND \"Owner\" IS NULL) OR (\"IsGroup\" = TRUE AND \"Owner\" IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.ConversationMember", b =>
@@ -286,6 +299,9 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
+                    b.HasIndex("ConversationId", "HasLeft", "AccountId")
+                        .HasDatabaseName("IX_ConversationMember_Conversation_HasLeft_Account");
+
                     b.HasIndex("AccountId", "HasLeft", "IsMuted", "ConversationId")
                         .HasDatabaseName("IX_ConversationMember_Account_State_Conversation");
 
@@ -300,12 +316,26 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Code")
+                    b.Property<string>("CodeHash")
                         .IsRequired()
-                        .HasMaxLength(15)
-                        .HasColumnType("varchar(15)");
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("CodeSalt")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DailySendCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("DailyWindowStartedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
@@ -316,9 +346,70 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<DateTime>("ExpiredAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("FailedAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SendCountInWindow")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("SendWindowStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("IX_EmailVerifications_Email_Unique");
+
+                    b.HasIndex("ExpiredAt")
+                        .HasDatabaseName("IX_EmailVerifications_ExpiredAt");
+
                     b.ToTable("EmailVerifications");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.ExternalLogin", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProviderUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("IX_ExternalLogins_AccountId");
+
+                    b.HasIndex("AccountId", "Provider")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ExternalLogins_AccountId_Provider_Unique");
+
+                    b.HasIndex("Provider", "ProviderUserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ExternalLogins_Provider_ProviderUserId_Unique");
+
+                    b.ToTable("ExternalLogins");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Follow", b =>
@@ -371,6 +462,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<DateTime?>("RecalledAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ReplyToMessageId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("SentAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -380,6 +474,8 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasKey("MessageId");
 
                     b.HasIndex("AccountId");
+
+                    b.HasIndex("ReplyToMessageId");
 
                     b.HasIndex("ConversationId", "SentAt");
 
@@ -439,6 +535,9 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("MessageId");
 
+                    b.HasIndex("MediaType", "CreatedAt", "MessageId")
+                        .HasDatabaseName("IX_MessageMedia_Type_Created_Message");
+
                     b.ToTable("MessageMedias");
                 });
 
@@ -460,7 +559,8 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.HasIndex("MessageId");
+                    b.HasIndex("MessageId", "ReactType")
+                        .HasDatabaseName("IX_MessageReacts_MessageId_ReactType");
 
                     b.ToTable("MessageReacts");
                 });
@@ -609,6 +709,109 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.ToTable("Roles");
                 });
 
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.Story", b =>
+                {
+                    b.Property<Guid>("StoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BackgroundColorKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("ContentType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FontSizeKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("FontTextKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MediaUrl")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Privacy")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TextColorKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TextContent")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.HasKey("StoryId");
+
+                    b.HasIndex("AccountId", "CreatedAt")
+                        .HasDatabaseName("IX_Stories_Account_Created");
+
+                    b.HasIndex("IsDeleted", "ExpiresAt", "CreatedAt")
+                        .HasDatabaseName("IX_Stories_Active");
+
+                    b.HasIndex("AccountId", "IsDeleted", "ExpiresAt", "CreatedAt")
+                        .HasDatabaseName("IX_Stories_Account_Archive");
+
+                    b.ToTable("Stories", t =>
+                        {
+                            t.HasCheckConstraint("CK_Stories_ContentPayload", "((\"ContentType\" IN (0,1) AND \"MediaUrl\" IS NOT NULL AND \"TextContent\" IS NULL AND \"FontTextKey\" IS NULL AND \"FontSizeKey\" IS NULL AND \"TextColorKey\" IS NULL) OR (\"ContentType\" = 2 AND \"TextContent\" IS NOT NULL AND length(btrim(\"TextContent\")) > 0 AND \"MediaUrl\" IS NULL))");
+
+                            t.HasCheckConstraint("CK_Stories_ExpiresAt", "\"ExpiresAt\" > \"CreatedAt\"");
+                        });
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryView", b =>
+                {
+                    b.Property<Guid>("StoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ViewerAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("ReactType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ReactedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ViewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("StoryId", "ViewerAccountId");
+
+                    b.HasIndex("StoryId", "ReactType")
+                        .HasDatabaseName("IX_StoryViews_Story_ReactType");
+
+                    b.HasIndex("StoryId", "ViewedAt")
+                        .HasDatabaseName("IX_StoryViews_Story_ViewedAt");
+
+                    b.HasIndex("ViewerAccountId", "StoryId")
+                        .HasDatabaseName("IX_StoryViews_Viewer_Story");
+
+                    b.HasIndex("ViewerAccountId", "ViewedAt")
+                        .HasDatabaseName("IX_StoryViews_Viewer_ViewedAt");
+
+                    b.ToTable("StoryViews", t =>
+                        {
+                            t.HasCheckConstraint("CK_StoryViews_ReactPair", "((\"ReactType\" IS NULL AND \"ReactedAt\" IS NULL) OR (\"ReactType\" IS NOT NULL AND \"ReactedAt\" IS NOT NULL))");
+                        });
+                });
+
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Account", b =>
                 {
                     b.HasOne("SocialNetwork.Domain.Entities.Role", "Role")
@@ -684,7 +887,14 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "OwnerAccount")
+                        .WithMany("OwnedConversations")
+                        .HasForeignKey("Owner")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("CreatedByAccount");
+
+                    b.Navigation("OwnerAccount");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.ConversationMember", b =>
@@ -704,6 +914,17 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Navigation("Account");
 
                     b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.ExternalLogin", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
+                        .WithMany("ExternalLogins")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Follow", b =>
@@ -739,9 +960,16 @@ namespace SocialNetwork.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SocialNetwork.Domain.Entities.Message", "ReplyToMessage")
+                        .WithMany()
+                        .HasForeignKey("ReplyToMessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Account");
 
                     b.Navigation("Conversation");
+
+                    b.Navigation("ReplyToMessage");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.MessageHidden", b =>
@@ -861,6 +1089,36 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Navigation("Post");
                 });
 
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.Story", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
+                        .WithMany("Stories")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryView", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Story", "Story")
+                        .WithMany("Views")
+                        .HasForeignKey("StoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "ViewerAccount")
+                        .WithMany("StoryViews")
+                        .HasForeignKey("ViewerAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Story");
+
+                    b.Navigation("ViewerAccount");
+                });
+
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Account", b =>
                 {
                     b.Navigation("CommentReacts");
@@ -871,11 +1129,15 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.Navigation("CreatedConversations");
 
+                    b.Navigation("ExternalLogins");
+
                     b.Navigation("Followers");
 
                     b.Navigation("Followings");
 
                     b.Navigation("Messages");
+
+                    b.Navigation("OwnedConversations");
 
                     b.Navigation("PostReacts");
 
@@ -883,6 +1145,10 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.Navigation("Settings")
                         .IsRequired();
+
+                    b.Navigation("Stories");
+
+                    b.Navigation("StoryViews");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Comment", b =>
@@ -920,6 +1186,11 @@ namespace SocialNetwork.Infrastructure.Migrations
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Role", b =>
                 {
                     b.Navigation("Accounts");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.Story", b =>
+                {
+                    b.Navigation("Views");
                 });
 #pragma warning restore 612, 618
         }
