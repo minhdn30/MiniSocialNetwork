@@ -12,5 +12,6 @@ namespace SocialNetwork.Application.DTOs.StoryDTOs
         public int ActiveStoryCount { get; set; }
         public int UnseenCount { get; set; }
         public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
+        public bool IsCurrentUser { get; set; }
     }
 }

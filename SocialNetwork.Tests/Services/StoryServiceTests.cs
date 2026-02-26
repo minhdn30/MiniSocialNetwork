@@ -308,7 +308,7 @@ namespace SocialNetwork.Tests.Services
             {
                 ContentType = (int)StoryContentTypeEnum.Image,
                 MediaFile = mediaFileMock.Object,
-                BackgroundColorKey = "bg-midnight",
+                FontTextKey = "font-modern",
                 ExpiresEnum = (int)StoryExpiresEnum.Hours24
             };
 
@@ -325,7 +325,7 @@ namespace SocialNetwork.Tests.Services
 
             // Assert
             await act.Should().ThrowAsync<BadRequestException>()
-                .WithMessage("Text style keys are only allowed for text story.");
+                .WithMessage("Font, size and text color keys are only allowed for text story.");
         }
 
         [Fact]

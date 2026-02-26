@@ -57,7 +57,8 @@ namespace SocialNetwork.Application.Services.StoryViewServices
                 UnseenCount = item.UnseenCount,
                 StoryRingState = item.ActiveStoryCount <= 0
                     ? StoryRingStateEnum.None
-                    : (item.UnseenCount > 0 ? StoryRingStateEnum.Unseen : StoryRingStateEnum.Seen)
+                    : (item.UnseenCount > 0 ? StoryRingStateEnum.Unseen : StoryRingStateEnum.Seen),
+                IsCurrentUser = item.AccountId == currentId
             }).ToList();
 
             return new PagedResponse<StoryAuthorItemResponse>(responses, page, pageSize, totalItems);
