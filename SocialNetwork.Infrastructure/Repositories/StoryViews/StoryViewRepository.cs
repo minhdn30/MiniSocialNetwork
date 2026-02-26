@@ -45,6 +45,12 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                 .Where(v => v.ViewerAccountId == currentId)
                 .Select(v => v.StoryId);
 
+            var viewCountByAuthor = _context.StoryViews
+                .AsNoTracking()
+                .Where(v => v.ViewerAccountId == currentId)
+                .GroupBy(v => v.Story.AccountId)
+                .Select(g => new { AuthorId = g.Key, ViewCount = g.Count() });
+
             var baseQuery = BuildVisibleStoriesQuery(currentId, nowUtc)
                 .Select(s => new
                 {
@@ -70,10 +76,16 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                     AvatarUrl = g.Key.AvatarUrl,
                     LatestStoryCreatedAt = g.Max(x => x.CreatedAt),
                     ActiveStoryCount = g.Count(),
-                    UnseenCount = g.Count(x => !x.IsViewed)
+                    UnseenCount = g.Count(x => !x.IsViewed),
+                    ViewFrequencyScore = viewCountByAuthor
+                        .Where(v => v.AuthorId == g.Key.AccountId)
+                        .Select(v => v.ViewCount)
+                        .FirstOrDefault()
                 })
-                .OrderByDescending(x => x.LatestStoryCreatedAt)
-                .ThenBy(x => x.AccountId);
+                .OrderBy(x => x.AccountId == currentId ? 0 : 1)
+                .ThenBy(x => x.UnseenCount > 0 ? 0 : 1)
+                .ThenByDescending(x => x.ViewFrequencyScore)
+                .ThenByDescending(x => x.LatestStoryCreatedAt);
 
             var totalItems = await baseQuery.CountAsync();
             var items = await baseQuery

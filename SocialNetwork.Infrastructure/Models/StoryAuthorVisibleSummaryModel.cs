@@ -9,5 +9,6 @@ namespace SocialNetwork.Infrastructure.Models
         public DateTime LatestStoryCreatedAt { get; set; }
         public int ActiveStoryCount { get; set; }
         public int UnseenCount { get; set; }
+        public int ViewFrequencyScore { get; set; }
     }
 }
