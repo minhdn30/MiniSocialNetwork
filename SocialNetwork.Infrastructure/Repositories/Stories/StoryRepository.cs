@@ -28,5 +28,15 @@ namespace SocialNetwork.Infrastructure.Repositories.Stories
             _context.Stories.Update(story);
             return Task.CompletedTask;
         }
+
+        public async Task<bool> HasRecentStoryAsync(Guid accountId, SocialNetwork.Domain.Enums.StoryContentTypeEnum contentType, TimeSpan window)
+        {
+            var cutoff = DateTime.UtcNow.Subtract(window);
+            return await _context.Stories
+                .AnyAsync(s => s.AccountId == accountId && 
+                               s.ContentType == contentType && 
+                               s.CreatedAt >= cutoff &&
+                               !s.IsDeleted);
+        }
     }
 }

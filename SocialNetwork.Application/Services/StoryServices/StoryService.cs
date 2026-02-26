@@ -49,8 +49,15 @@ namespace SocialNetwork.Application.Services.StoryServices
                 throw new ForbiddenException("You must reactivate your account to create stories.");
             }
 
-            var now = DateTime.UtcNow;
+            // Anti-duplicate check (10 seconds window)
             var contentType = (StoryContentTypeEnum)request.ContentType!.Value;
+            bool isDuplicate = await _storyRepository.HasRecentStoryAsync(currentId, contentType, TimeSpan.FromSeconds(10));
+            if (isDuplicate)
+            {
+                throw new BadRequestException("You are posting stories too fast. Please Wait a few seconds.");
+            }
+
+            var now = DateTime.UtcNow;
             var privacy = (StoryPrivacyEnum)(request.Privacy ?? (int)StoryPrivacyEnum.Public);
             var expiresEnum = request.ExpiresEnum.HasValue && Enum.IsDefined(typeof(StoryExpiresEnum), request.ExpiresEnum.Value)
                 ? (StoryExpiresEnum)request.ExpiresEnum.Value
@@ -80,12 +87,11 @@ namespace SocialNetwork.Application.Services.StoryServices
                     throw new BadRequestException("TextContent is only allowed for text story.");
                 }
 
-                if (!string.IsNullOrWhiteSpace(request.BackgroundColorKey)
-                    || !string.IsNullOrWhiteSpace(request.FontTextKey)
+                if (!string.IsNullOrWhiteSpace(request.FontTextKey)
                     || !string.IsNullOrWhiteSpace(request.FontSizeKey)
                     || !string.IsNullOrWhiteSpace(request.TextColorKey))
                 {
-                    throw new BadRequestException("Text style keys are only allowed for text story.");
+                    throw new BadRequestException("Font, size and text color keys are only allowed for text story.");
                 }
             }
 
@@ -141,7 +147,7 @@ namespace SocialNetwork.Application.Services.StoryServices
                     ContentType = contentType,
                     MediaUrl = contentType == StoryContentTypeEnum.Text ? null : uploadedMediaUrl,
                     TextContent = contentType == StoryContentTypeEnum.Text ? normalizedTextContent : null,
-                    BackgroundColorKey = contentType == StoryContentTypeEnum.Text ? normalizedBackgroundColorKey : null,
+                    BackgroundColorKey = normalizedBackgroundColorKey,
                     FontTextKey = contentType == StoryContentTypeEnum.Text ? normalizedFontTextKey : null,
                     FontSizeKey = contentType == StoryContentTypeEnum.Text ? normalizedFontSizeKey : null,
                     TextColorKey = contentType == StoryContentTypeEnum.Text ? normalizedTextColorKey : null,

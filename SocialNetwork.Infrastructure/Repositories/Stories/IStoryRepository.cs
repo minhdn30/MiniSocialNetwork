@@ -1,4 +1,5 @@
 using SocialNetwork.Domain.Entities;
+using SocialNetwork.Domain.Enums;
 
 namespace SocialNetwork.Infrastructure.Repositories.Stories
 {
@@ -7,5 +8,6 @@ namespace SocialNetwork.Infrastructure.Repositories.Stories
         Task AddStoryAsync(Story story);
         Task<Story?> GetStoryByIdAsync(Guid storyId);
         Task UpdateStoryAsync(Story story);
+        Task<bool> HasRecentStoryAsync(Guid accountId, StoryContentTypeEnum contentType, TimeSpan window);
     }
 }
