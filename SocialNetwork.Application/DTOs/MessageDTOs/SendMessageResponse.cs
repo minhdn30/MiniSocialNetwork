@@ -24,5 +24,6 @@ namespace SocialNetwork.Application.DTOs.MessageDTOs
         public string? TempId { get; set; }
         public List<MessageMediaResponse>? Medias { get; set; }
         public ReplyInfoModel? ReplyTo { get; set; }
+        public StoryReplyInfoModel? StoryReplyInfo { get; set; }
     }
 }

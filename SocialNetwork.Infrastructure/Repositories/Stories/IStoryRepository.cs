@@ -9,5 +9,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Stories
         Task<Story?> GetStoryByIdAsync(Guid storyId);
         Task UpdateStoryAsync(Story story);
         Task<bool> HasRecentStoryAsync(Guid accountId, StoryContentTypeEnum contentType, TimeSpan window);
+        Task<bool> ExistsAndActiveAsync(Guid storyId);
+        Task<HashSet<Guid>> GetActiveStoryIdsAsync(IEnumerable<Guid> storyIds);
     }
 }
