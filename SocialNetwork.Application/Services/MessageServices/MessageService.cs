@@ -488,25 +488,28 @@ namespace SocialNetwork.Application.Services.MessageServices
             if (sender.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to send messages.");
 
-            // Verify story exists and is active
-            var storyActive = await _storyRepository.ExistsAndActiveAsync(request.StoryId);
-            if (!storyActive)
+            var now = DateTime.UtcNow;
+
+            // Verify story exists, is active, and sender is allowed to view it.
+            var story = await _storyRepository.GetViewableStoryByIdAsync(senderId, request.StoryId, now);
+            if (story == null)
                 throw new BadRequestException("This story is no longer available.");
+
+            if (story.AccountId != request.ReceiverId)
+                throw new BadRequestException("Story receiver does not match story owner.");
 
             // Build snapshot JSON — stored in SystemMessageDataJson (reusing existing column)
             var storySnapshot = JsonSerializer.Serialize(new
             {
-                storyId = request.StoryId,
-                mediaUrl = request.StoryMediaUrl,
-                contentType = request.StoryContentType,
-                textContent = request.StoryTextContent,
-                backgroundColorKey = request.StoryBackgroundColorKey,
-                textColorKey = request.StoryTextColorKey,
-                fontTextKey = request.StoryFontTextKey,
-                fontSizeKey = request.StoryFontSizeKey
+                storyId = story.StoryId,
+                mediaUrl = story.MediaUrl,
+                contentType = (int)story.ContentType,
+                textContent = story.TextContent,
+                backgroundColorKey = story.BackgroundColorKey,
+                textColorKey = story.TextColorKey,
+                fontTextKey = story.FontTextKey,
+                fontSizeKey = story.FontSizeKey
             });
-
-            var now = DateTime.UtcNow;
 
             // === database transaction phase ===
             return await _unitOfWork.ExecuteInTransactionAsync(
@@ -546,15 +549,15 @@ namespace SocialNetwork.Application.Services.MessageServices
                     result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
                     result.StoryReplyInfo = new StoryReplyInfoModel
                     {
-                        StoryId = request.StoryId,
+                        StoryId = story.StoryId,
                         IsStoryExpired = false,
-                        MediaUrl = request.StoryMediaUrl,
-                        ContentType = request.StoryContentType,
-                        TextContent = request.StoryTextContent,
-                        BackgroundColorKey = request.StoryBackgroundColorKey,
-                        TextColorKey = request.StoryTextColorKey,
-                        FontTextKey = request.StoryFontTextKey,
-                        FontSizeKey = request.StoryFontSizeKey
+                        MediaUrl = story.MediaUrl,
+                        ContentType = (int)story.ContentType,
+                        TextContent = story.TextContent,
+                        BackgroundColorKey = story.BackgroundColorKey,
+                        TextColorKey = story.TextColorKey,
+                        FontTextKey = story.FontTextKey,
+                        FontSizeKey = story.FontSizeKey
                     };
 
                     // Send realtime notification

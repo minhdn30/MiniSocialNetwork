@@ -117,7 +117,7 @@ namespace SocialNetwork.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
             }
 
-            var result = await _storyViewService.GetViewableAuthorsAsync(currentId.Value, page, pageSize);
+            var result = await _storyService.GetViewableAuthorsAsync(currentId.Value, page, pageSize);
             return Ok(result);
         }
 
@@ -131,7 +131,31 @@ namespace SocialNetwork.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
             }
 
-            var result = await _storyViewService.GetActiveStoriesByAuthorAsync(currentId.Value, authorId);
+            var result = await _storyService.GetActiveStoriesByAuthorAsync(currentId.Value, authorId);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("{storyId}/resolve")]
+        public async Task<ActionResult<StoryResolveResponse>> ResolveStory([FromRoute] Guid storyId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            if (storyId == Guid.Empty)
+            {
+                return BadRequest(new { message = "StoryId is required." });
+            }
+
+            var result = await _storyService.ResolveStoryAsync(currentId.Value, storyId);
+            if (result == null)
+            {
+                return NotFound(new { message = "Story not found or expired." });
+            }
+
             return Ok(result);
         }
 

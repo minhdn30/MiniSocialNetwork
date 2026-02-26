@@ -137,11 +137,6 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Follow>()
                 .HasIndex(f => new { f.FollowerId, f.CreatedAt });
 
-            // Composite index for fast relationship checks
-            modelBuilder.Entity<Follow>()
-                .HasIndex(f => new { f.FollowerId, f.FollowedId })
-                .HasDatabaseName("IX_Follow_Follower_Followed");
-
             modelBuilder.Entity<Follow>()
                 .HasOne(f => f.Follower)
                 .WithMany(a => a.Followings)
@@ -273,6 +268,12 @@ namespace SocialNetwork.Infrastructure.Data
             modelBuilder.Entity<Story>()
                 .HasIndex(s => new { s.IsDeleted, s.ExpiresAt, s.CreatedAt })
                 .HasDatabaseName("IX_Stories_Active");
+
+            // Optimize visibility feed branches by privacy with active-only rows.
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.Privacy, s.ExpiresAt, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Privacy_Active")
+                .HasFilter("\"IsDeleted\" = FALSE");
 
             modelBuilder.Entity<Story>()
                 .HasIndex(s => new { s.AccountId, s.IsDeleted, s.ExpiresAt, s.CreatedAt })

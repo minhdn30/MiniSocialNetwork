@@ -1,10 +1,12 @@
 using AutoMapper;
+using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.StoryDTOs;
 using SocialNetwork.Application.Helpers.FileTypeHelpers;
 using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Stories;
+using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
@@ -13,7 +15,12 @@ namespace SocialNetwork.Application.Services.StoryServices
 {
     public class StoryService : IStoryService
     {
+        private const int DefaultAuthorsPageSize = 20;
+        private const int MaxAuthorsPageSize = 50;
+        private const int DefaultTopViewersCount = 3;
+
         private readonly IStoryRepository _storyRepository;
+        private readonly IStoryViewRepository _storyViewRepository;
         private readonly IAccountRepository _accountRepository;
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
@@ -22,6 +29,7 @@ namespace SocialNetwork.Application.Services.StoryServices
 
         public StoryService(
             IStoryRepository storyRepository,
+            IStoryViewRepository storyViewRepository,
             IAccountRepository accountRepository,
             ICloudinaryService cloudinaryService,
             IFileTypeDetector fileTypeDetector,
@@ -29,11 +37,145 @@ namespace SocialNetwork.Application.Services.StoryServices
             IMapper mapper)
         {
             _storyRepository = storyRepository;
+            _storyViewRepository = storyViewRepository;
             _accountRepository = accountRepository;
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+        }
+
+        public async Task<PagedResponse<StoryAuthorItemResponse>> GetViewableAuthorsAsync(Guid currentId, int page, int pageSize)
+        {
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = DefaultAuthorsPageSize;
+            if (pageSize > MaxAuthorsPageSize) pageSize = MaxAuthorsPageSize;
+
+            var (items, totalItems) = await _storyRepository.GetViewableAuthorSummariesAsync(
+                currentId,
+                DateTime.UtcNow,
+                page,
+                pageSize);
+
+            var responses = items.Select(item => new StoryAuthorItemResponse
+            {
+                AccountId = item.AccountId,
+                Username = item.Username,
+                FullName = item.FullName,
+                AvatarUrl = item.AvatarUrl,
+                LatestStoryCreatedAt = item.LatestStoryCreatedAt,
+                ActiveStoryCount = item.ActiveStoryCount,
+                UnseenCount = item.UnseenCount,
+                StoryRingState = item.ActiveStoryCount <= 0
+                    ? StoryRingStateEnum.None
+                    : (item.UnseenCount > 0 ? StoryRingStateEnum.Unseen : StoryRingStateEnum.Seen),
+                IsCurrentUser = item.AccountId == currentId
+            }).ToList();
+
+            return new PagedResponse<StoryAuthorItemResponse>(responses, page, pageSize, totalItems);
+        }
+
+        public async Task<StoryAuthorActiveResponse> GetActiveStoriesByAuthorAsync(Guid currentId, Guid authorId)
+        {
+            if (authorId == Guid.Empty)
+            {
+                throw new BadRequestException("AuthorId is required.");
+            }
+
+            var storyItems = await _storyRepository.GetActiveStoriesByAuthorAsync(currentId, authorId, DateTime.UtcNow);
+            if (storyItems.Count == 0)
+            {
+                throw new NotFoundException("No active stories found or access is denied.");
+            }
+
+            var firstItem = storyItems[0];
+            var stories = storyItems.Select(item => new StoryActiveItemResponse
+            {
+                StoryId = item.StoryId,
+                ContentType = (int)item.ContentType,
+                MediaUrl = item.MediaUrl,
+                TextContent = item.TextContent,
+                BackgroundColorKey = item.BackgroundColorKey,
+                FontTextKey = item.FontTextKey,
+                FontSizeKey = item.FontSizeKey,
+                TextColorKey = item.TextColorKey,
+                Privacy = (int)item.Privacy,
+                CreatedAt = item.CreatedAt,
+                ExpiresAt = item.ExpiresAt,
+                IsViewedByCurrentUser = item.IsViewedByCurrentUser,
+                CurrentUserReactType = item.CurrentUserReactType.HasValue ? (int)item.CurrentUserReactType.Value : null
+            }).ToList();
+
+            if (authorId == currentId)
+            {
+                var storyIds = storyItems.Select(x => x.StoryId).Distinct().ToList();
+                var viewSummaryMap = await _storyViewRepository.GetStoryViewSummariesAsync(
+                    authorId,
+                    storyIds,
+                    DefaultTopViewersCount);
+
+                foreach (var story in stories)
+                {
+                    if (!viewSummaryMap.TryGetValue(story.StoryId, out var summary))
+                    {
+                        story.ViewSummary = new StoryViewSummaryResponse
+                        {
+                            TotalViews = 0,
+                            TopViewers = Array.Empty<StoryViewerBasicResponse>()
+                        };
+                        continue;
+                    }
+
+                    story.ViewSummary = new StoryViewSummaryResponse
+                    {
+                        TotalViews = summary.TotalViews,
+                        TopViewers = summary.TopViewers
+                            .Select(v => new StoryViewerBasicResponse
+                            {
+                                AccountId = v.AccountId,
+                                Username = v.Username,
+                                FullName = v.FullName,
+                                AvatarUrl = v.AvatarUrl,
+                                ViewedAt = v.ViewedAt,
+                                ReactType = v.ReactType.HasValue ? (int)v.ReactType.Value : null
+                            })
+                            .ToList()
+                    };
+                }
+            }
+
+            return new StoryAuthorActiveResponse
+            {
+                AccountId = firstItem.AccountId,
+                Username = firstItem.Username,
+                FullName = firstItem.FullName,
+                AvatarUrl = firstItem.AvatarUrl,
+                Stories = stories
+            };
+        }
+
+        public async Task<StoryResolveResponse?> ResolveStoryAsync(Guid currentId, Guid storyId)
+        {
+            if (storyId == Guid.Empty)
+            {
+                throw new BadRequestException("StoryId is required.");
+            }
+
+            var authorId = await _storyRepository.ResolveAuthorIdByStoryIdAsync(
+                currentId,
+                storyId,
+                DateTime.UtcNow);
+
+            if (!authorId.HasValue)
+            {
+                return null;
+            }
+
+            return new StoryResolveResponse
+            {
+                StoryId = storyId,
+                AuthorId = authorId.Value
+            };
         }
 
         public async Task<StoryDetailResponse> CreateStoryAsync(Guid currentId, StoryCreateRequest request)

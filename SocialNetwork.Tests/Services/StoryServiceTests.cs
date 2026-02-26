@@ -9,6 +9,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Stories;
+using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
@@ -18,6 +19,7 @@ namespace SocialNetwork.Tests.Services
     public class StoryServiceTests
     {
         private readonly Mock<IStoryRepository> _storyRepositoryMock;
+        private readonly Mock<IStoryViewRepository> _storyViewRepositoryMock;
         private readonly Mock<IAccountRepository> _accountRepositoryMock;
         private readonly Mock<ICloudinaryService> _cloudinaryServiceMock;
         private readonly Mock<IFileTypeDetector> _fileTypeDetectorMock;
@@ -28,6 +30,7 @@ namespace SocialNetwork.Tests.Services
         public StoryServiceTests()
         {
             _storyRepositoryMock = new Mock<IStoryRepository>();
+            _storyViewRepositoryMock = new Mock<IStoryViewRepository>();
             _accountRepositoryMock = new Mock<IAccountRepository>();
             _cloudinaryServiceMock = new Mock<ICloudinaryService>();
             _fileTypeDetectorMock = new Mock<IFileTypeDetector>();
@@ -60,6 +63,7 @@ namespace SocialNetwork.Tests.Services
 
             _storyService = new StoryService(
                 _storyRepositoryMock.Object,
+                _storyViewRepositoryMock.Object,
                 _accountRepositoryMock.Object,
                 _cloudinaryServiceMock.Object,
                 _fileTypeDetectorMock.Object,
