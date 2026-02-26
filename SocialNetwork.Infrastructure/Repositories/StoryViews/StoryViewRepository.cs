@@ -201,7 +201,7 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                         FullName = x.FullName,
                         AvatarUrl = x.AvatarUrl,
                         ViewedAt = x.ViewedAt,
-                        ReactType = x.ReactType
+                        ReactType = (int?)x.ReactType
                     })
                     .ToList();
 
@@ -324,6 +324,34 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
         {
             _context.StoryViews.Update(storyView);
             await Task.CompletedTask;
+        }
+
+        public async Task<(List<StoryViewerBasicModel> Items, int TotalItems)> GetStoryViewersPagedAsync(Guid storyId, int page, int pageSize)
+        {
+            var query = _context.StoryViews
+                .AsNoTracking()
+                .Where(v => v.StoryId == storyId && v.ViewerAccount.Status == AccountStatusEnum.Active);
+
+            int totalItems = await query.CountAsync();
+
+            var items = await query
+                .OrderByDescending(v => v.ReactType.HasValue)
+                .ThenByDescending(v => v.ReactedAt)
+                .ThenByDescending(v => v.ViewedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(v => new StoryViewerBasicModel
+                {
+                    AccountId = v.ViewerAccountId,
+                    Username = v.ViewerAccount.Username,
+                    FullName = v.ViewerAccount.FullName,
+                    AvatarUrl = v.ViewerAccount.AvatarUrl,
+                    ViewedAt = v.ViewedAt,
+                    ReactType = (int?)v.ReactType
+                })
+                .ToListAsync();
+
+            return (items, totalItems);
         }
 
         private IQueryable<Story> BuildVisibleStoriesQuery(Guid currentId, DateTime nowUtc)

@@ -117,6 +117,7 @@ namespace SocialNetwork.Application.Mapping
             CreateMap<CommentWithReplyCountModel, CommentResponse>();
             CreateMap<ReplyCommentModel, CommentResponse>();
             CreateMap<StoryActiveItemModel, StoryActiveItemResponse>();
+            CreateMap<StoryViewerBasicModel, StoryViewerBasicResponse>();
 
             
         }

@@ -11,5 +11,6 @@ namespace SocialNetwork.Application.Services.StoryViewServices
         Task<StoryMarkViewedResponse> MarkStoriesViewedAsync(Guid currentId, StoryMarkViewedRequest request);
         Task<IReadOnlyDictionary<Guid, StoryRingStateEnum>> GetStoryRingStatesForAuthorsAsync(Guid currentId, IEnumerable<Guid> authorIds);
         Task<StoryActiveItemResponse> ReactStoryAsync(Guid currentId, Guid storyId, StoryReactRequest request);
+        Task<PagedResponse<StoryViewerBasicResponse>> GetStoryViewersAsync(Guid currentId, Guid storyId, int page, int pageSize);
     }
 }

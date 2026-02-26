@@ -315,5 +315,30 @@ namespace SocialNetwork.Application.Services.StoryViewServices
 
             return _mapper.Map<StoryActiveItemResponse>(model);
         }
+
+        public async Task<PagedResponse<StoryViewerBasicResponse>> GetStoryViewersAsync(Guid currentId, Guid storyId, int page, int pageSize)
+        {
+            var story = await _storyRepository.GetStoryByIdAsync(storyId);
+            if (story == null || story.IsDeleted)
+            {
+                throw new NotFoundException("Story not found.");
+            }
+
+            // Security check: Only owner can see the list
+            if (story.AccountId != currentId)
+            {
+                throw new ForbiddenException("You don't have permission to view viewers of this story.");
+            }
+
+            var (items, totalItems) = await _storyViewRepository.GetStoryViewersPagedAsync(storyId, page, pageSize);
+
+            return new PagedResponse<StoryViewerBasicResponse>
+            {
+                Items = _mapper.Map<List<StoryViewerBasicResponse>>(items),
+                TotalItems = totalItems,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
     }
 }
