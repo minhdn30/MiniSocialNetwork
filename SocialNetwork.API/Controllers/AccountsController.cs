@@ -123,6 +123,9 @@ namespace SocialNetwork.API.Controllers
             if (request.FollowingPrivacy.HasValue && !IsValidEnumValue(request.FollowingPrivacy.Value))
                 return BadRequest(new { message = "Invalid AccountPrivacyEnum value for FollowingPrivacy." });
 
+            if (request.StoryHighlightPrivacy.HasValue && !IsValidEnumValue(request.StoryHighlightPrivacy.Value))
+                return BadRequest(new { message = "Invalid AccountPrivacyEnum value for StoryHighlightPrivacy." });
+
             if (request.GroupChatInvitePermission.HasValue && !IsValidEnumValue(request.GroupChatInvitePermission.Value))
                 return BadRequest(new { message = "Invalid GroupChatInvitePermissionEnum value." });
 
