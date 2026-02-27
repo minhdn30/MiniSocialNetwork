@@ -9,6 +9,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Stories;
+using SocialNetwork.Infrastructure.Repositories.StoryHighlights;
 using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
@@ -20,6 +21,7 @@ namespace SocialNetwork.Tests.Services
     public class StoryServiceTests
     {
         private readonly Mock<IStoryRepository> _storyRepositoryMock;
+        private readonly Mock<IStoryHighlightRepository> _storyHighlightRepositoryMock;
         private readonly Mock<IStoryViewRepository> _storyViewRepositoryMock;
         private readonly Mock<IAccountRepository> _accountRepositoryMock;
         private readonly Mock<ICloudinaryService> _cloudinaryServiceMock;
@@ -31,6 +33,7 @@ namespace SocialNetwork.Tests.Services
         public StoryServiceTests()
         {
             _storyRepositoryMock = new Mock<IStoryRepository>();
+            _storyHighlightRepositoryMock = new Mock<IStoryHighlightRepository>();
             _storyViewRepositoryMock = new Mock<IStoryViewRepository>();
             _accountRepositoryMock = new Mock<IAccountRepository>();
             _cloudinaryServiceMock = new Mock<ICloudinaryService>();
@@ -43,6 +46,14 @@ namespace SocialNetwork.Tests.Services
                     It.IsAny<Func<Task<StoryDetailResponse>>>(),
                     It.IsAny<Func<Task>?>()))
                 .Returns((Func<Task<StoryDetailResponse>> operation, Func<Task>? _) => operation());
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<bool>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<bool>> operation, Func<Task>? _) => operation());
+            _unitOfWorkMock
+                .Setup(x => x.CommitAsync())
+                .Returns(Task.CompletedTask);
             _mapperMock
                 .Setup(x => x.Map<StoryDetailResponse>(It.IsAny<Story>()))
                 .Returns<Story>(story => new StoryDetailResponse
@@ -64,6 +75,7 @@ namespace SocialNetwork.Tests.Services
 
             _storyService = new StoryService(
                 _storyRepositoryMock.Object,
+                _storyHighlightRepositoryMock.Object,
                 _storyViewRepositoryMock.Object,
                 _accountRepositoryMock.Object,
                 _cloudinaryServiceMock.Object,
@@ -533,7 +545,7 @@ namespace SocialNetwork.Tests.Services
         }
 
         [Fact]
-        public async Task SoftDeleteStoryAsync_WhenCurrentUserIsOwner_SoftDeletesAndCommits()
+        public async Task SoftDeleteStoryAsync_WhenCurrentUserIsOwner_SoftDeletesInTransaction()
         {
             // Arrange
             var storyId = Guid.NewGuid();
@@ -551,9 +563,14 @@ namespace SocialNetwork.Tests.Services
             _storyRepositoryMock
                 .Setup(x => x.UpdateStoryAsync(story))
                 .Returns(Task.CompletedTask);
+            _storyHighlightRepositoryMock
+                .Setup(x => x.GetGroupsByOwnerContainingStoryAsync(currentId, storyId))
+                .ReturnsAsync(new List<StoryHighlightGroup>());
             _unitOfWorkMock
-                .Setup(x => x.CommitAsync())
-                .Returns(Task.CompletedTask);
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<bool>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<bool>> operation, Func<Task>? _) => operation());
 
             // Act
             await _storyService.SoftDeleteStoryAsync(storyId, currentId);
@@ -561,7 +578,69 @@ namespace SocialNetwork.Tests.Services
             // Assert
             story.IsDeleted.Should().BeTrue();
             _storyRepositoryMock.Verify(x => x.UpdateStoryAsync(story), Times.Once);
+            _unitOfWorkMock.Verify(x => x.ExecuteInTransactionAsync(
+                It.IsAny<Func<Task<bool>>>(),
+                It.IsAny<Func<Task>?>()), Times.Once);
             _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task SoftDeleteStoryAsync_WhenStoryIsSingleItemInHighlightGroup_DeletesEmptyGroupAndCover()
+        {
+            // Arrange
+            var storyId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var story = new Story
+            {
+                StoryId = storyId,
+                AccountId = currentId,
+                IsDeleted = false
+            };
+
+            var group = new StoryHighlightGroup
+            {
+                StoryHighlightGroupId = Guid.NewGuid(),
+                AccountId = currentId,
+                Name = "Trips",
+                CoverImageUrl = "https://res.cloudinary.com/demo/image/upload/v1/group-cover.jpg"
+            };
+
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync(story);
+            _storyRepositoryMock
+                .Setup(x => x.UpdateStoryAsync(story))
+                .Returns(Task.CompletedTask);
+            _storyHighlightRepositoryMock
+                .Setup(x => x.GetGroupsByOwnerContainingStoryAsync(currentId, storyId))
+                .ReturnsAsync(new List<StoryHighlightGroup> { group });
+            _storyHighlightRepositoryMock
+                .Setup(x => x.TryRemoveGroupIfEffectivelyEmptyAsync(group.StoryHighlightGroupId, currentId))
+                .ReturnsAsync(true);
+
+            _cloudinaryServiceMock
+                .Setup(x => x.GetPublicIdFromUrl(group.CoverImageUrl!))
+                .Returns("group-cover");
+            _cloudinaryServiceMock
+                .Setup(x => x.DeleteMediaAsync("group-cover", MediaTypeEnum.Image))
+                .ReturnsAsync(true);
+
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<bool>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<bool>> operation, Func<Task>? _) => operation());
+
+            // Act
+            await _storyService.SoftDeleteStoryAsync(storyId, currentId);
+
+            // Assert
+            story.IsDeleted.Should().BeTrue();
+            _storyRepositoryMock.Verify(x => x.UpdateStoryAsync(story), Times.Once);
+            _storyHighlightRepositoryMock.Verify(
+                x => x.TryRemoveGroupIfEffectivelyEmptyAsync(group.StoryHighlightGroupId, currentId),
+                Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync("group-cover", MediaTypeEnum.Image), Times.Once);
         }
 
         [Fact]

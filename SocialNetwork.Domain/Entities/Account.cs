@@ -47,6 +47,7 @@ namespace SocialNetwork.Domain.Entities
         public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
         public virtual ICollection<Story> Stories { get; set; } = new List<Story>();
         public virtual ICollection<StoryView> StoryViews { get; set; } = new List<StoryView>();
+        public virtual ICollection<StoryHighlightGroup> StoryHighlightGroups { get; set; } = new List<StoryHighlightGroup>();
         public virtual ICollection<ExternalLogin> ExternalLogins { get; set; } = new List<ExternalLogin>();
 
         // Comment-related
