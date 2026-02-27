@@ -342,6 +342,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
                 FollowingPrivacy = profileModel.FollowingPrivacy,
+                StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
                 OnlineStatusVisibility = profileModel.OnlineStatusVisibility
             };
@@ -418,6 +419,7 @@ namespace SocialNetwork.Application.Services.AccountServices
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
                 FollowingPrivacy = profileModel.FollowingPrivacy,
+                StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
                 OnlineStatusVisibility = profileModel.OnlineStatusVisibility
             };
