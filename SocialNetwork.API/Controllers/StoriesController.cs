@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SocialNetwork.Application.DTOs.CommonDTOs;
 using SocialNetwork.Application.DTOs.StoryDTOs;
+using SocialNetwork.Application.DTOs.StoryHighlightDTOs;
 using SocialNetwork.Application.Helpers.ClaimHelpers;
+using SocialNetwork.Application.Services.StoryHighlightServices;
 using SocialNetwork.Application.Services.StoryServices;
 using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.Domain.Enums;
@@ -14,11 +16,16 @@ namespace SocialNetwork.API.Controllers
     public class StoriesController : ControllerBase
     {
         private readonly IStoryService _storyService;
+        private readonly IStoryHighlightService _storyHighlightService;
         private readonly IStoryViewService _storyViewService;
 
-        public StoriesController(IStoryService storyService, IStoryViewService storyViewService)
+        public StoriesController(
+            IStoryService storyService,
+            IStoryHighlightService storyHighlightService,
+            IStoryViewService storyViewService)
         {
             _storyService = storyService;
+            _storyHighlightService = storyHighlightService;
             _storyViewService = storyViewService;
         }
 
@@ -228,6 +235,134 @@ namespace SocialNetwork.API.Controllers
 
             var result = await _storyViewService.GetStoryViewersAsync(currentId.Value, storyId, page, pageSize);
             return Ok(result);
+        }
+
+        [AllowAnonymous]
+        [HttpGet("highlights/profiles/{targetAccountId}/groups")]
+        public async Task<ActionResult<List<StoryHighlightGroupListItemResponse>>> GetProfileHighlightGroups([FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            var result = await _storyHighlightService.GetProfileHighlightGroupsAsync(targetAccountId, currentId);
+            return Ok(result);
+        }
+
+        [AllowAnonymous]
+        [HttpGet("highlights/profiles/{targetAccountId}/groups/{groupId}/stories")]
+        public async Task<ActionResult<StoryHighlightGroupStoriesResponse>> GetHighlightGroupStories(
+            [FromRoute] Guid targetAccountId,
+            [FromRoute] Guid groupId)
+        {
+            var currentId = User.GetAccountId();
+            var result = await _storyHighlightService.GetHighlightGroupStoriesAsync(targetAccountId, groupId, currentId);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("highlights/archive-candidates")]
+        public async Task<ActionResult<PagedResponse<StoryHighlightArchiveCandidateResponse>>> GetHighlightArchiveCandidates(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] Guid? excludeGroupId = null)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            var result = await _storyHighlightService.GetArchiveCandidatesAsync(currentId.Value, page, pageSize, excludeGroupId);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("highlights/groups")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<StoryHighlightGroupMutationResponse>> CreateHighlightGroup([FromForm] StoryHighlightCreateGroupRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            var result = await _storyHighlightService.CreateGroupAsync(currentId.Value, request);
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+
+        [Authorize]
+        [HttpPost("highlights/groups/{groupId}/items")]
+        public async Task<ActionResult<StoryHighlightGroupMutationResponse>> AddHighlightItems(
+            [FromRoute] Guid groupId,
+            [FromBody] StoryHighlightAddItemsRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            var result = await _storyHighlightService.AddItemsAsync(currentId.Value, groupId, request);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpDelete("highlights/groups/{groupId}/items/{storyId}")]
+        public async Task<IActionResult> RemoveHighlightItem([FromRoute] Guid groupId, [FromRoute] Guid storyId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            await _storyHighlightService.RemoveItemAsync(currentId.Value, groupId, storyId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("highlights/groups/{groupId}")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<StoryHighlightGroupMutationResponse>> UpdateHighlightGroup(
+            [FromRoute] Guid groupId,
+            [FromForm] StoryHighlightUpdateGroupRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            var result = await _storyHighlightService.UpdateGroupAsync(currentId.Value, groupId, request);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpDelete("highlights/groups/{groupId}")]
+        public async Task<IActionResult> DeleteHighlightGroup([FromRoute] Guid groupId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            await _storyHighlightService.DeleteGroupAsync(currentId.Value, groupId);
+            return NoContent();
         }
     }
 }

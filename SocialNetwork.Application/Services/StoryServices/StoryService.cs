@@ -6,6 +6,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Repositories.Accounts;
 using SocialNetwork.Infrastructure.Repositories.Stories;
+using SocialNetwork.Infrastructure.Repositories.StoryHighlights;
 using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
@@ -22,6 +23,7 @@ namespace SocialNetwork.Application.Services.StoryServices
         private const int DefaultTopViewersCount = 3;
 
         private readonly IStoryRepository _storyRepository;
+        private readonly IStoryHighlightRepository _storyHighlightRepository;
         private readonly IStoryViewRepository _storyViewRepository;
         private readonly IAccountRepository _accountRepository;
         private readonly ICloudinaryService _cloudinaryService;
@@ -31,6 +33,7 @@ namespace SocialNetwork.Application.Services.StoryServices
 
         public StoryService(
             IStoryRepository storyRepository,
+            IStoryHighlightRepository storyHighlightRepository,
             IStoryViewRepository storyViewRepository,
             IAccountRepository accountRepository,
             ICloudinaryService cloudinaryService,
@@ -39,6 +42,7 @@ namespace SocialNetwork.Application.Services.StoryServices
             IMapper mapper)
         {
             _storyRepository = storyRepository;
+            _storyHighlightRepository = storyHighlightRepository;
             _storyViewRepository = storyViewRepository;
             _accountRepository = accountRepository;
             _cloudinaryService = cloudinaryService;
@@ -434,9 +438,55 @@ namespace SocialNetwork.Application.Services.StoryServices
                 throw new ForbiddenException("You are not authorized to delete this story.");
             }
 
-            story.IsDeleted = true;
-            await _storyRepository.UpdateStoryAsync(story);
-            await _unitOfWork.CommitAsync();
+            var deletedGroupCoverUrls = new List<string?>();
+
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                story.IsDeleted = true;
+                await _storyRepository.UpdateStoryAsync(story);
+                await _unitOfWork.CommitAsync();
+
+                var candidateGroups = await _storyHighlightRepository
+                    .GetGroupsByOwnerContainingStoryAsync(currentId, storyId);
+
+                foreach (var group in candidateGroups)
+                {
+                    var isDeleted = await _storyHighlightRepository.TryRemoveGroupIfEffectivelyEmptyAsync(
+                        group.StoryHighlightGroupId,
+                        currentId);
+
+                    if (isDeleted)
+                    {
+                        deletedGroupCoverUrls.Add(group.CoverImageUrl);
+                    }
+                }
+
+                return true;
+            });
+
+            var groupCoverPublicIds = deletedGroupCoverUrls
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Select(url => _cloudinaryService.GetPublicIdFromUrl(url!))
+                .Where(publicId => !string.IsNullOrWhiteSpace(publicId))
+                .Distinct()
+                .ToList();
+
+            if (groupCoverPublicIds.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var publicId in groupCoverPublicIds)
+            {
+                try
+                {
+                    await _cloudinaryService.DeleteMediaAsync(publicId!, MediaTypeEnum.Image);
+                }
+                catch
+                {
+                    // Best-effort cleanup for orphaned group cover images.
+                }
+            }
         }
     }
 }
