@@ -14,7 +14,11 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
     public class CloudinaryService : ICloudinaryService
     {
         private readonly CloudinaryDotNet.Cloudinary _cloudinary;
-        public CloudinaryService(IConfiguration config)
+        private readonly ICloudinaryDeleteBackgroundQueue _deleteQueue;
+
+        public CloudinaryService(
+            IConfiguration config,
+            ICloudinaryDeleteBackgroundQueue deleteQueue)
         {
             var account = new CloudinaryDotNet.Account(
                 config["Cloudinary:CloudName"],
@@ -23,6 +27,7 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
             );
 
             _cloudinary = new CloudinaryDotNet.Cloudinary(account);
+            _deleteQueue = deleteQueue;
         }
         public async Task<string?> UploadImageAsync(IFormFile file)
         {
@@ -139,9 +144,34 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
 
         public async Task<bool> DeleteMediaAsync(string publicId, MediaTypeEnum type)
         {
+            var normalizedPublicId = (publicId ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedPublicId))
+            {
+                return false;
+            }
+
+            if (_deleteQueue.Enqueue(normalizedPublicId, type))
+            {
+                return true;
+            }
+
+            // Fallback: queue unavailable/full => execute immediately.
+            try
+            {
+                var deletionParams = BuildDeletionParams(normalizedPublicId, type);
+                var result = await _cloudinary.DestroyAsync(deletionParams);
+                return result.Result == "ok" || result.Result == "not found";
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        internal static DeletionParams BuildDeletionParams(string publicId, MediaTypeEnum type)
+        {
             var deletionParams = new DeletionParams(publicId);
 
-            //Specify resource type if it is video
             if (type == MediaTypeEnum.Video)
             {
                 deletionParams.ResourceType = ResourceType.Video;
@@ -151,9 +181,7 @@ namespace SocialNetwork.Infrastructure.Services.Cloudinary
                 deletionParams.ResourceType = ResourceType.Raw;
             }
 
-            var result = await _cloudinary.DestroyAsync(deletionParams);
-
-            return result.Result == "ok" || result.Result == "not found";
+            return deletionParams;
         }
 
     }
