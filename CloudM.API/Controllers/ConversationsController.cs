@@ -1,0 +1,453 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using CloudM.Application.DTOs.CommonDTOs;
+using CloudM.Application.DTOs.ConversationDTOs;
+using CloudM.Application.DTOs.ConversationMemberDTOs;
+using CloudM.Application.Helpers.ClaimHelpers;
+using CloudM.Application.Services.AccountServices;
+using CloudM.Application.Services.ConversationMemberServices;
+using CloudM.Application.Services.ConversationServices;
+using CloudM.Application.Services.MessageServices;
+using CloudM.Infrastructure.Models;
+
+namespace CloudM.API.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ConversationsController : ControllerBase
+    {
+        private const int MinGroupConversationMembers = 3;
+        private const int MaxGroupConversationMembers = 50;
+
+        private readonly IConversationService _conversationService;
+        private readonly IConversationMemberService _conversationMemberService;
+        private readonly IMessageService _messageService;
+        public ConversationsController(IConversationService conversationService, IConversationMemberService conversationMemberService,
+            IMessageService messageService)
+        {
+            _conversationService = conversationService;
+            _conversationMemberService = conversationMemberService;
+            _messageService = messageService;
+        }
+        [Authorize]
+        [HttpGet]
+        public async Task<IActionResult> GetConversations([FromQuery] bool? isPrivate, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var chats = await _conversationService.GetConversationsPagedAsync(currentId.Value, isPrivate, search, page, pageSize);
+            return Ok(chats);
+        }
+
+        [Authorize]
+        [HttpGet("private")]
+        public async Task<IActionResult> GetPrivateConversation([FromQuery] Guid otherId)
+        {
+            var currentId = User.GetAccountId();
+            if(currentId == null) 
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (otherId == Guid.Empty)
+                return BadRequest(new { message = "Other account is required." });
+            if (currentId.Value == otherId)
+                return BadRequest(new { message = "Sender and receiver cannot be the same." });
+            var conversation = await _conversationService.GetPrivateConversationAsync(currentId.Value, otherId);
+            return Ok(conversation);
+        }
+        [Authorize]
+        [HttpGet("private/{otherId}")]
+        public async Task<IActionResult> GetPrivateConversationIncludeMessages([FromRoute] Guid otherId, [FromQuery] string? cursor = null,
+            [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (otherId == Guid.Empty)
+                return BadRequest(new { message = "Other account is required." });
+            if (currentId.Value == otherId)
+                return BadRequest(new { message = "You cannot chat with yourself." });
+
+            var result = await _conversationService.GetPrivateConversationWithMessagesByOtherIdAsync(currentId.Value, otherId, cursor, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("private")]
+        public async Task<IActionResult> CreatePrivateConversation([FromBody] CreatePrivateConversationRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.OtherId == Guid.Empty)
+                return BadRequest(new { message = "Other account is required." });
+            if (currentId.Value == request.OtherId)
+                return BadRequest(new { message = "Sender and receiver cannot be the same." });
+
+            var conversation = await _conversationService.CreatePrivateConversationAsync(currentId.Value, request.OtherId);
+            return CreatedAtAction(nameof(GetPrivateConversation), new { otherId = request.OtherId }, conversation);
+        }
+
+        [Authorize]
+        [HttpPost("group")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> CreateGroupConversation([FromForm] CreateGroupConversationRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (string.IsNullOrWhiteSpace(request.GroupName))
+                return BadRequest(new { message = "Group name is required." });
+
+            var uniqueOtherMemberIds = (request.MemberIds ?? new List<Guid>())
+                .Where(id => id != Guid.Empty && id != currentId.Value)
+                .Distinct()
+                .ToList();
+
+            var totalMembers = uniqueOtherMemberIds.Count + 1;
+            if (totalMembers < MinGroupConversationMembers)
+                return BadRequest(new { message = "A group must have at least 3 members (you and 2 others)." });
+
+            if (totalMembers > MaxGroupConversationMembers)
+                return BadRequest(new { message = $"A group can contain at most {MaxGroupConversationMembers} members." });
+
+            if (request.GroupAvatar != null && request.GroupAvatar.Length <= 0)
+                return BadRequest(new { message = "Group avatar file is empty." });
+
+            var conversation = await _conversationService.CreateGroupConversationAsync(currentId.Value, request);
+            return Ok(conversation);
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/group-info")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> UpdateGroupConversationInfo([FromRoute] Guid conversationId, [FromForm] UpdateGroupConversationRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.ConversationName != null && string.IsNullOrWhiteSpace(request.ConversationName))
+                return BadRequest(new { message = "Conversation name cannot be empty." });
+
+            if (request.ConversationAvatar != null && request.RemoveAvatar)
+                return BadRequest(new { message = "You cannot upload and remove avatar in the same request." });
+
+            if (request.ConversationAvatar != null && request.ConversationAvatar.Length <= 0)
+                return BadRequest(new { message = "Conversation avatar file is empty." });
+
+            await _conversationService.UpdateGroupConversationInfoAsync(conversationId, currentId.Value, request);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/members/nickname")]
+        public async Task<IActionResult> UpdateMemberNickname([FromRoute] Guid conversationId, [FromBody] ConversationMemberNicknameUpdateRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.AccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            await _conversationMemberService.UpdateMemberNickname(conversationId, currentId.Value, request);
+            return NoContent();
+        }
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/mute")]
+        public async Task<IActionResult> UpdateMuteStatus([FromRoute] Guid conversationId, [FromBody] ConversationMuteUpdateRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            await _conversationMemberService.SetMuteStatusAsync(conversationId, currentId.Value, request.IsMuted);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/theme")]
+        public async Task<IActionResult> UpdateTheme([FromRoute] Guid conversationId, [FromBody] ConversationThemeUpdateRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            await _conversationMemberService.SetThemeAsync(conversationId, currentId.Value, request);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpDelete("{conversationId:guid}/history")]
+        public async Task<IActionResult> SoftDeleteChatHistory([FromRoute] Guid conversationId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            await _conversationMemberService.SoftDeleteChatHistory(conversationId, currentId.Value);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/messages")]
+        public async Task<IActionResult> GetConversationMessages([FromRoute] Guid conversationId, [FromQuery] string? cursor = null, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _conversationService.GetConversationMessagesWithMetaDataAsync(conversationId, currentId.Value, cursor, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/messages/context")]
+        public async Task<IActionResult> GetMessageContext([FromRoute] Guid conversationId, [FromQuery] Guid messageId, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _conversationService.GetMessageContextAsync(conversationId, currentId.Value, messageId, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/messages/search")]
+        public async Task<IActionResult> SearchMessages([FromRoute] Guid conversationId, [FromQuery] string keyword, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (string.IsNullOrWhiteSpace(keyword) || keyword.Trim().Length < 2)
+                return BadRequest(new { message = "Keyword must be at least 2 characters." });
+
+            var result = await _conversationService.SearchMessagesAsync(conversationId, currentId.Value, keyword, page, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("accounts/search")]
+        public async Task<IActionResult> SearchAccountsForGroupInvite([FromQuery] SearchGroupInviteAccountsRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var normalizedKeyword = request.Keyword?.Trim() ?? string.Empty;
+            if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
+                return BadRequest(new { message = "Keyword must be empty or at least 2 characters." });
+
+            var result = await _conversationMemberService.SearchAccountsForGroupInviteAsync(
+                currentId.Value,
+                normalizedKeyword,
+                request.ExcludeAccountIds,
+                request.Limit);
+
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/members/search")]
+        public async Task<IActionResult> SearchAccountsForAddGroupMembers([FromRoute] Guid conversationId, [FromQuery] SearchGroupInviteAccountsRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var normalizedKeyword = request.Keyword?.Trim() ?? string.Empty;
+            if (normalizedKeyword.Length > 0 && normalizedKeyword.Length < 2)
+                return BadRequest(new { message = "Keyword must be empty or at least 2 characters." });
+
+            var result = await _conversationMemberService.SearchAccountsForAddGroupMembersAsync(
+                conversationId,
+                currentId.Value,
+                normalizedKeyword,
+                request.ExcludeAccountIds,
+                request.Limit);
+
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("{conversationId:guid}/members")]
+        public async Task<IActionResult> AddGroupMembers([FromRoute] Guid conversationId, [FromBody] AddGroupMembersRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            var requestedMemberIds = (request.MemberIds ?? new List<Guid>())
+                .Where(id => id != Guid.Empty && id != currentId.Value)
+                .Distinct()
+                .ToList();
+
+            if (requestedMemberIds.Count == 0)
+                return BadRequest(new { message = "Please select at least one member to add." });
+
+            await _conversationMemberService.AddGroupMembersAsync(conversationId, currentId.Value, request);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/members")]
+        public async Task<IActionResult> GetGroupConversationMembers(
+            [FromRoute] Guid conversationId,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] bool adminOnly = false)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _conversationService.GetGroupConversationMembersAsync(
+                conversationId,
+                currentId.Value,
+                page,
+                pageSize,
+                adminOnly);
+
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/members/{targetAccountId:guid}/kick")]
+        public async Task<IActionResult> KickGroupMember([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            if (currentId.Value == targetAccountId)
+                return BadRequest(new { message = "You cannot kick yourself from the group." });
+
+            await _conversationMemberService.KickGroupMemberAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/members/{targetAccountId:guid}/assign-admin")]
+        public async Task<IActionResult> AssignGroupAdmin([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            await _conversationMemberService.AssignGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/members/{targetAccountId:guid}/revoke-admin")]
+        public async Task<IActionResult> RevokeGroupAdmin([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            if (targetAccountId == currentId.Value)
+                return BadRequest(new { message = "You cannot revoke your own admin role." });
+
+            await _conversationMemberService.RevokeGroupAdminAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/owner/{targetAccountId:guid}/transfer")]
+        public async Task<IActionResult> TransferGroupOwner([FromRoute] Guid conversationId, [FromRoute] Guid targetAccountId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (targetAccountId == Guid.Empty)
+                return BadRequest(new { message = "Target account is required." });
+
+            if (targetAccountId == currentId.Value)
+                return BadRequest(new { message = "Please choose another member as the new owner." });
+
+            await _conversationMemberService.TransferGroupOwnerAsync(conversationId, currentId.Value, targetAccountId);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpPatch("{conversationId:guid}/leave")]
+        public async Task<IActionResult> LeaveGroupConversation([FromRoute] Guid conversationId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            await _conversationMemberService.LeaveGroupAsync(conversationId, currentId.Value);
+            return NoContent();
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/media")]
+        public async Task<IActionResult> GetConversationMedia([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _conversationService.GetConversationMediaAsync(conversationId, currentId.Value, page, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("{conversationId:guid}/files")]
+        public async Task<IActionResult> GetConversationFiles([FromRoute] Guid conversationId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var result = await _conversationService.GetConversationFilesAsync(conversationId, currentId.Value, page, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("unread-count")]
+        public async Task<IActionResult> GetUnreadCount()
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var count = await _conversationService.GetUnreadConversationCountAsync(currentId.Value);
+            return Ok(new { count });
+        }
+    }
+}

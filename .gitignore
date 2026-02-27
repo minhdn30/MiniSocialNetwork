@@ -42,8 +42,8 @@ packages/
 project_rules.md
 
 # Sensitive Files
-SocialNetwork.API/appsettings.Development.json
-SocialNetwork.API/appsettings.Local.json
+CloudM.API/appsettings.Development.json
+CloudM.API/appsettings.Local.json
 *.txt
 !README.md
-!SocialNetwork.API/SocialNetwork.API.http
+!CloudM.API/CloudM.API.http

@@ -1,0 +1,17 @@
+using Microsoft.AspNetCore.Http;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CloudM.Application.DTOs.MessageDTOs
+{
+    public class SendMessageRequest
+    {
+        public string? Content { get; set; }
+        public string? TempId { get; set; }
+        public List<IFormFile>? MediaFiles { get; set; }
+        public Guid? ReplyToMessageId { get; set; }
+    }
+}

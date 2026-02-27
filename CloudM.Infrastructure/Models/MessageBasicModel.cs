@@ -1,0 +1,29 @@
+﻿using CloudM.Domain.Entities;
+using CloudM.Domain.Enums;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CloudM.Infrastructure.Models
+{
+    public class MessageBasicModel
+    {
+        public Guid MessageId { get; set; }
+        public AccountChatInfoModel Sender { get; set; } = null!;
+        public string? Content { get; set; }
+        public MessageTypeEnum MessageType { get; set; } // Text / Media / System
+        public DateTime SentAt { get; set; }
+        public bool IsEdited { get; set; }
+        public bool IsRecalled { get; set; }
+        public string? SystemMessageDataJson { get; set; }
+        public List<MessageMediaBasicModel>? Medias { get; set; }
+        public List<MessageReactSummaryModel> Reacts { get; set; } = new();
+        public List<MessageReactAccountModel> ReactedBy { get; set; } = new();
+        public bool IsPinned { get; set; }
+        public ReactEnum? CurrentUserReactType { get; set; }
+        public ReplyInfoModel? ReplyTo { get; set; }
+        public StoryReplyInfoModel? StoryReplyInfo { get; set; }
+    }
+}
