@@ -4,6 +4,7 @@ namespace SocialNetwork.Infrastructure.Models
     {
         public Guid StoryId { get; set; }
         public int TotalViews { get; set; }
+        public int TotalReacts { get; set; }
         public IReadOnlyList<StoryViewerBasicModel> TopViewers { get; set; } = Array.Empty<StoryViewerBasicModel>();
     }
 }

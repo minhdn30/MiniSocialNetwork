@@ -199,6 +199,7 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
             }
 
             var query = _context.Posts
+                .AsNoTracking()
                 .Where(p =>
                     p.AccountId == accountId &&
                     !p.IsDeleted &&
@@ -210,7 +211,8 @@ namespace SocialNetwork.Infrastructure.Repositories.Posts
                         (p.Privacy == PostPrivacyEnum.FollowOnly && isFollower)
                     )
                 )
-                .OrderByDescending(p => p.CreatedAt);
+                .OrderByDescending(p => p.CreatedAt)
+                .ThenByDescending(p => p.PostId);
 
             var totalItems = await query.CountAsync();
 

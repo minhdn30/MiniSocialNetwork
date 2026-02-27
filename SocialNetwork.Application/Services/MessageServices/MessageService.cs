@@ -14,12 +14,14 @@ using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
+using SocialNetwork.Infrastructure.Repositories.Stories;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Application.Services.RealtimeServices;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
@@ -34,13 +36,14 @@ namespace SocialNetwork.Application.Services.MessageServices
         private readonly IAccountRepository _accountRepository;
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
+        private readonly IStoryRepository _storyRepository;
         private readonly IMapper _mapper;
         private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
 
         public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository, IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IAccountRepository accountRepository, IMapper mapper, ICloudinaryService cloudinaryService,
-            IFileTypeDetector fileTypeDetector, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
+            IFileTypeDetector fileTypeDetector, IStoryRepository storyRepository, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
         {
             _messageRepository = messageRepository;
             _messageMediaRepository = messageMediaRepository;
@@ -49,6 +52,7 @@ namespace SocialNetwork.Application.Services.MessageServices
             _accountRepository = accountRepository;
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
+            _storyRepository = storyRepository;
             _mapper = mapper;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
@@ -463,6 +467,107 @@ namespace SocialNetwork.Application.Services.MessageServices
                 ConversationId = message.ConversationId,
                 RecalledAt = message.RecalledAt.Value
             };
+        }
+
+        public async Task<SendMessageResponse> SendStoryReplyAsync(Guid senderId, SendStoryReplyRequest request)
+        {
+            // === validation phase ===
+            var accounts = await _accountRepository.GetAccountsByIds(new[] { senderId, request.ReceiverId })
+                ?? Enumerable.Empty<Account>();
+            var sender = accounts.FirstOrDefault(a => a.AccountId == senderId)
+                ?? await _accountRepository.GetAccountById(senderId);
+            var receiver = accounts.FirstOrDefault(a => a.AccountId == request.ReceiverId)
+                ?? await _accountRepository.GetAccountById(request.ReceiverId);
+
+            if (receiver == null)
+                throw new BadRequestException($"Receiver account with ID {request.ReceiverId} does not exist.");
+            if (receiver.Status != AccountStatusEnum.Active)
+                throw new BadRequestException("This user is currently unavailable.");
+            if (sender == null)
+                throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
+            if (sender.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to send messages.");
+
+            var now = DateTime.UtcNow;
+
+            // Verify story exists, is active, and sender is allowed to view it.
+            var story = await _storyRepository.GetViewableStoryByIdAsync(senderId, request.StoryId, now);
+            if (story == null)
+                throw new BadRequestException("This story is no longer available.");
+
+            if (story.AccountId != request.ReceiverId)
+                throw new BadRequestException("Story receiver does not match story owner.");
+
+            // Build snapshot JSON — stored in SystemMessageDataJson (reusing existing column)
+            var storySnapshot = JsonSerializer.Serialize(new
+            {
+                storyId = story.StoryId,
+                mediaUrl = story.MediaUrl,
+                contentType = (int)story.ContentType,
+                textContent = story.TextContent,
+                backgroundColorKey = story.BackgroundColorKey,
+                textColorKey = story.TextColorKey,
+                fontTextKey = story.FontTextKey,
+                fontSizeKey = story.FontSizeKey
+            });
+
+            // === database transaction phase ===
+            return await _unitOfWork.ExecuteInTransactionAsync(
+                async () =>
+                {
+                    // Get or create private conversation (lazy)
+                    var conversationId = await _conversationRepository.GetPrivateConversationIdAsync(senderId, request.ReceiverId);
+                    Guid actualConversationId;
+                    if (conversationId == null)
+                    {
+                        var conversation = await _conversationRepository.CreatePrivateConversationAsync(senderId, request.ReceiverId);
+                        await _unitOfWork.CommitAsync();
+                        actualConversationId = conversation.ConversationId;
+                    }
+                    else
+                    {
+                        actualConversationId = conversationId.Value;
+                    }
+
+                    // Create StoryReply message (snapshot in SystemMessageDataJson)
+                    var message = new Message
+                    {
+                        ConversationId = actualConversationId,
+                        AccountId = senderId,
+                        Content = request.Content,
+                        MessageType = MessageTypeEnum.StoryReply,
+                        SentAt = now,
+                        IsEdited = false,
+                        IsRecalled = false,
+                        SystemMessageDataJson = storySnapshot
+                    };
+                    await _messageRepository.AddMessageAsync(message);
+
+                    // Build response
+                    var result = _mapper.Map<SendMessageResponse>(message);
+                    result.TempId = request.TempId;
+                    result.Sender = _mapper.Map<AccountChatInfoResponse>(sender);
+                    result.StoryReplyInfo = new StoryReplyInfoModel
+                    {
+                        StoryId = story.StoryId,
+                        IsStoryExpired = false,
+                        MediaUrl = story.MediaUrl,
+                        ContentType = (int)story.ContentType,
+                        TextContent = story.TextContent,
+                        BackgroundColorKey = story.BackgroundColorKey,
+                        TextColorKey = story.TextColorKey,
+                        FontTextKey = story.FontTextKey,
+                        FontSizeKey = story.FontSizeKey
+                    };
+
+                    // Send realtime notification
+                    var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(result.ConversationId);
+                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, muteMap, result);
+
+                    return result;
+                },
+                () => Task.CompletedTask
+            );
         }
 
     }

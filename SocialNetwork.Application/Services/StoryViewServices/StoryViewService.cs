@@ -13,9 +13,8 @@ namespace SocialNetwork.Application.Services.StoryViewServices
 {
     public class StoryViewService : IStoryViewService
     {
-        private const int DefaultAuthorsPageSize = 20;
-        private const int MaxAuthorsPageSize = 50;
-        private const int DefaultTopViewersCount = 3;
+        private const int DefaultViewersPageSize = 20;
+        private const int MaxMarkViewedStoryIds = 200;
 
         private readonly IStoryViewRepository _storyViewRepository;
         private readonly IStoryRepository _storyRepository;
@@ -34,119 +33,16 @@ namespace SocialNetwork.Application.Services.StoryViewServices
             _mapper = mapper;
         }
 
-        public async Task<PagedResponse<StoryAuthorItemResponse>> GetViewableAuthorsAsync(Guid currentId, int page, int pageSize)
-        {
-            if (page <= 0) page = 1;
-            if (pageSize <= 0) pageSize = DefaultAuthorsPageSize;
-            if (pageSize > MaxAuthorsPageSize) pageSize = MaxAuthorsPageSize;
-
-            var (items, totalItems) = await _storyViewRepository.GetViewableAuthorSummariesAsync(
-                currentId,
-                DateTime.UtcNow,
-                page,
-                pageSize);
-
-            var responses = items.Select(item => new StoryAuthorItemResponse
-            {
-                AccountId = item.AccountId,
-                Username = item.Username,
-                FullName = item.FullName,
-                AvatarUrl = item.AvatarUrl,
-                LatestStoryCreatedAt = item.LatestStoryCreatedAt,
-                ActiveStoryCount = item.ActiveStoryCount,
-                UnseenCount = item.UnseenCount,
-                StoryRingState = item.ActiveStoryCount <= 0
-                    ? StoryRingStateEnum.None
-                    : (item.UnseenCount > 0 ? StoryRingStateEnum.Unseen : StoryRingStateEnum.Seen)
-            }).ToList();
-
-            return new PagedResponse<StoryAuthorItemResponse>(responses, page, pageSize, totalItems);
-        }
-
-        public async Task<StoryAuthorActiveResponse> GetActiveStoriesByAuthorAsync(Guid currentId, Guid authorId)
-        {
-            if (authorId == Guid.Empty)
-            {
-                throw new BadRequestException("AuthorId is required.");
-            }
-
-            var storyItems = await _storyViewRepository.GetActiveStoriesByAuthorAsync(currentId, authorId, DateTime.UtcNow);
-            if (storyItems.Count == 0)
-            {
-                throw new NotFoundException("No active stories found or access is denied.");
-            }
-
-            var firstItem = storyItems[0];
-            var stories = storyItems.Select(item => new StoryActiveItemResponse
-            {
-                StoryId = item.StoryId,
-                ContentType = (int)item.ContentType,
-                MediaUrl = item.MediaUrl,
-                TextContent = item.TextContent,
-                BackgroundColorKey = item.BackgroundColorKey,
-                FontTextKey = item.FontTextKey,
-                FontSizeKey = item.FontSizeKey,
-                TextColorKey = item.TextColorKey,
-                Privacy = (int)item.Privacy,
-                CreatedAt = item.CreatedAt,
-                ExpiresAt = item.ExpiresAt,
-                IsViewedByCurrentUser = item.IsViewedByCurrentUser,
-                CurrentUserReactType = item.CurrentUserReactType.HasValue ? (int)item.CurrentUserReactType.Value : null
-            }).ToList();
-
-            if (authorId == currentId)
-            {
-                var storyIds = storyItems.Select(x => x.StoryId).Distinct().ToList();
-                var viewSummaryMap = await _storyViewRepository.GetStoryViewSummariesAsync(
-                    authorId,
-                    storyIds,
-                    DefaultTopViewersCount);
-
-                foreach (var story in stories)
-                {
-                    if (!viewSummaryMap.TryGetValue(story.StoryId, out var summary))
-                    {
-                        story.ViewSummary = new StoryViewSummaryResponse
-                        {
-                            TotalViews = 0,
-                            TopViewers = Array.Empty<StoryViewerBasicResponse>()
-                        };
-                        continue;
-                    }
-
-                    story.ViewSummary = new StoryViewSummaryResponse
-                    {
-                        TotalViews = summary.TotalViews,
-                        TopViewers = summary.TopViewers
-                            .Select(v => new StoryViewerBasicResponse
-                            {
-                                AccountId = v.AccountId,
-                                Username = v.Username,
-                                FullName = v.FullName,
-                                AvatarUrl = v.AvatarUrl,
-                                ViewedAt = v.ViewedAt,
-                                ReactType = v.ReactType.HasValue ? (int)v.ReactType.Value : null
-                            })
-                            .ToList()
-                    };
-                }
-            }
-
-            return new StoryAuthorActiveResponse
-            {
-                AccountId = firstItem.AccountId,
-                Username = firstItem.Username,
-                FullName = firstItem.FullName,
-                AvatarUrl = firstItem.AvatarUrl,
-                Stories = stories
-            };
-        }
-
         public async Task<StoryMarkViewedResponse> MarkStoriesViewedAsync(Guid currentId, StoryMarkViewedRequest request)
         {
             if (request?.StoryIds == null || request.StoryIds.Count == 0)
             {
                 throw new BadRequestException("StoryIds is required.");
+            }
+
+            if (request.StoryIds.Count > MaxMarkViewedStoryIds)
+            {
+                throw new BadRequestException($"Maximum {MaxMarkViewedStoryIds} storyIds are allowed per request.");
             }
 
             var normalizedStoryIds = request.StoryIds
@@ -160,7 +56,7 @@ namespace SocialNetwork.Application.Services.StoryViewServices
             }
 
             var nowUtc = DateTime.UtcNow;
-            var visibleStoryIds = await _storyViewRepository.GetViewableStoryIdsAsync(currentId, normalizedStoryIds, nowUtc);
+            var visibleStoryIds = await _storyRepository.GetViewableStoryIdsAsync(currentId, normalizedStoryIds, nowUtc);
             if (visibleStoryIds.Count == 0)
             {
                 return new StoryMarkViewedResponse
@@ -182,17 +78,17 @@ namespace SocialNetwork.Application.Services.StoryViewServices
                 })
                 .ToList();
 
+            var markedCount = 0;
             if (toInsert.Count > 0)
             {
-                await _storyViewRepository.AddStoryViewsAsync(toInsert);
-                await _unitOfWork.CommitAsync();
+                markedCount = await _storyViewRepository.AddStoryViewsIgnoreConflictAsync(toInsert);
             }
 
             return new StoryMarkViewedResponse
             {
                 RequestedCount = normalizedStoryIds.Count,
                 VisibleCount = visibleStoryIds.Count,
-                MarkedCount = toInsert.Count
+                MarkedCount = markedCount
             };
         }
 
@@ -243,15 +139,22 @@ namespace SocialNetwork.Application.Services.StoryViewServices
 
         public async Task<StoryActiveItemResponse> ReactStoryAsync(Guid currentId, Guid storyId, StoryReactRequest request)
         {
+            var nowUtc = DateTime.UtcNow;
             var story = await _storyRepository.GetStoryByIdAsync(storyId);
             if (story == null || story.IsDeleted)
             {
                 throw new NotFoundException("Story not found or expired.");
             }
 
-            if (story.ExpiresAt <= DateTime.UtcNow)
+            if (story.ExpiresAt <= nowUtc)
             {
                 throw new BadRequestException("Story has expired.");
+            }
+
+            var viewableStoryIds = await _storyRepository.GetViewableStoryIdsAsync(currentId, new[] { storyId }, nowUtc);
+            if (viewableStoryIds.Count == 0)
+            {
+                throw new NotFoundException("Story not found or expired.");
             }
 
             if (!Enum.IsDefined(typeof(ReactEnum), request.ReactType))
@@ -261,21 +164,37 @@ namespace SocialNetwork.Application.Services.StoryViewServices
 
             var reactType = (ReactEnum)request.ReactType;
             var storyView = await _storyViewRepository.GetStoryViewAsync(storyId, currentId);
+            var createdInThisRequest = false;
 
             if (storyView == null)
             {
-                // Create new view with reaction
-                storyView = new StoryView
+                var newStoryView = new StoryView
                 {
                     StoryId = storyId,
                     ViewerAccountId = currentId,
-                    ViewedAt = DateTime.UtcNow,
+                    ViewedAt = nowUtc,
                     ReactType = reactType,
-                    ReactedAt = DateTime.UtcNow
+                    ReactedAt = nowUtc
                 };
-                await _storyViewRepository.AddStoryViewsAsync(new[] { storyView });
+
+                createdInThisRequest = await _storyViewRepository.TryAddStoryViewAsync(newStoryView);
+                if (createdInThisRequest)
+                {
+                    storyView = newStoryView;
+                }
+                else
+                {
+                    // Another request may have inserted the same PK concurrently.
+                    storyView = await _storyViewRepository.GetStoryViewAsync(storyId, currentId);
+                }
             }
-            else
+
+            if (storyView == null)
+            {
+                throw new NotFoundException("Story not found or expired.");
+            }
+
+            if (!createdInThisRequest)
             {
                 // Logic Toggle React
                 if (storyView.ReactType == reactType)
@@ -288,8 +207,9 @@ namespace SocialNetwork.Application.Services.StoryViewServices
                 {
                     // Upsert react
                     storyView.ReactType = reactType;
-                    storyView.ReactedAt = DateTime.UtcNow;
+                    storyView.ReactedAt = nowUtc;
                 }
+
                 await _storyViewRepository.UpdateStoryViewAsync(storyView);
             }
 
@@ -314,6 +234,34 @@ namespace SocialNetwork.Application.Services.StoryViewServices
             };
 
             return _mapper.Map<StoryActiveItemResponse>(model);
+        }
+
+        public async Task<PagedResponse<StoryViewerBasicResponse>> GetStoryViewersAsync(Guid currentId, Guid storyId, int page, int pageSize)
+        {
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = DefaultViewersPageSize;
+
+            var story = await _storyRepository.GetStoryByIdAsync(storyId);
+            if (story == null || story.IsDeleted)
+            {
+                throw new NotFoundException("Story not found.");
+            }
+
+            // Security check: Only owner can see the list
+            if (story.AccountId != currentId)
+            {
+                throw new ForbiddenException("You don't have permission to view viewers of this story.");
+            }
+
+            var (items, totalItems) = await _storyViewRepository.GetStoryViewersPagedAsync(storyId, page, pageSize);
+
+            return new PagedResponse<StoryViewerBasicResponse>
+            {
+                Items = _mapper.Map<List<StoryViewerBasicResponse>>(items),
+                TotalItems = totalItems,
+                Page = page,
+                PageSize = pageSize
+            };
         }
     }
 }

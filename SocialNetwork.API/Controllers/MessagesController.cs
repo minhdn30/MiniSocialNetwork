@@ -221,5 +221,32 @@ namespace SocialNetwork.API.Controllers
             return Ok(result);
         }
 
+        [Authorize]
+        [HttpPost("story-reply")]
+        public async Task<IActionResult> SendStoryReply([FromBody] SendStoryReplyRequest request)
+        {
+            var senderId = User.GetAccountId();
+            if (senderId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (string.IsNullOrWhiteSpace(request.Content))
+                return BadRequest(new { message = "Reply content is required." });
+
+            if (request.StoryId == Guid.Empty)
+                return BadRequest(new { message = "Story ID is required." });
+
+            if (request.ReceiverId == Guid.Empty)
+                return BadRequest(new { message = "Receiver account is required." });
+
+            if (senderId.Value == request.ReceiverId)
+                return BadRequest(new { message = "You cannot reply to your own story." });
+
+            var result = await _messageService.SendStoryReplyAsync(senderId.Value, request);
+            return Ok(result);
+        }
+
     }
 }

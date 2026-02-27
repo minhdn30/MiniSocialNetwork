@@ -3,6 +3,7 @@ using SocialNetwork.Domain.Entities;
 using SocialNetwork.Domain.Enums;
 using SocialNetwork.Infrastructure.Data;
 using SocialNetwork.Infrastructure.Models;
+using System.Text.Json;
 
 namespace SocialNetwork.Infrastructure.Repositories.StoryViews
 {
@@ -31,109 +32,63 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
             await _context.StoryViews.AddRangeAsync(items);
         }
 
-        public async Task<(List<StoryAuthorVisibleSummaryModel> Items, int TotalItems)> GetViewableAuthorSummariesAsync(
-            Guid currentId,
-            DateTime nowUtc,
-            int page,
-            int pageSize)
+        public async Task<int> AddStoryViewsIgnoreConflictAsync(IEnumerable<StoryView> storyViews)
         {
-            if (page <= 0) page = 1;
-            if (pageSize <= 0) pageSize = 20;
+            if (storyViews == null)
+            {
+                return 0;
+            }
 
-            var viewedStoryIds = _context.StoryViews
-                .AsNoTracking()
-                .Where(v => v.ViewerAccountId == currentId)
-                .Select(v => v.StoryId);
+            var items = storyViews
+                .Where(v => v != null)
+                .ToList();
 
-            var baseQuery = BuildVisibleStoriesQuery(currentId, nowUtc)
-                .Select(s => new
+            if (items.Count == 0)
+            {
+                return 0;
+            }
+
+            var payload = JsonSerializer.Serialize(
+                items.Select(v => new
                 {
-                    s.AccountId,
-                    s.Account.Username,
-                    s.Account.FullName,
-                    s.Account.AvatarUrl,
-                    s.CreatedAt,
-                    IsViewed = viewedStoryIds.Contains(s.StoryId)
-                })
-                .GroupBy(x => new
-                {
-                    x.AccountId,
-                    x.Username,
-                    x.FullName,
-                    x.AvatarUrl
-                })
-                .Select(g => new StoryAuthorVisibleSummaryModel
-                {
-                    AccountId = g.Key.AccountId,
-                    Username = g.Key.Username,
-                    FullName = g.Key.FullName,
-                    AvatarUrl = g.Key.AvatarUrl,
-                    LatestStoryCreatedAt = g.Max(x => x.CreatedAt),
-                    ActiveStoryCount = g.Count(),
-                    UnseenCount = g.Count(x => !x.IsViewed)
-                })
-                .OrderByDescending(x => x.LatestStoryCreatedAt)
-                .ThenBy(x => x.AccountId);
+                    v.StoryId,
+                    v.ViewerAccountId,
+                    v.ViewedAt,
+                    ReactType = (int?)v.ReactType,
+                    v.ReactedAt
+                }));
 
-            var totalItems = await baseQuery.CountAsync();
-            var items = await baseQuery
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            return (items, totalItems);
+            return await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO ""StoryViews"" (""StoryId"", ""ViewerAccountId"", ""ViewedAt"", ""ReactType"", ""ReactedAt"")
+                SELECT
+                    rows.""StoryId"",
+                    rows.""ViewerAccountId"",
+                    rows.""ViewedAt"",
+                    rows.""ReactType"",
+                    rows.""ReactedAt""
+                FROM jsonb_to_recordset({payload}::jsonb) AS rows(
+                    ""StoryId"" uuid,
+                    ""ViewerAccountId"" uuid,
+                    ""ViewedAt"" timestamp with time zone,
+                    ""ReactType"" integer,
+                    ""ReactedAt"" timestamp with time zone
+                )
+                ON CONFLICT (""StoryId"", ""ViewerAccountId"") DO NOTHING");
         }
 
-        public async Task<List<StoryActiveItemModel>> GetActiveStoriesByAuthorAsync(
-            Guid currentId,
-            Guid authorId,
-            DateTime nowUtc)
+        public async Task<bool> TryAddStoryViewAsync(StoryView storyView)
         {
-            if (authorId == Guid.Empty)
+            if (storyView == null)
             {
-                return new List<StoryActiveItemModel>();
+                return false;
             }
 
-            var userViewMap = await _context.StoryViews
-                .AsNoTracking()
-                .Where(v => v.ViewerAccountId == currentId)
-                .ToDictionaryAsync(v => v.StoryId, v => v.ReactType);
+            var affected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO ""StoryViews"" (""StoryId"", ""ViewerAccountId"", ""ViewedAt"", ""ReactType"", ""ReactedAt"")
+                VALUES ({storyView.StoryId}, {storyView.ViewerAccountId}, {storyView.ViewedAt}, {(int?)storyView.ReactType}, {storyView.ReactedAt})
+                ON CONFLICT (""StoryId"", ""ViewerAccountId"") DO NOTHING");
 
-            var stories = await BuildVisibleStoriesQuery(currentId, nowUtc)
-                .Where(s => s.AccountId == authorId)
-                .OrderBy(s => s.CreatedAt)
-                .ThenBy(s => s.StoryId)
-                .Select(s => new StoryActiveItemModel
-                {
-                    StoryId = s.StoryId,
-                    AccountId = s.AccountId,
-                    Username = s.Account.Username,
-                    FullName = s.Account.FullName,
-                    AvatarUrl = s.Account.AvatarUrl,
-                    ContentType = s.ContentType,
-                    MediaUrl = s.MediaUrl,
-                    TextContent = s.TextContent,
-                    BackgroundColorKey = s.BackgroundColorKey,
-                    FontTextKey = s.FontTextKey,
-                    FontSizeKey = s.FontSizeKey,
-                    TextColorKey = s.TextColorKey,
-                    Privacy = s.Privacy,
-                    CreatedAt = s.CreatedAt,
-                    ExpiresAt = s.ExpiresAt,
-                    IsViewedByCurrentUser = false // Will be updated below
-                })
-                .ToListAsync();
-
-            foreach (var s in stories)
-            {
-                if (userViewMap.TryGetValue(s.StoryId, out var reactType))
-                {
-                    s.IsViewedByCurrentUser = true;
-                    s.CurrentUserReactType = reactType;
-                }
-            }
-
-            return stories;
+            return affected > 0;
         }
 
         public async Task<Dictionary<Guid, StoryViewSummaryModel>> GetStoryViewSummariesAsync(
@@ -167,6 +122,7 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                 {
                     StoryId = id,
                     TotalViews = 0,
+                    TotalReacts = 0,
                     TopViewers = Array.Empty<StoryViewerBasicModel>()
                 });
 
@@ -201,7 +157,7 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                         FullName = x.FullName,
                         AvatarUrl = x.AvatarUrl,
                         ViewedAt = x.ViewedAt,
-                        ReactType = x.ReactType
+                        ReactType = (int?)x.ReactType
                     })
                     .ToList();
 
@@ -209,37 +165,12 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                 {
                     StoryId = grouped.Key,
                     TotalViews = grouped.Count(),
+                    TotalReacts = grouped.Count(x => x.ReactType.HasValue),
                     TopViewers = topViewers
                 };
             }
 
             return result;
-        }
-
-        public async Task<List<Guid>> GetViewableStoryIdsAsync(
-            Guid currentId,
-            IReadOnlyCollection<Guid> storyIds,
-            DateTime nowUtc)
-        {
-            if (storyIds == null || storyIds.Count == 0)
-            {
-                return new List<Guid>();
-            }
-
-            var normalizedStoryIds = storyIds
-                .Where(id => id != Guid.Empty)
-                .Distinct()
-                .ToList();
-
-            if (normalizedStoryIds.Count == 0)
-            {
-                return new List<Guid>();
-            }
-
-            return await BuildVisibleStoriesQuery(currentId, nowUtc)
-                .Where(s => normalizedStoryIds.Contains(s.StoryId))
-                .Select(s => s.StoryId)
-                .ToListAsync();
         }
 
         public async Task<HashSet<Guid>> GetViewedStoryIdsByViewerAsync(
@@ -326,6 +257,34 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
             await Task.CompletedTask;
         }
 
+        public async Task<(List<StoryViewerBasicModel> Items, int TotalItems)> GetStoryViewersPagedAsync(Guid storyId, int page, int pageSize)
+        {
+            var query = _context.StoryViews
+                .AsNoTracking()
+                .Where(v => v.StoryId == storyId && v.ViewerAccount.Status == AccountStatusEnum.Active);
+
+            int totalItems = await query.CountAsync();
+
+            var items = await query
+                .OrderByDescending(v => v.ReactType.HasValue)
+                .ThenByDescending(v => v.ReactedAt)
+                .ThenByDescending(v => v.ViewedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(v => new StoryViewerBasicModel
+                {
+                    AccountId = v.ViewerAccountId,
+                    Username = v.ViewerAccount.Username,
+                    FullName = v.ViewerAccount.FullName,
+                    AvatarUrl = v.ViewerAccount.AvatarUrl,
+                    ViewedAt = v.ViewedAt,
+                    ReactType = (int?)v.ReactType
+                })
+                .ToListAsync();
+
+            return (items, totalItems);
+        }
+
         private IQueryable<Story> BuildVisibleStoriesQuery(Guid currentId, DateTime nowUtc)
         {
             var followedIds = _context.Follows
@@ -341,9 +300,13 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                     s.Account.Status == AccountStatusEnum.Active &&
                     (
                         s.AccountId == currentId ||
-                        s.Privacy == StoryPrivacyEnum.Public ||
-                        (s.Privacy == StoryPrivacyEnum.FollowOnly &&
-                         followedIds.Contains(s.AccountId))
+                        (
+                            followedIds.Contains(s.AccountId) &&
+                            (
+                                s.Privacy == StoryPrivacyEnum.Public ||
+                                s.Privacy == StoryPrivacyEnum.FollowOnly
+                            )
+                        )
                     ));
         }
     }

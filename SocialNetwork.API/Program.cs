@@ -35,6 +35,7 @@ using SocialNetwork.Application.Services.PostReactServices;
 using SocialNetwork.Application.Services.PostServices;
 using SocialNetwork.Application.Services.RealtimeServices;
 using SocialNetwork.Application.Services.StoryServices;
+using SocialNetwork.Application.Services.StoryHighlightServices;
 using SocialNetwork.Application.Services.StoryViewServices;
 using SocialNetwork.API.Services;
 using SocialNetwork.Infrastructure.Data;
@@ -58,6 +59,7 @@ using SocialNetwork.Infrastructure.Repositories.PostReacts;
 using SocialNetwork.Infrastructure.Repositories.Posts;
 using SocialNetwork.Infrastructure.Repositories.Presences;
 using SocialNetwork.Infrastructure.Repositories.Stories;
+using SocialNetwork.Infrastructure.Repositories.StoryHighlights;
 using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using System;
@@ -114,6 +116,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IPostMediaRepository, PostMediaRepository>();
             builder.Services.AddScoped<IPostReactRepository, PostReactRepository>();
             builder.Services.AddScoped<IStoryRepository, StoryRepository>();
+            builder.Services.AddScoped<IStoryHighlightRepository, StoryHighlightRepository>();
             builder.Services.AddScoped<IStoryViewRepository, StoryViewRepository>();
             builder.Services.AddScoped<ICommentReactRepository, CommentReactRepository>();
             builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
@@ -151,6 +154,8 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
+            builder.Services.AddSingleton<ICloudinaryDeleteBackgroundQueue, CloudinaryDeleteBackgroundQueue>();
+            builder.Services.AddHostedService<CloudinaryDeleteWorkerHostedService>();
             builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
             builder.Services.AddTransient<IEmailService, EmailService>();
@@ -160,6 +165,7 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<IFollowService, FollowService>();
             builder.Services.AddScoped<IPostService, PostService>();
             builder.Services.AddScoped<IStoryService, StoryService>();
+            builder.Services.AddScoped<IStoryHighlightService, StoryHighlightService>();
             builder.Services.AddScoped<IStoryViewService, StoryViewService>();
             builder.Services.AddScoped<ICommentService, CommentService>();
             builder.Services.AddScoped<IPostReactService, PostReactService>();

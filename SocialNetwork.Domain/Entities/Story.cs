@@ -26,5 +26,6 @@ namespace SocialNetwork.Domain.Entities
 
         public virtual Account Account { get; set; } = null!;
         public virtual ICollection<StoryView> Views { get; set; } = new List<StoryView>();
+        public virtual ICollection<StoryHighlightItem> StoryHighlightItems { get; set; } = new List<StoryHighlightItem>();
     }
 }

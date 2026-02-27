@@ -1,4 +1,4 @@
-using SocialNetwork.Domain.Enums;
+using System;
 
 namespace SocialNetwork.Infrastructure.Models
 {
@@ -9,6 +9,6 @@ namespace SocialNetwork.Infrastructure.Models
         public string FullName { get; set; } = null!;
         public string? AvatarUrl { get; set; }
         public DateTime ViewedAt { get; set; }
-        public ReactEnum? ReactType { get; set; }
+        public int? ReactType { get; set; }
     }
 }

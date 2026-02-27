@@ -140,6 +140,9 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Property<int>("PhonePrivacy")
                         .HasColumnType("integer");
 
+                    b.Property<int>("StoryHighlightPrivacy")
+                        .HasColumnType("integer");
+
                     b.HasKey("AccountId");
 
                     b.ToTable("AccountSettings");
@@ -428,9 +431,6 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("FollowedId", "CreatedAt");
 
                     b.HasIndex("FollowerId", "CreatedAt");
-
-                    b.HasIndex("FollowerId", "FollowedId")
-                        .HasDatabaseName("IX_Follow_Follower_Followed");
 
                     b.ToTable("Follows");
                 });
@@ -764,6 +764,10 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.HasIndex("IsDeleted", "ExpiresAt", "CreatedAt")
                         .HasDatabaseName("IX_Stories_Active");
 
+                    b.HasIndex("Privacy", "ExpiresAt", "CreatedAt")
+                        .HasDatabaseName("IX_Stories_Privacy_Active")
+                        .HasFilter("\"IsDeleted\" = FALSE");
+
                     b.HasIndex("AccountId", "IsDeleted", "ExpiresAt", "CreatedAt")
                         .HasDatabaseName("IX_Stories_Account_Archive");
 
@@ -773,6 +777,63 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_Stories_ExpiresAt", "\"ExpiresAt\" > \"CreatedAt\"");
                         });
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryHighlightGroup", b =>
+                {
+                    b.Property<Guid>("StoryHighlightGroupId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CoverImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("StoryHighlightGroupId");
+
+                    b.HasIndex("AccountId", "CreatedAt")
+                        .HasDatabaseName("IX_StoryHighlightGroups_Account_CreatedAt");
+
+                    b.ToTable("StoryHighlightGroups", t =>
+                        {
+                            t.HasCheckConstraint("CK_StoryHighlightGroups_Name_NotEmpty", "length(btrim(\"Name\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryHighlightItem", b =>
+                {
+                    b.Property<Guid>("StoryHighlightGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("StoryHighlightGroupId", "StoryId");
+
+                    b.HasIndex("StoryId")
+                        .HasDatabaseName("IX_StoryHighlightItems_StoryId");
+
+                    b.HasIndex("StoryHighlightGroupId", "AddedAt")
+                        .HasDatabaseName("IX_StoryHighlightItems_Group_AddedAt");
+
+                    b.ToTable("StoryHighlightItems");
                 });
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryView", b =>
@@ -1100,6 +1161,36 @@ namespace SocialNetwork.Infrastructure.Migrations
                     b.Navigation("Account");
                 });
 
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryHighlightGroup", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.Account", "Account")
+                        .WithMany("StoryHighlightGroups")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryHighlightItem", b =>
+                {
+                    b.HasOne("SocialNetwork.Domain.Entities.StoryHighlightGroup", "StoryHighlightGroup")
+                        .WithMany("Items")
+                        .HasForeignKey("StoryHighlightGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SocialNetwork.Domain.Entities.Story", "Story")
+                        .WithMany("StoryHighlightItems")
+                        .HasForeignKey("StoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Story");
+
+                    b.Navigation("StoryHighlightGroup");
+                });
+
             modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryView", b =>
                 {
                     b.HasOne("SocialNetwork.Domain.Entities.Story", "Story")
@@ -1148,6 +1239,8 @@ namespace SocialNetwork.Infrastructure.Migrations
 
                     b.Navigation("Stories");
 
+                    b.Navigation("StoryHighlightGroups");
+
                     b.Navigation("StoryViews");
                 });
 
@@ -1190,7 +1283,14 @@ namespace SocialNetwork.Infrastructure.Migrations
 
             modelBuilder.Entity("SocialNetwork.Domain.Entities.Story", b =>
                 {
+                    b.Navigation("StoryHighlightItems");
+
                     b.Navigation("Views");
+                });
+
+            modelBuilder.Entity("SocialNetwork.Domain.Entities.StoryHighlightGroup", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

@@ -17,8 +17,10 @@ using SocialNetwork.Infrastructure.Repositories.ConversationMembers;
 using SocialNetwork.Infrastructure.Repositories.Conversations;
 using SocialNetwork.Infrastructure.Repositories.MessageMedias;
 using SocialNetwork.Infrastructure.Repositories.Messages;
+using SocialNetwork.Infrastructure.Repositories.Stories;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Tests.Helpers;
+using System.Text.Json;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Tests.Services
@@ -32,6 +34,7 @@ namespace SocialNetwork.Tests.Services
         private readonly Mock<IAccountRepository> _accountRepositoryMock;
         private readonly Mock<ICloudinaryService> _cloudinaryServiceMock;
         private readonly Mock<IFileTypeDetector> _fileTypeDetectorMock;
+        private readonly Mock<IStoryRepository> _storyRepositoryMock;
         private readonly Mock<IMapper> _mapperMock;
         private readonly Mock<IRealtimeService> _realtimeServiceMock;
         private readonly Mock<IUnitOfWork> _unitOfWorkMock;
@@ -46,6 +49,7 @@ namespace SocialNetwork.Tests.Services
             _accountRepositoryMock = new Mock<IAccountRepository>();
             _cloudinaryServiceMock = new Mock<ICloudinaryService>();
             _fileTypeDetectorMock = new Mock<IFileTypeDetector>();
+            _storyRepositoryMock = new Mock<IStoryRepository>();
             _mapperMock = new Mock<IMapper>();
             _realtimeServiceMock = new Mock<IRealtimeService>();
             _unitOfWorkMock = new Mock<IUnitOfWork>();
@@ -59,6 +63,7 @@ namespace SocialNetwork.Tests.Services
                 _mapperMock.Object,
                 _cloudinaryServiceMock.Object,
                 _fileTypeDetectorMock.Object,
+                _storyRepositoryMock.Object,
                 _realtimeServiceMock.Object,
                 _unitOfWorkMock.Object
             );
@@ -291,6 +296,213 @@ namespace SocialNetwork.Tests.Services
             result.Should().NotBeNull();
             result.ConversationId.Should().Be(conversationId);
             result.Content.Should().Be("Hello");
+        }
+
+        #endregion
+
+        #region SendStoryReplyAsync Tests
+
+        [Fact]
+        public async Task SendStoryReplyAsync_WhenStoryIsNotViewable_ThrowsBadRequestException()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var receiverId = Guid.NewGuid();
+            var request = new SendStoryReplyRequest
+            {
+                ReceiverId = receiverId,
+                StoryId = Guid.NewGuid(),
+                Content = "reply"
+            };
+            var sender = TestDataFactory.CreateAccount(accountId: senderId);
+            var receiver = TestDataFactory.CreateAccount(accountId: receiverId);
+
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { sender, receiver });
+
+            _storyRepositoryMock
+                .Setup(x => x.GetViewableStoryByIdAsync(senderId, request.StoryId, It.IsAny<DateTime>()))
+                .ReturnsAsync((Story?)null);
+
+            // Act
+            var act = () => _messageService.SendStoryReplyAsync(senderId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("This story is no longer available.");
+        }
+
+        [Fact]
+        public async Task SendStoryReplyAsync_WhenReceiverIsNotStoryOwner_ThrowsBadRequestException()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var receiverId = Guid.NewGuid();
+            var ownerId = Guid.NewGuid();
+            var request = new SendStoryReplyRequest
+            {
+                ReceiverId = receiverId,
+                StoryId = Guid.NewGuid(),
+                Content = "reply"
+            };
+            var sender = TestDataFactory.CreateAccount(accountId: senderId);
+            var receiver = TestDataFactory.CreateAccount(accountId: receiverId);
+            var story = new Story
+            {
+                StoryId = request.StoryId,
+                AccountId = ownerId,
+                ContentType = StoryContentTypeEnum.Image,
+                MediaUrl = "https://cdn.example.com/story.jpg",
+                CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+                ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+                IsDeleted = false
+            };
+
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { sender, receiver });
+
+            _storyRepositoryMock
+                .Setup(x => x.GetViewableStoryByIdAsync(senderId, request.StoryId, It.IsAny<DateTime>()))
+                .ReturnsAsync(story);
+
+            // Act
+            var act = () => _messageService.SendStoryReplyAsync(senderId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("Story receiver does not match story owner.");
+        }
+
+        [Fact]
+        public async Task SendStoryReplyAsync_UsesServerStorySnapshotInsteadOfClientPayload()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var receiverId = Guid.NewGuid();
+            var storyId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var sender = TestDataFactory.CreateAccount(accountId: senderId);
+            var receiver = TestDataFactory.CreateAccount(accountId: receiverId);
+
+            var story = new Story
+            {
+                StoryId = storyId,
+                AccountId = receiverId,
+                ContentType = StoryContentTypeEnum.Image,
+                MediaUrl = "https://cdn.example.com/server-image.jpg",
+                TextContent = null,
+                BackgroundColorKey = "bg-server",
+                TextColorKey = "text-server",
+                FontTextKey = null,
+                FontSizeKey = null,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-3),
+                ExpiresAt = DateTime.UtcNow.AddMinutes(20),
+                IsDeleted = false
+            };
+
+            var request = new SendStoryReplyRequest
+            {
+                ReceiverId = receiverId,
+                StoryId = storyId,
+                Content = "nice story",
+                TempId = "tmp-1",
+                StoryMediaUrl = "https://spoofed-client-url",
+                StoryContentType = (int)StoryContentTypeEnum.Text,
+                StoryTextContent = "spoofed-text",
+                StoryBackgroundColorKey = "spoof-bg",
+                StoryTextColorKey = "spoof-text-color",
+                StoryFontTextKey = "spoof-font",
+                StoryFontSizeKey = "spoof-size"
+            };
+
+            Message? capturedMessage = null;
+
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { sender, receiver });
+
+            _storyRepositoryMock
+                .Setup(x => x.GetViewableStoryByIdAsync(senderId, storyId, It.IsAny<DateTime>()))
+                .ReturnsAsync(story);
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetPrivateConversationIdAsync(senderId, receiverId))
+                .ReturnsAsync(conversationId);
+
+            _messageRepositoryMock
+                .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
+                .Callback<Message>(msg => capturedMessage = msg)
+                .Returns(Task.CompletedTask);
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(conversationId))
+                .ReturnsAsync(new Dictionary<Guid, bool>
+                {
+                    { senderId, false },
+                    { receiverId, false }
+                });
+
+            _realtimeServiceMock
+                .Setup(x => x.NotifyNewMessageAsync(
+                    conversationId,
+                    It.IsAny<Dictionary<Guid, bool>>(),
+                    It.IsAny<SendMessageResponse>()))
+                .Returns(Task.CompletedTask);
+
+            _mapperMock
+                .Setup(x => x.Map<SendMessageResponse>(It.IsAny<Message>()))
+                .Returns<Message>(msg => new SendMessageResponse
+                {
+                    MessageId = msg.MessageId,
+                    ConversationId = msg.ConversationId,
+                    Content = msg.Content,
+                    MessageType = msg.MessageType,
+                    SentAt = msg.SentAt
+                });
+
+            _mapperMock
+                .Setup(x => x.Map<AccountChatInfoResponse>(It.IsAny<Account>()))
+                .Returns<Account>(acc => new AccountChatInfoResponse
+                {
+                    AccountId = acc.AccountId,
+                    Username = acc.Username,
+                    FullName = acc.FullName,
+                    AvatarUrl = acc.AvatarUrl,
+                    IsActive = acc.Status == AccountStatusEnum.Active
+                });
+
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<SendMessageResponse>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<SendMessageResponse>> operation, Func<Task>? _) => operation());
+
+            // Act
+            var result = await _messageService.SendStoryReplyAsync(senderId, request);
+
+            // Assert
+            capturedMessage.Should().NotBeNull();
+            capturedMessage!.SystemMessageDataJson.Should().NotBeNullOrWhiteSpace();
+
+            using var payload = JsonDocument.Parse(capturedMessage.SystemMessageDataJson!);
+            payload.RootElement.GetProperty("storyId").GetGuid().Should().Be(storyId);
+            payload.RootElement.GetProperty("mediaUrl").GetString().Should().Be(story.MediaUrl);
+            payload.RootElement.GetProperty("contentType").GetInt32().Should().Be((int)story.ContentType);
+            payload.RootElement.GetProperty("backgroundColorKey").GetString().Should().Be(story.BackgroundColorKey);
+            payload.RootElement.GetProperty("textColorKey").GetString().Should().Be(story.TextColorKey);
+
+            result.StoryReplyInfo.Should().NotBeNull();
+            result.StoryReplyInfo!.MediaUrl.Should().Be(story.MediaUrl);
+            result.StoryReplyInfo.ContentType.Should().Be((int)story.ContentType);
+            result.StoryReplyInfo.BackgroundColorKey.Should().Be(story.BackgroundColorKey);
+            result.StoryReplyInfo.TextColorKey.Should().Be(story.TextColorKey);
+            result.StoryReplyInfo.FontTextKey.Should().Be(story.FontTextKey);
+            result.StoryReplyInfo.FontSizeKey.Should().Be(story.FontSizeKey);
+
+            result.StoryReplyInfo.MediaUrl.Should().NotBe(request.StoryMediaUrl);
+            result.StoryReplyInfo.ContentType.Should().NotBe(request.StoryContentType);
         }
 
         #endregion

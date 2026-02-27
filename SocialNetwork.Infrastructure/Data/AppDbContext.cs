@@ -24,6 +24,8 @@ namespace SocialNetwork.Infrastructure.Data
         public virtual DbSet<PostReact> PostReacts { get; set; }
         public virtual DbSet<Story> Stories { get; set; }
         public virtual DbSet<StoryView> StoryViews { get; set; }
+        public virtual DbSet<StoryHighlightGroup> StoryHighlightGroups { get; set; }
+        public virtual DbSet<StoryHighlightItem> StoryHighlightItems { get; set; }
         public virtual DbSet<Comment> Comments { get; set; }
         public virtual DbSet<CommentReact> CommentReacts { get; set; }
         public virtual DbSet<Conversation> Conversations { get; set; }
@@ -136,11 +138,6 @@ namespace SocialNetwork.Infrastructure.Data
             // Index for FollowerId + CreatedAt for efficient sorting of "Following" list
             modelBuilder.Entity<Follow>()
                 .HasIndex(f => new { f.FollowerId, f.CreatedAt });
-
-            // Composite index for fast relationship checks
-            modelBuilder.Entity<Follow>()
-                .HasIndex(f => new { f.FollowerId, f.FollowedId })
-                .HasDatabaseName("IX_Follow_Follower_Followed");
 
             modelBuilder.Entity<Follow>()
                 .HasOne(f => f.Follower)
@@ -274,6 +271,12 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasIndex(s => new { s.IsDeleted, s.ExpiresAt, s.CreatedAt })
                 .HasDatabaseName("IX_Stories_Active");
 
+            // Optimize visibility feed branches by privacy with active-only rows.
+            modelBuilder.Entity<Story>()
+                .HasIndex(s => new { s.Privacy, s.ExpiresAt, s.CreatedAt })
+                .HasDatabaseName("IX_Stories_Privacy_Active")
+                .HasFilter("\"IsDeleted\" = FALSE");
+
             modelBuilder.Entity<Story>()
                 .HasIndex(s => new { s.AccountId, s.IsDeleted, s.ExpiresAt, s.CreatedAt })
                 .HasDatabaseName("IX_Stories_Account_Archive");
@@ -347,6 +350,61 @@ namespace SocialNetwork.Infrastructure.Data
                 .HasOne(v => v.ViewerAccount)
                 .WithMany(a => a.StoryViews)
                 .HasForeignKey(v => v.ViewerAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // STORY HIGHLIGHT
+            // =====================
+            modelBuilder.Entity<StoryHighlightGroup>()
+                .HasKey(g => g.StoryHighlightGroupId);
+
+            modelBuilder.Entity<StoryHighlightGroup>()
+                .Property(g => g.Name)
+                .HasMaxLength(50);
+
+            modelBuilder.Entity<StoryHighlightGroup>()
+                .Property(g => g.CoverImageUrl)
+                .HasMaxLength(500);
+
+            modelBuilder.Entity<StoryHighlightGroup>()
+                .HasIndex(g => new { g.AccountId, g.CreatedAt })
+                .HasDatabaseName("IX_StoryHighlightGroups_Account_CreatedAt");
+
+            modelBuilder.Entity<StoryHighlightGroup>()
+                .ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_StoryHighlightGroups_Name_NotEmpty",
+                        "length(btrim(\"Name\")) > 0");
+                });
+
+            modelBuilder.Entity<StoryHighlightGroup>()
+                .HasOne(g => g.Account)
+                .WithMany(a => a.StoryHighlightGroups)
+                .HasForeignKey(g => g.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StoryHighlightGroup>()
+                .HasMany(g => g.Items)
+                .WithOne(i => i.StoryHighlightGroup)
+                .HasForeignKey(i => i.StoryHighlightGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StoryHighlightItem>()
+                .HasKey(i => new { i.StoryHighlightGroupId, i.StoryId });
+
+            modelBuilder.Entity<StoryHighlightItem>()
+                .HasIndex(i => new { i.StoryHighlightGroupId, i.AddedAt })
+                .HasDatabaseName("IX_StoryHighlightItems_Group_AddedAt");
+
+            modelBuilder.Entity<StoryHighlightItem>()
+                .HasIndex(i => i.StoryId)
+                .HasDatabaseName("IX_StoryHighlightItems_StoryId");
+
+            modelBuilder.Entity<StoryHighlightItem>()
+                .HasOne(i => i.Story)
+                .WithMany(s => s.StoryHighlightItems)
+                .HasForeignKey(i => i.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
 
