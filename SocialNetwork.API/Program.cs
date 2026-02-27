@@ -154,6 +154,8 @@ namespace SocialNetwork.API
             builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
+            builder.Services.AddSingleton<ICloudinaryDeleteBackgroundQueue, CloudinaryDeleteBackgroundQueue>();
+            builder.Services.AddHostedService<CloudinaryDeleteWorkerHostedService>();
             builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
             builder.Services.AddTransient<IEmailService, EmailService>();
