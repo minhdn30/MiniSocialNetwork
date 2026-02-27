@@ -96,6 +96,47 @@ namespace SocialNetwork.Infrastructure.Repositories.Stories
             return (items, totalItems);
         }
 
+        public async Task<(List<StoryArchiveItemModel> Items, int TotalItems)> GetArchivedStoriesByOwnerAsync(
+            Guid ownerId,
+            DateTime nowUtc,
+            int page,
+            int pageSize)
+        {
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = 20;
+
+            var baseQuery = _context.Stories
+                .AsNoTracking()
+                .Where(s =>
+                    s.AccountId == ownerId &&
+                    !s.IsDeleted &&
+                    s.ExpiresAt <= nowUtc);
+
+            var totalItems = await baseQuery.CountAsync();
+            var items = await baseQuery
+                .OrderByDescending(s => s.CreatedAt)
+                .ThenByDescending(s => s.StoryId)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(s => new StoryArchiveItemModel
+                {
+                    StoryId = s.StoryId,
+                    ContentType = s.ContentType,
+                    MediaUrl = s.MediaUrl,
+                    TextContent = s.TextContent,
+                    BackgroundColorKey = s.BackgroundColorKey,
+                    FontTextKey = s.FontTextKey,
+                    FontSizeKey = s.FontSizeKey,
+                    TextColorKey = s.TextColorKey,
+                    Privacy = s.Privacy,
+                    CreatedAt = s.CreatedAt,
+                    ExpiresAt = s.ExpiresAt
+                })
+                .ToListAsync();
+
+            return (items, totalItems);
+        }
+
         public async Task<List<StoryActiveItemModel>> GetActiveStoriesByAuthorAsync(
             Guid currentId,
             Guid authorId,

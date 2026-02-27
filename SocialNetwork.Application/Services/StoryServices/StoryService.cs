@@ -17,6 +17,8 @@ namespace SocialNetwork.Application.Services.StoryServices
     {
         private const int DefaultAuthorsPageSize = 20;
         private const int MaxAuthorsPageSize = 50;
+        private const int DefaultArchivePageSize = 20;
+        private const int MaxArchivePageSize = 60;
         private const int DefaultTopViewersCount = 3;
 
         private readonly IStoryRepository _storyRepository;
@@ -73,6 +75,53 @@ namespace SocialNetwork.Application.Services.StoryServices
             }).ToList();
 
             return new PagedResponse<StoryAuthorItemResponse>(responses, page, pageSize, totalItems);
+        }
+
+        public async Task<PagedResponse<StoryArchiveItemResponse>> GetArchivedStoriesAsync(Guid currentId, int page, int pageSize)
+        {
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = DefaultArchivePageSize;
+            if (pageSize > MaxArchivePageSize) pageSize = MaxArchivePageSize;
+
+            var (items, totalItems) = await _storyRepository.GetArchivedStoriesByOwnerAsync(
+                currentId,
+                DateTime.UtcNow,
+                page,
+                pageSize);
+
+            if (items.Count == 0)
+            {
+                return new PagedResponse<StoryArchiveItemResponse>(Array.Empty<StoryArchiveItemResponse>(), page, pageSize, totalItems);
+            }
+
+            var storyIds = items.Select(x => x.StoryId).Distinct().ToList();
+            var viewSummaryMap = await _storyViewRepository.GetStoryViewSummariesAsync(
+                currentId,
+                storyIds,
+                topCount: 1);
+
+            var responses = items.Select(item =>
+            {
+                viewSummaryMap.TryGetValue(item.StoryId, out var summary);
+                return new StoryArchiveItemResponse
+                {
+                    StoryId = item.StoryId,
+                    ContentType = (int)item.ContentType,
+                    MediaUrl = item.MediaUrl,
+                    TextContent = item.TextContent,
+                    BackgroundColorKey = item.BackgroundColorKey,
+                    FontTextKey = item.FontTextKey,
+                    FontSizeKey = item.FontSizeKey,
+                    TextColorKey = item.TextColorKey,
+                    Privacy = (int)item.Privacy,
+                    CreatedAt = item.CreatedAt,
+                    ExpiresAt = item.ExpiresAt,
+                    ViewCount = summary?.TotalViews ?? 0,
+                    ReactCount = summary?.TotalReacts ?? 0
+                };
+            }).ToList();
+
+            return new PagedResponse<StoryArchiveItemResponse>(responses, page, pageSize, totalItems);
         }
 
         public async Task<StoryAuthorActiveResponse> GetActiveStoriesByAuthorAsync(Guid currentId, Guid authorId)

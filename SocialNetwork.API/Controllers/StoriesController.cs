@@ -122,6 +122,22 @@ namespace SocialNetwork.API.Controllers
         }
 
         [Authorize]
+        [HttpGet("archive")]
+        public async Task<ActionResult<PagedResponse<StoryArchiveItemResponse>>> GetArchivedStories(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            var result = await _storyService.GetArchivedStoriesAsync(currentId.Value, page, pageSize);
+            return Ok(result);
+        }
+
+        [Authorize]
         [HttpGet("authors/{authorId}/active")]
         public async Task<ActionResult<StoryAuthorActiveResponse>> GetActiveStoriesByAuthor([FromRoute] Guid authorId)
         {

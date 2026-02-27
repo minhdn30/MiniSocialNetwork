@@ -122,6 +122,7 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                 {
                     StoryId = id,
                     TotalViews = 0,
+                    TotalReacts = 0,
                     TopViewers = Array.Empty<StoryViewerBasicModel>()
                 });
 
@@ -164,6 +165,7 @@ namespace SocialNetwork.Infrastructure.Repositories.StoryViews
                 {
                     StoryId = grouped.Key,
                     TotalViews = grouped.Count(),
+                    TotalReacts = grouped.Count(x => x.ReactType.HasValue),
                     TopViewers = topViewers
                 };
             }

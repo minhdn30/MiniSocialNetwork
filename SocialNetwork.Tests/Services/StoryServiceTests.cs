@@ -12,6 +12,7 @@ using SocialNetwork.Infrastructure.Repositories.Stories;
 using SocialNetwork.Infrastructure.Repositories.StoryViews;
 using SocialNetwork.Infrastructure.Repositories.UnitOfWork;
 using SocialNetwork.Infrastructure.Services.Cloudinary;
+using SocialNetwork.Infrastructure.Models;
 using static SocialNetwork.Domain.Exceptions.CustomExceptions;
 
 namespace SocialNetwork.Tests.Services
@@ -561,6 +562,195 @@ namespace SocialNetwork.Tests.Services
             story.IsDeleted.Should().BeTrue();
             _storyRepositoryMock.Verify(x => x.UpdateStoryAsync(story), Times.Once);
             _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetArchivedStoriesAsync_WhenInvalidPaging_NormalizesBeforeQuery()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            _storyRepositoryMock
+                .Setup(x => x.GetArchivedStoriesByOwnerAsync(
+                    currentId,
+                    It.IsAny<DateTime>(),
+                    It.IsAny<int>(),
+                    It.IsAny<int>()))
+                .ReturnsAsync((new List<StoryArchiveItemModel>(), 0));
+
+            // Act
+            var result = await _storyService.GetArchivedStoriesAsync(currentId, 0, -5);
+
+            // Assert
+            result.Page.Should().Be(1);
+            result.PageSize.Should().Be(20);
+            _storyRepositoryMock.Verify(x => x.GetArchivedStoriesByOwnerAsync(
+                currentId,
+                It.IsAny<DateTime>(),
+                1,
+                20), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetArchivedStoriesAsync_WhenPageSizeTooLarge_ClampsToMax()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            _storyRepositoryMock
+                .Setup(x => x.GetArchivedStoriesByOwnerAsync(
+                    currentId,
+                    It.IsAny<DateTime>(),
+                    It.IsAny<int>(),
+                    It.IsAny<int>()))
+                .ReturnsAsync((new List<StoryArchiveItemModel>(), 0));
+
+            // Act
+            var result = await _storyService.GetArchivedStoriesAsync(currentId, 2, 500);
+
+            // Assert
+            result.Page.Should().Be(2);
+            result.PageSize.Should().Be(60);
+            _storyRepositoryMock.Verify(x => x.GetArchivedStoriesByOwnerAsync(
+                currentId,
+                It.IsAny<DateTime>(),
+                2,
+                60), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetArchivedStoriesAsync_WhenNoItems_ReturnsEmptyAndSkipsViewSummary()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            _storyRepositoryMock
+                .Setup(x => x.GetArchivedStoriesByOwnerAsync(
+                    currentId,
+                    It.IsAny<DateTime>(),
+                    1,
+                    12))
+                .ReturnsAsync((new List<StoryArchiveItemModel>(), 0));
+
+            // Act
+            var result = await _storyService.GetArchivedStoriesAsync(currentId, 1, 12);
+
+            // Assert
+            result.TotalItems.Should().Be(0);
+            result.Items.Should().BeEmpty();
+            _storyViewRepositoryMock.Verify(x => x.GetStoryViewSummariesAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<int>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetArchivedStoriesAsync_WhenItemsExist_MapsViewCountAndStoryFields()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var storyId1 = Guid.NewGuid();
+            var storyId2 = Guid.NewGuid();
+            var createdAt1 = DateTime.UtcNow.AddDays(-2);
+            var expiresAt1 = createdAt1.AddHours(24);
+            var createdAt2 = DateTime.UtcNow.AddDays(-3);
+            var expiresAt2 = createdAt2.AddHours(24);
+
+            var archivedItems = new List<StoryArchiveItemModel>
+            {
+                new StoryArchiveItemModel
+                {
+                    StoryId = storyId1,
+                    ContentType = StoryContentTypeEnum.Text,
+                    MediaUrl = null,
+                    TextContent = "Archived text",
+                    BackgroundColorKey = "accent",
+                    FontTextKey = "modern",
+                    FontSizeKey = "32",
+                    TextColorKey = "light",
+                    Privacy = StoryPrivacyEnum.Public,
+                    CreatedAt = createdAt1,
+                    ExpiresAt = expiresAt1
+                },
+                new StoryArchiveItemModel
+                {
+                    StoryId = storyId2,
+                    ContentType = StoryContentTypeEnum.Video,
+                    MediaUrl = "https://cdn.example.com/archive-video.mp4",
+                    TextContent = null,
+                    BackgroundColorKey = null,
+                    FontTextKey = null,
+                    FontSizeKey = null,
+                    TextColorKey = null,
+                    Privacy = StoryPrivacyEnum.FollowOnly,
+                    CreatedAt = createdAt2,
+                    ExpiresAt = expiresAt2
+                }
+            };
+
+            _storyRepositoryMock
+                .Setup(x => x.GetArchivedStoriesByOwnerAsync(
+                    currentId,
+                    It.IsAny<DateTime>(),
+                    1,
+                    2))
+                .ReturnsAsync((archivedItems, 2));
+
+            _storyViewRepositoryMock
+                .Setup(x => x.GetStoryViewSummariesAsync(
+                    currentId,
+                    It.Is<IReadOnlyCollection<Guid>>(ids =>
+                        ids.Count == 2 &&
+                        ids.Contains(storyId1) &&
+                        ids.Contains(storyId2)),
+                    1))
+                .ReturnsAsync(new Dictionary<Guid, StoryViewSummaryModel>
+                {
+                    {
+                        storyId1,
+                        new StoryViewSummaryModel
+                        {
+                            StoryId = storyId1,
+                            TotalViews = 7,
+                            TotalReacts = 3
+                        }
+                    }
+                });
+
+            // Act
+            var result = await _storyService.GetArchivedStoriesAsync(currentId, 1, 2);
+            var items = result.Items.ToList();
+
+            // Assert
+            result.TotalItems.Should().Be(2);
+            items.Should().HaveCount(2);
+
+            var first = items.Single(x => x.StoryId == storyId1);
+            first.ContentType.Should().Be((int)StoryContentTypeEnum.Text);
+            first.TextContent.Should().Be("Archived text");
+            first.BackgroundColorKey.Should().Be("accent");
+            first.FontTextKey.Should().Be("modern");
+            first.FontSizeKey.Should().Be("32");
+            first.TextColorKey.Should().Be("light");
+            first.Privacy.Should().Be((int)StoryPrivacyEnum.Public);
+            first.CreatedAt.Should().Be(createdAt1);
+            first.ExpiresAt.Should().Be(expiresAt1);
+            first.ViewCount.Should().Be(7);
+            first.ReactCount.Should().Be(3);
+
+            var second = items.Single(x => x.StoryId == storyId2);
+            second.ContentType.Should().Be((int)StoryContentTypeEnum.Video);
+            second.MediaUrl.Should().Be("https://cdn.example.com/archive-video.mp4");
+            second.Privacy.Should().Be((int)StoryPrivacyEnum.FollowOnly);
+            second.CreatedAt.Should().Be(createdAt2);
+            second.ExpiresAt.Should().Be(expiresAt2);
+            second.ViewCount.Should().Be(0);
+            second.ReactCount.Should().Be(0);
+
+            _storyViewRepositoryMock.Verify(x => x.GetStoryViewSummariesAsync(
+                currentId,
+                It.Is<IReadOnlyCollection<Guid>>(ids =>
+                    ids.Count == 2 &&
+                    ids.Contains(storyId1) &&
+                    ids.Contains(storyId2)),
+                1), Times.Once);
         }
     }
 }

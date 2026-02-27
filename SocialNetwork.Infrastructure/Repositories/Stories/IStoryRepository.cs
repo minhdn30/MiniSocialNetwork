@@ -14,6 +14,11 @@ namespace SocialNetwork.Infrastructure.Repositories.Stories
             DateTime nowUtc,
             int page,
             int pageSize);
+        Task<(List<StoryArchiveItemModel> Items, int TotalItems)> GetArchivedStoriesByOwnerAsync(
+            Guid ownerId,
+            DateTime nowUtc,
+            int page,
+            int pageSize);
         Task<List<StoryActiveItemModel>> GetActiveStoriesByAuthorAsync(
             Guid currentId,
             Guid authorId,
