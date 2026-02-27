@@ -98,7 +98,8 @@ namespace SocialNetwork.Application.Services.StoryServices
             var viewSummaryMap = await _storyViewRepository.GetStoryViewSummariesAsync(
                 currentId,
                 storyIds,
-                topCount: 1);
+                topCount: DefaultTopViewersCount);
+            viewSummaryMap ??= new Dictionary<Guid, SocialNetwork.Infrastructure.Models.StoryViewSummaryModel>();
 
             var responses = items.Select(item =>
             {
@@ -117,7 +118,23 @@ namespace SocialNetwork.Application.Services.StoryServices
                     CreatedAt = item.CreatedAt,
                     ExpiresAt = item.ExpiresAt,
                     ViewCount = summary?.TotalViews ?? 0,
-                    ReactCount = summary?.TotalReacts ?? 0
+                    ReactCount = summary?.TotalReacts ?? 0,
+                    ViewSummary = new StoryViewSummaryResponse
+                    {
+                        TotalViews = summary?.TotalViews ?? 0,
+                        TopViewers = summary?.TopViewers?
+                            .Select(v => new StoryViewerBasicResponse
+                            {
+                                AccountId = v.AccountId,
+                                Username = v.Username,
+                                FullName = v.FullName,
+                                AvatarUrl = v.AvatarUrl,
+                                ViewedAt = v.ViewedAt,
+                                ReactType = v.ReactType.HasValue ? (int)v.ReactType.Value : null
+                            })
+                            .ToList()
+                            ?? new List<StoryViewerBasicResponse>()
+                    }
                 };
             }).ToList();
 
@@ -162,6 +179,7 @@ namespace SocialNetwork.Application.Services.StoryServices
                     authorId,
                     storyIds,
                     DefaultTopViewersCount);
+                viewSummaryMap ??= new Dictionary<Guid, SocialNetwork.Infrastructure.Models.StoryViewSummaryModel>();
 
                 foreach (var story in stories)
                 {

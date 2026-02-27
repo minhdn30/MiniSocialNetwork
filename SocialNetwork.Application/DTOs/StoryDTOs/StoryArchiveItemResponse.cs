@@ -15,5 +15,6 @@ namespace SocialNetwork.Application.DTOs.StoryDTOs
         public DateTime ExpiresAt { get; set; }
         public int ViewCount { get; set; }
         public int ReactCount { get; set; }
+        public StoryViewSummaryResponse? ViewSummary { get; set; }
     }
 }
