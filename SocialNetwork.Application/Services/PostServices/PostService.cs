@@ -399,6 +399,24 @@ namespace SocialNetwork.Application.Services.PostServices
         }
         public async Task<PagedResponse<PostPersonalListModel>> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)
         {
+            const int defaultPage = 1;
+            const int defaultPageSize = 10;
+            const int maxPageSize = 50;
+
+            if (page < defaultPage)
+            {
+                page = defaultPage;
+            }
+
+            if (pageSize <= 0)
+            {
+                pageSize = defaultPageSize;
+            }
+            else if (pageSize > maxPageSize)
+            {
+                pageSize = maxPageSize;
+            }
+
             if (!await _accountRepository.IsAccountIdExist(accountId))
                 throw new NotFoundException($"Account with ID {accountId} does not exist.");
 

@@ -132,6 +132,7 @@ namespace SocialNetwork.API.Controllers
             return NoContent();
         }
 
+        [Authorize]
         [HttpGet("profile/{accountId}")]
         public async Task<ActionResult<PagedResponse<PostPersonalListModel>>> GetPostsByAccountId([FromRoute] Guid accountId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {

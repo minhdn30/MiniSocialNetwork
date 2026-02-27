@@ -700,7 +700,7 @@ namespace SocialNetwork.Tests.Services
                         ids.Count == 2 &&
                         ids.Contains(storyId1) &&
                         ids.Contains(storyId2)),
-                    1))
+                    3))
                 .ReturnsAsync(new Dictionary<Guid, StoryViewSummaryModel>
                 {
                     {
@@ -750,7 +750,7 @@ namespace SocialNetwork.Tests.Services
                     ids.Count == 2 &&
                     ids.Contains(storyId1) &&
                     ids.Contains(storyId2)),
-                1), Times.Once);
+                3), Times.Once);
         }
     }
 }
