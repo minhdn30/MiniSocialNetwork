@@ -17,6 +17,7 @@ namespace CloudM.Infrastructure.Models
         public DateTime SentAt { get; set; }
         public bool IsEdited { get; set; }
         public bool IsRecalled { get; set; }
+        public bool HasReply { get; set; }
         public string? SystemMessageDataJson { get; set; }
         public List<MessageMediaBasicModel>? Medias { get; set; }
         public List<MessageReactSummaryModel> Reacts { get; set; } = new();

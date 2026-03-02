@@ -61,6 +61,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                     SentAt = m.SentAt,
                     IsEdited = m.IsEdited,
                     IsRecalled = m.IsRecalled,
+                    HasReply = m.ReplyToMessageId != null,
                     SystemMessageDataJson = m.IsRecalled ? null : m.SystemMessageDataJson,
                     IsPinned = false,
 
@@ -624,6 +625,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                     SentAt = m.SentAt,
                     IsEdited = m.IsEdited,
                     IsRecalled = m.IsRecalled,
+                    HasReply = m.ReplyToMessageId != null,
                     SystemMessageDataJson = m.SystemMessageDataJson,
                     IsPinned = false,
 

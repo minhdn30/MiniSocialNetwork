@@ -15,6 +15,7 @@ using CloudM.Infrastructure.Repositories.Follows;
 using CloudM.Infrastructure.Repositories.Messages;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
 using CloudM.Infrastructure.Services.Cloudinary;
+using CloudM.Infrastructure.Models;
 using CloudM.Tests.Helpers;
 using static CloudM.Domain.Exceptions.CustomExceptions;
 
@@ -143,6 +144,58 @@ namespace CloudM.Tests.Services
 
             // Assert
             result.Should().BeNull();
+        }
+
+        #endregion
+
+        #region GetConversationsPagedAsync Tests
+
+        [Fact]
+        public async Task GetConversationsPagedAsync_LastMessageHasReplyFlag_ShouldKeepReplyPreviewAfterReload()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var senderId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+
+            var items = new List<ConversationListModel>
+            {
+                new ConversationListModel
+                {
+                    ConversationId = conversationId,
+                    IsGroup = false,
+                    LastMessageSentAt = now,
+                    LastMessage = new MessageBasicModel
+                    {
+                        MessageId = Guid.NewGuid(),
+                        MessageType = MessageTypeEnum.Text,
+                        Content = "alooo",
+                        HasReply = true,
+                        SentAt = now,
+                        IsRecalled = false,
+                        Sender = new AccountChatInfoModel
+                        {
+                            AccountId = senderId,
+                            Username = "sender",
+                            FullName = "Sender",
+                            IsActive = true
+                        }
+                    }
+                }
+            };
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationsPagedAsync(currentId, null, null, 1, 20))
+                .ReturnsAsync((items, 1));
+
+            // Act
+            var result = await _conversationService.GetConversationsPagedAsync(currentId, null, null, 1, 20);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Items.Should().HaveCount(1);
+            result.Items.First().LastMessagePreview.Should().Be("Replied: alooo");
         }
 
         #endregion
