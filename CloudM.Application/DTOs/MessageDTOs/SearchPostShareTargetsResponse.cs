@@ -19,6 +19,7 @@ namespace CloudM.Application.DTOs.MessageDTOs
         public string Name { get; set; } = string.Empty;
         public string? Subtitle { get; set; }
         public string? AvatarUrl { get; set; }
+        public List<string>? GroupAvatars { get; set; }
         public bool UseGroupIcon { get; set; }
         public bool IsContacted { get; set; }
         public DateTime? LastContactedAt { get; set; }

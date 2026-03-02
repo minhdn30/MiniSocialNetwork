@@ -546,12 +546,66 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 .Take(safeLimit)
                 .ToListAsync();
 
+            var groupAvatarsLookup = new Dictionary<Guid, List<string>>();
+            var candidateConversationIds = candidates
+                .Select(x => x.ConversationId)
+                .Distinct()
+                .ToList();
+
+            if (candidateConversationIds.Count > 0)
+            {
+                List<GroupAvatarProjection> groupMembersInfo;
+                try
+                {
+                    groupMembersInfo = await _context.ConversationMembers
+                        .AsNoTracking()
+                        .Where(cm => candidateConversationIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft)
+                        .GroupBy(cm => cm.ConversationId)
+                        .SelectMany(g => g
+                            .OrderBy(cm => cm.JoinedAt)
+                            .Take(4)
+                            .Select(cm => new GroupAvatarProjection
+                            {
+                                ConversationId = cm.ConversationId,
+                                JoinedAt = cm.JoinedAt,
+                                AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
+                            }))
+                        .ToListAsync();
+                }
+                catch (InvalidOperationException)
+                {
+                    groupMembersInfo = await _context.ConversationMembers
+                        .AsNoTracking()
+                        .Where(cm => candidateConversationIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft)
+                        .Select(cm => new GroupAvatarProjection
+                        {
+                            ConversationId = cm.ConversationId,
+                            JoinedAt = cm.JoinedAt,
+                            AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
+                        })
+                        .ToListAsync();
+                }
+
+                groupAvatarsLookup = groupMembersInfo
+                    .GroupBy(x => x.ConversationId)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.OrderBy(x => x.JoinedAt)
+                              .Select(x => x.AvatarUrl)
+                              .Take(4)
+                              .ToList()
+                    );
+            }
+
             return candidates
                 .Select(item => new PostShareGroupConversationSearchModel
                 {
                     ConversationId = item.ConversationId,
                     ConversationName = item.ConversationName,
                     ConversationAvatar = item.ConversationAvatar,
+                    GroupAvatars = groupAvatarsLookup.TryGetValue(item.ConversationId, out var avatars)
+                        ? avatars
+                        : null,
                     IsContacted = true,
                     LastContactedAt = item.LastMessageAt,
                     MatchScore = ComputePostShareGroupMatchScore(

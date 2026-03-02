@@ -620,6 +620,7 @@ namespace CloudM.Application.Services.MessageServices
                             Name = conversation.ConversationName?.Trim() ?? conversation.DisplayName?.Trim() ?? "Group chat",
                             Subtitle = "Group conversation",
                             AvatarUrl = conversation.ConversationAvatar ?? conversation.DisplayAvatar,
+                            GroupAvatars = conversation.GroupAvatars,
                             UseGroupIcon = string.IsNullOrWhiteSpace(conversation.ConversationAvatar) &&
                                            string.IsNullOrWhiteSpace(conversation.DisplayAvatar),
                             IsContacted = true,
@@ -709,6 +710,7 @@ namespace CloudM.Application.Services.MessageServices
                     : group.ConversationName.Trim(),
                 Subtitle = "Group conversation",
                 AvatarUrl = group.ConversationAvatar,
+                GroupAvatars = group.GroupAvatars,
                 UseGroupIcon = string.IsNullOrWhiteSpace(group.ConversationAvatar),
                 IsContacted = group.IsContacted,
                 LastContactedAt = group.LastContactedAt,

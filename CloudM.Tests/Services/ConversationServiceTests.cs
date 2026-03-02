@@ -269,11 +269,32 @@ namespace CloudM.Tests.Services
             Conversation? capturedConversation = null;
             List<ConversationMember>? capturedMembers = null;
             Message? capturedSystemMessage = null;
+            Dictionary<Guid, bool>? capturedMuteMap = null;
+            SendMessageResponse? capturedRealtimeMessage = null;
 
             _accountRepositoryMock.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
                 .ReturnsAsync(new List<Account> { creator, member1, member2 });
             _followRepositoryMock.Setup(x => x.GetConnectedAccountIdsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
                 .ReturnsAsync(new HashSet<Guid>());
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new Dictionary<Guid, bool>
+                {
+                    { currentId, false },
+                    { member1Id, false },
+                    { member2Id, false }
+                });
+            _realtimeServiceMock
+                .Setup(x => x.NotifyNewMessageAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<Dictionary<Guid, bool>>(),
+                    It.IsAny<SendMessageResponse>()))
+                .Callback<Guid, Dictionary<Guid, bool>, SendMessageResponse>((_, muteMap, realtimeMessage) =>
+                {
+                    capturedMuteMap = muteMap;
+                    capturedRealtimeMessage = realtimeMessage;
+                })
+                .Returns(Task.CompletedTask);
 
             _conversationRepositoryMock.Setup(x => x.AddConversationAsync(It.IsAny<Conversation>()))
                 .Callback<Conversation>(conv => capturedConversation = conv)
@@ -330,6 +351,74 @@ namespace CloudM.Tests.Services
             capturedSystemMessage.Content.Should().Be("@creator created this group.");
             capturedSystemMessage.ConversationId.Should().Be(capturedConversation.ConversationId);
             capturedSystemMessage.SentAt.Should().BeOnOrAfter(now.AddMinutes(-1));
+
+            _realtimeServiceMock.Verify(x => x.NotifyNewMessageAsync(
+                capturedConversation.ConversationId,
+                It.IsAny<Dictionary<Guid, bool>>(),
+                It.IsAny<SendMessageResponse>()), Times.Once);
+            capturedMuteMap.Should().NotBeNull();
+            capturedMuteMap!.Keys.Should().Contain(new[] { currentId, member1Id, member2Id });
+            capturedRealtimeMessage.Should().NotBeNull();
+            capturedRealtimeMessage!.Sender.Should().NotBeNull();
+            capturedRealtimeMessage.Sender.AccountId.Should().Be(currentId);
+            capturedRealtimeMessage.Sender.Username.Should().Be("creator");
+        }
+
+        [Fact]
+        public async Task CreateGroupConversationAsync_GroupNameTooLong_ThrowsBadRequestException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var request = new CreateGroupConversationRequest
+            {
+                GroupName = new string('a', 51),
+                MemberIds = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() }
+            };
+
+            // Act
+            var act = () => _conversationService.CreateGroupConversationAsync(currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("*at most 50 characters*");
+        }
+
+        [Fact]
+        public async Task CreateGroupConversationAsync_TotalMembersLessThanMinimum_ThrowsBadRequestException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var request = new CreateGroupConversationRequest
+            {
+                GroupName = "New Group",
+                MemberIds = new List<Guid> { Guid.NewGuid() }
+            };
+
+            // Act
+            var act = () => _conversationService.CreateGroupConversationAsync(currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("*at least 3 members*");
+        }
+
+        [Fact]
+        public async Task CreateGroupConversationAsync_TotalMembersExceedsMaximum_ThrowsBadRequestException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var request = new CreateGroupConversationRequest
+            {
+                GroupName = "Big Group",
+                MemberIds = Enumerable.Range(0, 50).Select(_ => Guid.NewGuid()).ToList()
+            };
+
+            // Act
+            var act = () => _conversationService.CreateGroupConversationAsync(currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("*at most 50 members*");
         }
 
         [Fact]

@@ -31,6 +31,10 @@ namespace CloudM.Application.Services.ConversationServices
     {
         private const int DefaultGroupMembersPageSize = 20;
         private const int MaxGroupMembersPageSize = 100;
+        private const int MinGroupConversationMembers = 3;
+        private const int MaxGroupConversationMembers = 50;
+        private const int MinGroupNameLength = 3;
+        private const int MaxGroupNameLength = 50;
 
         private readonly IConversationRepository _conversationRepository;
         private readonly IConversationMemberRepository _conversationMemberRepository;
@@ -75,7 +79,16 @@ namespace CloudM.Application.Services.ConversationServices
 
         public async Task<ConversationResponse> CreateGroupConversationAsync(Guid currentId, CreateGroupConversationRequest request)
         {
+            if (request == null)
+                throw new BadRequestException("Request is required.");
+
             var normalizedGroupName = request.GroupName?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedGroupName))
+                throw new BadRequestException("Group name is required.");
+            if (normalizedGroupName.Length < MinGroupNameLength)
+                throw new BadRequestException($"Group name must be at least {MinGroupNameLength} characters.");
+            if (normalizedGroupName.Length > MaxGroupNameLength)
+                throw new BadRequestException($"Group name can contain at most {MaxGroupNameLength} characters.");
 
             var uniqueOtherMemberIds = (request.MemberIds ?? new List<Guid>())
                 .Where(id => id != Guid.Empty && id != currentId)
@@ -83,6 +96,10 @@ namespace CloudM.Application.Services.ConversationServices
                 .ToList();
 
             var totalMembers = uniqueOtherMemberIds.Count + 1;
+            if (totalMembers < MinGroupConversationMembers)
+                throw new BadRequestException($"A group must have at least {MinGroupConversationMembers} members (you and {MinGroupConversationMembers - 1} others).");
+            if (totalMembers > MaxGroupConversationMembers)
+                throw new BadRequestException($"A group can contain at most {MaxGroupConversationMembers} members.");
 
             var allMemberIds = uniqueOtherMemberIds
                 .Append(currentId)
@@ -224,8 +241,7 @@ namespace CloudM.Application.Services.ConversationServices
                 });
 
             var accountMap = allAccounts.ToDictionary(a => a.AccountId, a => a);
-
-            return new ConversationResponse
+            var response = new ConversationResponse
             {
                 ConversationId = conversation.ConversationId,
                 ConversationName = conversation.ConversationName,
@@ -261,6 +277,14 @@ namespace CloudM.Application.Services.ConversationServices
                     };
                 }).ToList()
             };
+
+            var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversation.ConversationId)
+                ?? new Dictionary<Guid, bool>();
+            var realtimeMessage = _mapper.Map<SendMessageResponse>(systemMessage) ?? new SendMessageResponse();
+            realtimeMessage.Sender = _mapper.Map<AccountChatInfoResponse>(creator);
+            await _realtimeService.NotifyNewMessageAsync(conversation.ConversationId, muteMap, realtimeMessage);
+
+            return response;
         }
 
         public async Task UpdateGroupConversationInfoAsync(Guid conversationId, Guid currentId, UpdateGroupConversationRequest request)
