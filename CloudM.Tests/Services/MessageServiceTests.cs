@@ -683,6 +683,142 @@ namespace CloudM.Tests.Services
 
         #endregion
 
+        #region ForwardMessageAsync Tests
+
+        [Fact]
+        public async Task ForwardMessageAsync_SourceMessageNotVisible_ThrowsBadRequestException()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var sourceMessageId = Guid.NewGuid();
+            var sender = TestDataFactory.CreateAccount(accountId: senderId);
+
+            _accountRepositoryMock.Setup(x => x.GetAccountById(senderId)).ReturnsAsync(sender);
+            _messageRepositoryMock
+                .Setup(x => x.GetVisibleMessageForAccountAsync(sourceMessageId, senderId))
+                .ReturnsAsync((Message?)null);
+
+            var request = new ForwardMessageRequest
+            {
+                SourceMessageId = sourceMessageId,
+                ConversationIds = new List<Guid> { Guid.NewGuid() }
+            };
+
+            // Act
+            var act = () => _messageService.ForwardMessageAsync(senderId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("This message is no longer available.");
+        }
+
+        [Fact]
+        public async Task ForwardMessageAsync_PostShareSourceUnavailable_ShouldReturnUnavailablePreview()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var sourceMessageId = Guid.NewGuid();
+            var targetConversationId = Guid.NewGuid();
+            var postId = Guid.NewGuid();
+            var ownerId = Guid.NewGuid();
+
+            var sender = TestDataFactory.CreateAccount(accountId: senderId);
+            var sourceMessage = TestDataFactory.CreateMessage(messageId: sourceMessageId, senderId: Guid.NewGuid(), conversationId: Guid.NewGuid());
+            sourceMessage.MessageType = MessageTypeEnum.PostShare;
+            sourceMessage.Content = "forward this";
+            sourceMessage.SystemMessageDataJson = JsonSerializer.Serialize(new
+            {
+                postId,
+                postCode = "POST-CODE",
+                ownerId,
+                ownerUsername = "owner_username",
+                ownerDisplayName = "Owner Name",
+                thumbnailUrl = "https://example.com/thumb.jpg",
+                thumbnailMediaType = 1,
+                contentSnippet = "snapshot content"
+            });
+
+            _accountRepositoryMock.Setup(x => x.GetAccountById(senderId)).ReturnsAsync(sender);
+            _messageRepositoryMock
+                .Setup(x => x.GetVisibleMessageForAccountAsync(sourceMessageId, senderId))
+                .ReturnsAsync(sourceMessage);
+            _postRepositoryMock
+                .Setup(x => x.GetPostDetailByPostId(postId, senderId))
+                .ReturnsAsync((PostDetailModel?)null);
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationByIdAsync(targetConversationId))
+                .ReturnsAsync(TestDataFactory.CreateConversation(targetConversationId));
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(targetConversationId, senderId))
+                .ReturnsAsync(true);
+
+            _messageRepositoryMock
+                .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
+                .Returns(Task.CompletedTask);
+
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<SendMessageResponse>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<SendMessageResponse>> operation, Func<Task>? _) => operation());
+
+            _mapperMock.Setup(x => x.Map<AccountChatInfoResponse>(sender)).Returns(new AccountChatInfoResponse
+            {
+                AccountId = senderId,
+                Username = sender.Username,
+                FullName = sender.FullName,
+                AvatarUrl = sender.AvatarUrl,
+                IsActive = true
+            });
+
+            _mapperMock
+                .Setup(x => x.Map<SendMessageResponse>(It.IsAny<Message>()))
+                .Returns<Message>(message => new SendMessageResponse
+                {
+                    MessageId = message.MessageId,
+                    ConversationId = message.ConversationId,
+                    MessageType = message.MessageType,
+                    SentAt = message.SentAt
+                });
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(targetConversationId))
+                .ReturnsAsync(new Dictionary<Guid, bool> { { senderId, false } });
+            _realtimeServiceMock
+                .Setup(x => x.NotifyNewMessageAsync(
+                    targetConversationId,
+                    It.IsAny<Dictionary<Guid, bool>>(),
+                    It.IsAny<SendMessageResponse>()))
+                .Returns(Task.CompletedTask);
+
+            var request = new ForwardMessageRequest
+            {
+                SourceMessageId = sourceMessageId,
+                ConversationIds = new List<Guid> { targetConversationId }
+            };
+
+            // Act
+            var result = await _messageService.ForwardMessageAsync(senderId, request);
+
+            // Assert
+            result.TotalRequested.Should().Be(1);
+            result.TotalSucceeded.Should().Be(1);
+            result.TotalFailed.Should().Be(0);
+            result.Results.Should().HaveCount(1);
+            result.Results[0].IsSuccess.Should().BeTrue();
+            result.Results[0].Message.Should().NotBeNull();
+            result.Results[0].Message!.MessageType.Should().Be(MessageTypeEnum.PostShare);
+            result.Results[0].Message!.PostShareInfo.Should().NotBeNull();
+            result.Results[0].Message!.PostShareInfo!.IsPostUnavailable.Should().BeTrue();
+            result.Results[0].Message!.PostShareInfo!.ThumbnailUrl.Should().BeNull();
+            result.Results[0].Message!.PostShareInfo!.ContentSnippet.Should().BeNull();
+
+            _postRepositoryMock.Verify(x => x.GetPostDetailByPostId(postId, senderId), Times.Once);
+        }
+
+        #endregion
+
         #region RecallMessageAsync Tests
 
         [Fact]

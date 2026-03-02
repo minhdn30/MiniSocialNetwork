@@ -184,10 +184,12 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                         .GroupBy(cm => cm.ConversationId)
                         .SelectMany(g => g
                             .OrderBy(cm => cm.JoinedAt)
+                            .ThenBy(cm => cm.AccountId)
                             .Take(4)
                             .Select(cm => new GroupAvatarProjection
                             {
                                 ConversationId = cm.ConversationId,
+                                AccountId = cm.AccountId,
                                 JoinedAt = cm.JoinedAt,
                                 AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
                             }))
@@ -202,6 +204,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                         .Select(cm => new GroupAvatarProjection
                         {
                             ConversationId = cm.ConversationId,
+                            AccountId = cm.AccountId,
                             JoinedAt = cm.JoinedAt,
                             AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
                         })
@@ -213,6 +216,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     .ToDictionary(
                         g => g.Key,
                         g => g.OrderBy(x => x.JoinedAt)
+                              .ThenBy(x => x.AccountId)
                               .Select(x => x.AvatarUrl)
                               .Take(4)
                               .ToList()
@@ -443,6 +447,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     .AsNoTracking()
                     .Where(g_cm => g_cm.ConversationId == conversationId && g_cm.AccountId != currentId && !g_cm.HasLeft)
                     .OrderBy(g_cm => g_cm.JoinedAt)
+                    .ThenBy(g_cm => g_cm.AccountId)
                     .Select(g_cm => g_cm.Account.AvatarUrl ?? string.Empty)
                     .Take(4)
                     .ToListAsync();
@@ -563,10 +568,12 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                         .GroupBy(cm => cm.ConversationId)
                         .SelectMany(g => g
                             .OrderBy(cm => cm.JoinedAt)
+                            .ThenBy(cm => cm.AccountId)
                             .Take(4)
                             .Select(cm => new GroupAvatarProjection
                             {
                                 ConversationId = cm.ConversationId,
+                                AccountId = cm.AccountId,
                                 JoinedAt = cm.JoinedAt,
                                 AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
                             }))
@@ -580,6 +587,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                         .Select(cm => new GroupAvatarProjection
                         {
                             ConversationId = cm.ConversationId,
+                            AccountId = cm.AccountId,
                             JoinedAt = cm.JoinedAt,
                             AvatarUrl = cm.Account.AvatarUrl ?? string.Empty
                         })
@@ -591,6 +599,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     .ToDictionary(
                         g => g.Key,
                         g => g.OrderBy(x => x.JoinedAt)
+                              .ThenBy(x => x.AccountId)
                               .Select(x => x.AvatarUrl)
                               .Take(4)
                               .ToList()
@@ -644,6 +653,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
         private sealed class GroupAvatarProjection
         {
             public Guid ConversationId { get; set; }
+            public Guid AccountId { get; set; }
             public DateTime JoinedAt { get; set; }
             public string AvatarUrl { get; set; } = string.Empty;
         }

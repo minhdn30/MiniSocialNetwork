@@ -27,5 +27,15 @@ namespace CloudM.Infrastructure.Repositories.MessageMedias
                 .Include(mm => mm.Message)
                 .FirstOrDefaultAsync(mm => mm.MessageMediaId == messageMediaId);
         }
+
+        public Task<List<MessageMedia>> GetByMessageIdAsync(Guid messageId)
+        {
+            return _context.MessageMedias
+                .AsNoTracking()
+                .Where(mm => mm.MessageId == messageId)
+                .OrderBy(mm => mm.CreatedAt)
+                .ThenBy(mm => mm.MessageMediaId)
+                .ToListAsync();
+        }
     }
 }

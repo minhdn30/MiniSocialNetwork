@@ -283,5 +283,28 @@ namespace CloudM.API.Controllers
             return Ok(result);
         }
 
+        [Authorize]
+        [HttpPost("forward")]
+        public async Task<IActionResult> ForwardMessage([FromBody] ForwardMessageRequest request)
+        {
+            var senderId = User.GetAccountId();
+            if (senderId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (request == null)
+                return BadRequest(new { message = "Request is required." });
+
+            if (request.SourceMessageId == Guid.Empty)
+                return BadRequest(new { message = "Source message ID is required." });
+
+            var hasConversationTargets = request.ConversationIds != null && request.ConversationIds.Any(id => id != Guid.Empty);
+            var hasReceiverTargets = request.ReceiverIds != null && request.ReceiverIds.Any(id => id != Guid.Empty);
+            if (!hasConversationTargets && !hasReceiverTargets)
+                return BadRequest(new { message = "At least one recipient is required." });
+
+            var result = await _messageService.ForwardMessageAsync(senderId.Value, request);
+            return Ok(result);
+        }
+
     }
 }

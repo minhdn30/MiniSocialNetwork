@@ -450,6 +450,22 @@ namespace CloudM.Infrastructure.Repositories.Messages
                 .FirstOrDefaultAsync(m => m.MessageId == messageId);
         }
 
+        public async Task<Message?> GetVisibleMessageForAccountAsync(Guid messageId, Guid currentId)
+        {
+            return await _context.Messages
+                .Include(m => m.Account)
+                .Where(m => m.MessageId == messageId)
+                .Where(m => m.Account.Status == AccountStatusEnum.Active)
+                .Where(m => !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                .Where(m => _context.ConversationMembers.Any(cm =>
+                    cm.ConversationId == m.ConversationId &&
+                    cm.AccountId == currentId &&
+                    !cm.HasLeft &&
+                    !cm.Conversation.IsDeleted &&
+                    (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value)))
+                .FirstOrDefaultAsync();
+        }
+
         public async Task<int> GetMessagePositionAsync(Guid conversationId, Guid currentId, Guid messageId)
         {
             var member = await _context.ConversationMembers

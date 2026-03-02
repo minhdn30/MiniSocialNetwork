@@ -19,5 +19,6 @@ namespace CloudM.Application.Services.MessageServices
         Task<SendMessageResponse> SendStoryReplyAsync(Guid senderId, SendStoryReplyRequest request);
         Task<SearchPostShareTargetsResponse> SearchPostShareTargetsAsync(Guid senderId, string? keyword, int? limit = null);
         Task<SendPostShareResponse> SendPostShareAsync(Guid senderId, SendPostShareRequest request);
+        Task<SendPostShareResponse> ForwardMessageAsync(Guid senderId, ForwardMessageRequest request);
     }
 }

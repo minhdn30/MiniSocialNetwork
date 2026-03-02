@@ -36,6 +36,7 @@ namespace CloudM.Application.Services.MessageServices
         private const int EmptyKeywordRecentContactsLimit = 10;
         private const int PostShareSearchPrefetchMultiplier = 6;
         private const int MaxPostShareSearchPrefetch = 300;
+        private const int MaxForwardRecipientsPerRequest = 50;
         private readonly IMessageRepository _messageRepository;
         private readonly IMessageMediaRepository _messageMediaRepository;
         private readonly IConversationRepository _conversationRepository;
@@ -49,7 +50,8 @@ namespace CloudM.Application.Services.MessageServices
         private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
 
-        public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository, IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
+        public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository,
+            IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IAccountRepository accountRepository, IPostRepository postRepository, IMapper mapper, ICloudinaryService cloudinaryService,
             IFileTypeDetector fileTypeDetector, IStoryRepository storyRepository, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
         {
@@ -897,6 +899,195 @@ namespace CloudM.Application.Services.MessageServices
             };
         }
 
+        public async Task<SendPostShareResponse> ForwardMessageAsync(Guid senderId, ForwardMessageRequest request)
+        {
+            if (request == null)
+                throw new BadRequestException("Request is required.");
+
+            if (request.SourceMessageId == Guid.Empty)
+                throw new BadRequestException("Source message ID is required.");
+
+            var sender = await _accountRepository.GetAccountById(senderId);
+            if (sender == null)
+                throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
+            if (sender.Status != AccountStatusEnum.Active)
+                throw new ForbiddenException("You must reactivate your account to send messages.");
+
+            var conversationIds = (request.ConversationIds ?? new List<Guid>())
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+            var receiverIds = (request.ReceiverIds ?? new List<Guid>())
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (!conversationIds.Any() && !receiverIds.Any())
+                throw new BadRequestException("At least one recipient is required.");
+
+            var requestedRecipientCount = conversationIds.Count + receiverIds.Count;
+            if (requestedRecipientCount > MaxForwardRecipientsPerRequest)
+                throw new BadRequestException($"You can forward to up to {MaxForwardRecipientsPerRequest} recipients at once.");
+
+            var sourceMessage = await _messageRepository.GetVisibleMessageForAccountAsync(request.SourceMessageId, senderId);
+            if (sourceMessage == null)
+                throw new BadRequestException("This message is no longer available.");
+
+            if (sourceMessage.IsRecalled)
+                throw new BadRequestException("This message can no longer be forwarded.");
+
+            if (sourceMessage.MessageType == MessageTypeEnum.System)
+                throw new BadRequestException("System messages cannot be forwarded.");
+
+            if (sourceMessage.MessageType == MessageTypeEnum.StoryReply)
+                throw new BadRequestException("Story reply messages cannot be forwarded.");
+
+            if (sourceMessage.MessageType != MessageTypeEnum.Text &&
+                sourceMessage.MessageType != MessageTypeEnum.Media &&
+                sourceMessage.MessageType != MessageTypeEnum.PostShare)
+            {
+                throw new BadRequestException("This message type cannot be forwarded.");
+            }
+
+            if (sourceMessage.MessageType == MessageTypeEnum.Text &&
+                string.IsNullOrWhiteSpace(sourceMessage.Content))
+            {
+                throw new BadRequestException("This message can no longer be forwarded.");
+            }
+
+            if (sourceMessage.MessageType == MessageTypeEnum.PostShare &&
+                string.IsNullOrWhiteSpace(sourceMessage.SystemMessageDataJson))
+            {
+                throw new BadRequestException("This shared post message can no longer be forwarded.");
+            }
+
+            var sourceMedias = sourceMessage.MessageType == MessageTypeEnum.Media
+                ? await _messageMediaRepository.GetByMessageIdAsync(sourceMessage.MessageId)
+                : new List<MessageMedia>();
+
+            if (sourceMessage.MessageType == MessageTypeEnum.Media && !sourceMedias.Any())
+                throw new BadRequestException("This media message can no longer be forwarded.");
+
+            PostShareInfoModel? sourcePostShareInfo = null;
+            if (sourceMessage.MessageType == MessageTypeEnum.PostShare)
+            {
+                sourcePostShareInfo = await BuildForwardPostShareInfoAsync(senderId, sourceMessage.SystemMessageDataJson);
+            }
+
+            var senderDto = _mapper.Map<AccountChatInfoResponse>(sender);
+            var processedConversationIds = new HashSet<Guid>();
+            var results = new List<PostShareSendResult>();
+            var receiverLookup = new Dictionary<Guid, Account>();
+
+            if (receiverIds.Any())
+            {
+                var receiverAccounts = await _accountRepository.GetAccountsByIds(receiverIds) ?? new List<Account>();
+                receiverLookup = receiverAccounts.ToDictionary(account => account.AccountId, account => account);
+            }
+
+            foreach (var conversationId in conversationIds)
+            {
+                if (!processedConversationIds.Add(conversationId))
+                {
+                    results.Add(BuildDuplicateForwardResult(conversationId, null, results));
+                    continue;
+                }
+
+                var result = await ForwardMessageToConversationAsync(
+                    senderId,
+                    senderDto,
+                    conversationId,
+                    null,
+                    request.TempId,
+                    sourceMessage,
+                    sourceMedias,
+                    sourcePostShareInfo);
+                results.Add(result);
+            }
+
+            foreach (var receiverId in receiverIds)
+            {
+                if (receiverId == senderId)
+                {
+                    results.Add(new PostShareSendResult
+                    {
+                        ReceiverId = receiverId,
+                        IsSuccess = false,
+                        ErrorMessage = "You cannot send to yourself."
+                    });
+                    continue;
+                }
+
+                try
+                {
+                    if (!receiverLookup.TryGetValue(receiverId, out var receiver) || receiver == null)
+                    {
+                        results.Add(new PostShareSendResult
+                        {
+                            ReceiverId = receiverId,
+                            IsSuccess = false,
+                            ErrorMessage = "Receiver account does not exist."
+                        });
+                        continue;
+                    }
+
+                    if (receiver.Status != AccountStatusEnum.Active)
+                    {
+                        results.Add(new PostShareSendResult
+                        {
+                            ReceiverId = receiverId,
+                            IsSuccess = false,
+                            ErrorMessage = "This user is currently unavailable."
+                        });
+                        continue;
+                    }
+
+                    var conversationId = await _conversationRepository.GetPrivateConversationIdAsync(senderId, receiverId);
+                    if (conversationId == null)
+                    {
+                        var conversation = await _conversationRepository.CreatePrivateConversationAsync(senderId, receiverId);
+                        await _unitOfWork.CommitAsync();
+                        conversationId = conversation.ConversationId;
+                    }
+
+                    if (!processedConversationIds.Add(conversationId.Value))
+                    {
+                        results.Add(BuildDuplicateForwardResult(conversationId.Value, receiverId, results));
+                        continue;
+                    }
+
+                    var result = await ForwardMessageToConversationAsync(
+                        senderId,
+                        senderDto,
+                        conversationId.Value,
+                        receiverId,
+                        request.TempId,
+                        sourceMessage,
+                        sourceMedias,
+                        sourcePostShareInfo,
+                        skipMembershipValidation: true);
+                    results.Add(result);
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new PostShareSendResult
+                    {
+                        ReceiverId = receiverId,
+                        IsSuccess = false,
+                        ErrorMessage = ResolveForwardFailureMessage(ex)
+                    });
+                }
+            }
+
+            return new SendPostShareResponse
+            {
+                TotalRequested = results.Count,
+                TotalSucceeded = results.Count(r => r.IsSuccess),
+                TotalFailed = results.Count(r => !r.IsSuccess),
+                Results = results
+            };
+        }
+
         private async Task<PostShareSendResult> SendPostShareToConversationAsync(
             Guid senderId,
             AccountChatInfoResponse sender,
@@ -984,6 +1175,126 @@ namespace CloudM.Application.Services.MessageServices
             }
         }
 
+        private async Task<PostShareSendResult> ForwardMessageToConversationAsync(
+            Guid senderId,
+            AccountChatInfoResponse sender,
+            Guid conversationId,
+            Guid? receiverId,
+            string? tempId,
+            Message sourceMessage,
+            IReadOnlyList<MessageMedia> sourceMedias,
+            PostShareInfoModel? sourcePostShareInfo,
+            bool skipMembershipValidation = false)
+        {
+            try
+            {
+                if (!skipMembershipValidation)
+                {
+                    var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+                    if (conversation == null)
+                    {
+                        return new PostShareSendResult
+                        {
+                            ConversationId = conversationId,
+                            ReceiverId = receiverId,
+                            IsSuccess = false,
+                            ErrorMessage = "Conversation not found."
+                        };
+                    }
+
+                    if (!await _conversationMemberRepository.IsMemberOfConversation(conversationId, senderId))
+                    {
+                        return new PostShareSendResult
+                        {
+                            ConversationId = conversationId,
+                            ReceiverId = receiverId,
+                            IsSuccess = false,
+                            ErrorMessage = "You are not a member of this conversation."
+                        };
+                    }
+                }
+
+                var message = await _unitOfWork.ExecuteInTransactionAsync(
+                    async () =>
+                    {
+                        var now = DateTime.UtcNow;
+                        var entity = new Message
+                        {
+                            ConversationId = conversationId,
+                            AccountId = senderId,
+                            Content = sourceMessage.Content,
+                            MessageType = sourceMessage.MessageType,
+                            SentAt = now,
+                            IsEdited = false,
+                            IsRecalled = false,
+                            SystemMessageDataJson = sourceMessage.MessageType == MessageTypeEnum.PostShare
+                                ? sourceMessage.SystemMessageDataJson
+                                : null
+                        };
+                        await _messageRepository.AddMessageAsync(entity);
+
+                        List<MessageMedia>? clonedMedias = null;
+                        if (sourceMessage.MessageType == MessageTypeEnum.Media && sourceMedias.Count > 0)
+                        {
+                            clonedMedias = sourceMedias
+                                .Select(media => new MessageMedia
+                                {
+                                    MessageId = entity.MessageId,
+                                    MediaUrl = media.MediaUrl,
+                                    ThumbnailUrl = media.ThumbnailUrl,
+                                    MediaType = media.MediaType,
+                                    FileName = media.FileName,
+                                    FileSize = media.FileSize,
+                                    CreatedAt = now
+                                })
+                                .ToList();
+
+                            await _messageMediaRepository.AddMessageMediasAsync(clonedMedias);
+                        }
+
+                        var result = _mapper.Map<SendMessageResponse>(entity);
+                        result.TempId = tempId;
+                        result.Sender = sender;
+
+                        if (clonedMedias != null && clonedMedias.Count > 0)
+                        {
+                            result.Medias = _mapper.Map<List<MessageMediaResponse>>(clonedMedias);
+                        }
+
+                        if (entity.MessageType == MessageTypeEnum.PostShare)
+                        {
+                            result.PostShareInfo = sourcePostShareInfo != null
+                                ? ClonePostShareInfo(sourcePostShareInfo)
+                                : new PostShareInfoModel { IsPostUnavailable = true };
+                        }
+
+                        var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversationId);
+                        await _realtimeService.NotifyNewMessageAsync(conversationId, muteMap, result);
+
+                        return result;
+                    },
+                    () => Task.CompletedTask);
+
+                return new PostShareSendResult
+                {
+                    ConversationId = conversationId,
+                    ReceiverId = receiverId,
+                    IsSuccess = true,
+                    Message = message
+                };
+            }
+            catch (Exception ex)
+            {
+                return new PostShareSendResult
+                {
+                    ConversationId = conversationId,
+                    ReceiverId = receiverId,
+                    IsSuccess = false,
+                    ErrorMessage = ResolveForwardFailureMessage(ex)
+                };
+            }
+        }
+
         private static int NormalizePostShareSearchLimit(int? limit)
         {
             if (!limit.HasValue || limit.Value <= 0)
@@ -1012,6 +1323,18 @@ namespace CloudM.Application.Services.MessageServices
             return "Failed to share post.";
         }
 
+        private static string ResolveForwardFailureMessage(Exception ex)
+        {
+            if (ex is BadRequestException ||
+                ex is ForbiddenException ||
+                ex is NotFoundException)
+            {
+                return ex.Message;
+            }
+
+            return "Failed to forward message.";
+        }
+
         private static PostShareSendResult BuildDuplicatePostShareResult(
             Guid conversationId,
             Guid? receiverId,
@@ -1026,6 +1349,33 @@ namespace CloudM.Application.Services.MessageServices
                     ReceiverId = receiverId,
                     IsSuccess = false,
                     ErrorMessage = "Failed to share post."
+                };
+            }
+
+            return new PostShareSendResult
+            {
+                ConversationId = conversationId,
+                ReceiverId = receiverId,
+                IsSuccess = existing.IsSuccess,
+                ErrorMessage = existing.IsSuccess ? null : existing.ErrorMessage,
+                Message = existing.IsSuccess ? existing.Message : null
+            };
+        }
+
+        private static PostShareSendResult BuildDuplicateForwardResult(
+            Guid conversationId,
+            Guid? receiverId,
+            IReadOnlyList<PostShareSendResult> currentResults)
+        {
+            var existing = currentResults.LastOrDefault(item => item.ConversationId == conversationId);
+            if (existing == null)
+            {
+                return new PostShareSendResult
+                {
+                    ConversationId = conversationId,
+                    ReceiverId = receiverId,
+                    IsSuccess = false,
+                    ErrorMessage = "Failed to forward message."
                 };
             }
 
@@ -1079,6 +1429,70 @@ namespace CloudM.Application.Services.MessageServices
                 ThumbnailMediaType = source.ThumbnailMediaType,
                 ContentSnippet = source.ContentSnippet
             };
+        }
+
+        private async Task<PostShareInfoModel> BuildForwardPostShareInfoAsync(Guid currentId, string? snapshotJson)
+        {
+            if (string.IsNullOrWhiteSpace(snapshotJson))
+            {
+                return new PostShareInfoModel { IsPostUnavailable = true };
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(snapshotJson);
+                var root = doc.RootElement;
+
+                Guid.TryParse(root.TryGetProperty("postId", out var postIdProp) ? postIdProp.GetString() : null, out var postId);
+                Guid.TryParse(root.TryGetProperty("ownerId", out var ownerIdProp) ? ownerIdProp.GetString() : null, out var ownerId);
+
+                int? thumbnailMediaType = null;
+                if (root.TryGetProperty("thumbnailMediaType", out var thumbTypeProp))
+                {
+                    if (thumbTypeProp.ValueKind == JsonValueKind.Number && thumbTypeProp.TryGetInt32(out var numericType))
+                    {
+                        thumbnailMediaType = numericType;
+                    }
+                    else if (thumbTypeProp.ValueKind == JsonValueKind.String && int.TryParse(thumbTypeProp.GetString(), out var parsedType))
+                    {
+                        thumbnailMediaType = parsedType;
+                    }
+                }
+
+                var info = new PostShareInfoModel
+                {
+                    PostId = postId,
+                    PostCode = root.TryGetProperty("postCode", out var postCodeProp) ? postCodeProp.GetString() ?? string.Empty : string.Empty,
+                    IsPostUnavailable = false,
+                    OwnerId = ownerId,
+                    OwnerUsername = root.TryGetProperty("ownerUsername", out var ownerUsernameProp) ? ownerUsernameProp.GetString() : null,
+                    OwnerDisplayName = root.TryGetProperty("ownerDisplayName", out var ownerDisplayNameProp) ? ownerDisplayNameProp.GetString() : null,
+                    ThumbnailUrl = root.TryGetProperty("thumbnailUrl", out var thumbUrlProp) ? thumbUrlProp.GetString() : null,
+                    ThumbnailMediaType = thumbnailMediaType,
+                    ContentSnippet = root.TryGetProperty("contentSnippet", out var snippetProp) ? snippetProp.GetString() : null
+                };
+
+                var isUnavailable = info.PostId == Guid.Empty;
+                if (!isUnavailable)
+                {
+                    var post = await _postRepository.GetPostDetailByPostId(info.PostId, currentId);
+                    isUnavailable = post == null;
+                }
+
+                info.IsPostUnavailable = isUnavailable;
+                if (isUnavailable)
+                {
+                    info.ThumbnailUrl = null;
+                    info.ThumbnailMediaType = null;
+                    info.ContentSnippet = null;
+                }
+
+                return info;
+            }
+            catch
+            {
+                return new PostShareInfoModel { IsPostUnavailable = true };
+            }
         }
 
     }

@@ -11,5 +11,6 @@ namespace CloudM.Infrastructure.Repositories.MessageMedias
     {
         Task AddMessageMediasAsync(List<MessageMedia> medias);
         Task<MessageMedia?> GetByIdWithMessageAsync(Guid messageMediaId);
+        Task<List<MessageMedia>> GetByMessageIdAsync(Guid messageId);
     }
 }
