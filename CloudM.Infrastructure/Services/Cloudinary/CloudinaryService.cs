@@ -15,6 +15,7 @@ namespace CloudM.Infrastructure.Services.Cloudinary
     {
         private readonly CloudinaryDotNet.Cloudinary _cloudinary;
         private readonly ICloudinaryDeleteBackgroundQueue _deleteQueue;
+        private readonly string _folderName;
 
         public CloudinaryService(
             IConfiguration config,
@@ -28,6 +29,9 @@ namespace CloudM.Infrastructure.Services.Cloudinary
 
             _cloudinary = new CloudinaryDotNet.Cloudinary(account);
             _deleteQueue = deleteQueue;
+            _folderName = config["Cloudinary:FolderName"] ?? "CloudM";
+            
+            Console.WriteLine($"[DEBUG] Loaded Cloudinary Account - CloudName: '{account.Cloud}', ApiKey: '{account.ApiKey}'. FolderName: '{_folderName}'");
         }
         public async Task<string?> UploadImageAsync(IFormFile file)
         {
@@ -37,13 +41,17 @@ namespace CloudM.Infrastructure.Services.Cloudinary
             var uploadParams = new ImageUploadParams
             {
                 File = new FileDescription(file.FileName, stream),
-                Folder = "cloudmCloudM/images",
+                Folder = string.IsNullOrEmpty(_folderName) ? "images" : $"{_folderName}/images",
                 UseFilename = true,
                 UniqueFilename = true,
                 Overwrite = false
             };
 
             var result = await _cloudinary.UploadAsync(uploadParams);
+            if (result.Error != null)
+            {
+                throw new Exception($"Cloudinary Image Upload Error (Folder: {uploadParams.Folder}): {result.Error.Message}");
+            }
             return result.SecureUrl?.ToString();
         }
         public async Task<string?> UploadVideoAsync(IFormFile file)
@@ -56,14 +64,17 @@ namespace CloudM.Infrastructure.Services.Cloudinary
             var uploadParams = new VideoUploadParams
             {
                 File = new FileDescription(file.FileName, stream),
-                Folder = "cloudmCloudM/videos", 
+                Folder = string.IsNullOrEmpty(_folderName) ? "videos" : $"{_folderName}/videos", 
                 UseFilename = true,
                 UniqueFilename = true,
                 Overwrite = false
             };
 
             var result = await _cloudinary.UploadAsync(uploadParams);
-
+            if (result.Error != null)
+            {
+                throw new Exception($"Cloudinary Video Upload Error: {result.Error.Message}");
+            }
             return result.SecureUrl?.ToString();
         }
 
@@ -77,7 +88,7 @@ namespace CloudM.Infrastructure.Services.Cloudinary
             var uploadParams = new RawUploadParams
             {
                 File = new FileDescription(file.FileName, stream),
-                Folder = "cloudmCloudM/files",
+                Folder = string.IsNullOrEmpty(_folderName) ? "files" : $"{_folderName}/files",
                 UseFilename = true,
                 UniqueFilename = true,
                 Overwrite = false
