@@ -262,7 +262,17 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                             SentAt = msg.SentAt,
                             IsEdited = msg.IsEdited,
                             IsRecalled = msg.IsRecalled,
+                            HasReply = msg.ReplyToMessageId.HasValue,
                             SystemMessageDataJson = msg.SystemMessageDataJson,
+                            ReplyTo = msg.ReplyToMessageId.HasValue
+                                ? new ReplyInfoModel
+                                {
+                                    MessageId = msg.ReplyToMessageId.Value,
+                                    MessageType = msg.ReplyToMessage != null
+                                        ? msg.ReplyToMessage.MessageType
+                                        : MessageTypeEnum.Text
+                                }
+                                : null,
                             Sender = new AccountChatInfoModel
                             {
                                 AccountId = msg.Account.AccountId,

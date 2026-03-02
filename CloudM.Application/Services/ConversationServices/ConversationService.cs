@@ -630,38 +630,98 @@ namespace CloudM.Application.Services.ConversationServices
             if (msg == null) return null;
             if (msg.IsRecalled) return "Message recalled";
 
-            if (msg.MessageType == MessageTypeEnum.Text)
-                return msg.Content;
-
-            if (msg.MessageType == MessageTypeEnum.Media)
-            {
-                // If media message also has text content, show the text
-                if (!string.IsNullOrWhiteSpace(msg.Content))
-                    return msg.Content;
-
-                var firstMedia = msg.Medias?.FirstOrDefault();
-                if (firstMedia == null) return "Sent a media file";
-
-                return firstMedia.MediaType switch
-                {
-                    MediaTypeEnum.Image => "[Image]",
-                    MediaTypeEnum.Video => "[Video]",
-                    MediaTypeEnum.Audio => "[Audio]",
-                    _ => "[File]"
-                };
-            }
-
             if (msg.MessageType == MessageTypeEnum.System)
                 return msg.Content;
 
+            var hasReply = msg.ReplyTo != null || msg.HasReply;
+            var content = (msg.Content ?? string.Empty).Trim();
+
             if (msg.MessageType == MessageTypeEnum.PostShare)
             {
-                if (!string.IsNullOrWhiteSpace(msg.Content))
-                    return msg.Content;
-                return "Shared a post";
+                return hasReply ? "Replied with a shared post" : "Shared a post";
             }
 
-            return msg.Content;
+            if (msg.MessageType == MessageTypeEnum.StoryReply)
+            {
+                if (!string.IsNullOrWhiteSpace(content))
+                    return $"Replied to a story: {content}";
+                return "Replied to a story";
+            }
+
+            if (msg.MessageType == MessageTypeEnum.Media)
+            {
+                if (!string.IsNullOrWhiteSpace(content))
+                    return hasReply ? $"Replied: {content}" : content;
+
+                var mediaSummary = BuildMediaPreviewSummary(msg.Medias);
+                return hasReply
+                    ? $"Replied with {mediaSummary.replyWithText}"
+                    : mediaSummary.sentText;
+            }
+
+            if (msg.MessageType == MessageTypeEnum.Text)
+            {
+                if (!string.IsNullOrWhiteSpace(content))
+                    return hasReply ? $"Replied: {content}" : content;
+                return hasReply ? "Replied to a message" : "Sent a message";
+            }
+
+            if (!string.IsNullOrWhiteSpace(content))
+                return hasReply ? $"Replied: {content}" : content;
+
+            return hasReply ? "Replied to a message" : null;
+        }
+
+        private static (string sentText, string replyWithText) BuildMediaPreviewSummary(
+            IReadOnlyCollection<MessageMediaBasicModel>? medias)
+        {
+            if (medias == null || medias.Count == 0)
+            {
+                return ("Sent a media file", "a media file");
+            }
+
+            var grouped = medias
+                .GroupBy(media => media.MediaType)
+                .Select(group => new
+                {
+                    MediaType = group.Key,
+                    Count = group.Count()
+                })
+                .ToList();
+
+            var totalCount = medias.Count;
+            if (grouped.Count == 1)
+            {
+                var item = grouped[0];
+                if (item.MediaType == MediaTypeEnum.Image)
+                {
+                    return item.Count == 1
+                        ? ("Sent a photo", "a photo")
+                        : ($"Sent {item.Count} photos", $"{item.Count} photos");
+                }
+
+                if (item.MediaType == MediaTypeEnum.Video)
+                {
+                    return item.Count == 1
+                        ? ("Sent a video", "a video")
+                        : ($"Sent {item.Count} videos", $"{item.Count} videos");
+                }
+
+                if (item.MediaType == MediaTypeEnum.Audio)
+                {
+                    return item.Count == 1
+                        ? ("Sent an audio", "an audio")
+                        : ($"Sent {item.Count} audio files", $"{item.Count} audio files");
+                }
+
+                return item.Count == 1
+                    ? ("Sent a file", "a file")
+                    : ($"Sent {item.Count} files", $"{item.Count} files");
+            }
+
+            return totalCount == 1
+                ? ("Sent an attachment", "an attachment")
+                : ("Sent attachments", "attachments");
         }
 
         public async Task<int> GetUnreadConversationCountAsync(Guid currentId)
