@@ -18,6 +18,7 @@ using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.Comments;
 using CloudM.Infrastructure.Repositories.PostMedias;
 using CloudM.Infrastructure.Repositories.PostReacts;
+using CloudM.Infrastructure.Repositories.PostSaves;
 using CloudM.Infrastructure.Repositories.Posts;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
 using Xunit;
@@ -30,6 +31,7 @@ namespace CloudM.Tests.Services
         private readonly Mock<IPostRepository> _mockPostRepo;
         private readonly Mock<IPostMediaRepository> _mockPostMediaRepo;
         private readonly Mock<IPostReactRepository> _mockPostReactRepo;
+        private readonly Mock<IPostSaveRepository> _mockPostSaveRepo;
         private readonly Mock<ICommentRepository> _mockCommentRepo;
         private readonly Mock<IAccountRepository> _mockAccountRepo;
         private readonly Mock<ICloudinaryService> _mockCloudinaryService;
@@ -45,6 +47,7 @@ namespace CloudM.Tests.Services
             _mockPostRepo = new Mock<IPostRepository>();
             _mockPostMediaRepo = new Mock<IPostMediaRepository>();
             _mockPostReactRepo = new Mock<IPostReactRepository>();
+            _mockPostSaveRepo = new Mock<IPostSaveRepository>();
             _mockCommentRepo = new Mock<ICommentRepository>();
             _mockAccountRepo = new Mock<IAccountRepository>();
             _mockCloudinaryService = new Mock<ICloudinaryService>();
@@ -56,6 +59,7 @@ namespace CloudM.Tests.Services
 
             _postService = new PostService(
                 _mockPostReactRepo.Object,
+                _mockPostSaveRepo.Object,
                 _mockPostMediaRepo.Object,
                 _mockPostRepo.Object,
                 _mockCommentRepo.Object,

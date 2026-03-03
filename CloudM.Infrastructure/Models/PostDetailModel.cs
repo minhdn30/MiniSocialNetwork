@@ -19,6 +19,7 @@ namespace CloudM.Infrastructure.Models
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public bool IsReactedByCurrentUser { get; set; }
+        public bool IsSavedByCurrentUser { get; set; }
         public bool IsOwner { get; set; }
         public int TotalMedias { get; set; } = 0;
         public int TotalReacts { get; set; } = 0;

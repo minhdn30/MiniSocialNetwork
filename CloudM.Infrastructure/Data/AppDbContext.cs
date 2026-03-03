@@ -22,6 +22,7 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<Post> Posts { get; set; }
         public virtual DbSet<PostMedia> PostMedias { get; set; }
         public virtual DbSet<PostReact> PostReacts { get; set; }
+        public virtual DbSet<PostSave> PostSaves { get; set; }
         public virtual DbSet<Story> Stories { get; set; }
         public virtual DbSet<StoryView> StoryViews { get; set; }
         public virtual DbSet<StoryHighlightGroup> StoryHighlightGroups { get; set; }
@@ -206,6 +207,13 @@ namespace CloudM.Infrastructure.Data
                 .HasForeignKey(r => r.PostId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Post → Saves
+            modelBuilder.Entity<Post>()
+                .HasMany(p => p.Saves)
+                .WithOne(s => s.Post)
+                .HasForeignKey(s => s.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // =====================
             // POST MEDIA
             // =====================
@@ -238,6 +246,32 @@ namespace CloudM.Infrastructure.Data
                 .HasOne(r => r.Post)
                 .WithMany(p => p.Reacts)
                 .HasForeignKey(r => r.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // POST SAVE
+            // =====================
+            modelBuilder.Entity<PostSave>()
+                .HasKey(s => new { s.PostId, s.AccountId });
+
+            modelBuilder.Entity<PostSave>()
+                .HasIndex(s => new { s.AccountId, s.CreatedAt, s.PostId })
+                .HasDatabaseName("IX_PostSaves_Account_CreatedAt");
+
+            modelBuilder.Entity<PostSave>()
+                .HasIndex(s => s.PostId)
+                .HasDatabaseName("IX_PostSaves_PostId");
+
+            modelBuilder.Entity<PostSave>()
+                .HasOne(s => s.Account)
+                .WithMany(a => a.PostSaves)
+                .HasForeignKey(s => s.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PostSave>()
+                .HasOne(s => s.Post)
+                .WithMany(p => p.Saves)
+                .HasForeignKey(s => s.PostId)
                 .OnDelete(DeleteBehavior.Cascade);
 
 
