@@ -84,6 +84,22 @@ namespace CloudM.Infrastructure.Repositories.Presences
                 .FirstOrDefaultAsync(cancellationToken);
         }
 
+        public async Task<DateTime?> GetLastOnlineAtAsync(
+            Guid accountId,
+            CancellationToken cancellationToken = default)
+        {
+            if (accountId == Guid.Empty)
+            {
+                return null;
+            }
+
+            return await _context.Accounts
+                .AsNoTracking()
+                .Where(a => a.AccountId == accountId)
+                .Select(a => a.LastOnlineAt)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
         public async Task<List<Guid>> GetAudienceAccountIdsAsync(
             Guid accountId,
             CancellationToken cancellationToken = default)

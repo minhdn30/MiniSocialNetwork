@@ -1,7 +1,9 @@
 using AutoMapper;
 using CloudM.Application.DTOs.AccountSettingDTOs;
+using CloudM.Application.Services.PresenceServices;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
+using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Repositories.AccountSettingRepos;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
 using System;
@@ -19,17 +21,20 @@ namespace CloudM.Application.Services.AccountSettingServices
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRealtimeService _realtimeService;
+        private readonly IOnlinePresenceService _onlinePresenceService;
 
         public AccountSettingService(
             IAccountSettingRepository accountSettingRepository, 
             IMapper mapper, 
             IUnitOfWork unitOfWork,
-            IRealtimeService realtimeService)
+            IRealtimeService realtimeService,
+            IOnlinePresenceService onlinePresenceService)
         {
             _accountSettingRepository = accountSettingRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _realtimeService = realtimeService;
+            _onlinePresenceService = onlinePresenceService;
         }
 
         public async Task<AccountSettingsResponse> GetSettingsByAccountIdAsync(Guid accountId)
@@ -46,6 +51,7 @@ namespace CloudM.Application.Services.AccountSettingServices
         public async Task<AccountSettingsResponse> UpdateSettingsAsync(Guid accountId, AccountSettingsUpdateRequest request)
         {
             var settings = await _accountSettingRepository.GetGetAccountSettingsByAccountIdAsync(accountId);
+            var previousOnlineStatusVisibility = settings?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly;
             if (settings == null)
             {
                 // Create if not exists when updating
@@ -64,6 +70,14 @@ namespace CloudM.Application.Services.AccountSettingServices
 
             // Trigger real-time notification
             _ = _realtimeService.NotifyAccountSettingsUpdatedAsync(accountId, response);
+            if (previousOnlineStatusVisibility != settings.OnlineStatusVisibility)
+            {
+                await _onlinePresenceService.NotifyVisibilityChangedAsync(
+                    accountId,
+                    previousOnlineStatusVisibility,
+                    settings.OnlineStatusVisibility,
+                    DateTime.UtcNow);
+            }
 
             return response;
         }

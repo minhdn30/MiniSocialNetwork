@@ -17,6 +17,9 @@ namespace CloudM.Infrastructure.Repositories.Presences
         Task<OnlineStatusVisibilityEnum?> GetOnlineStatusVisibilityAsync(
             Guid accountId,
             CancellationToken cancellationToken = default);
+        Task<DateTime?> GetLastOnlineAtAsync(
+            Guid accountId,
+            CancellationToken cancellationToken = default);
 
         Task<List<Guid>> GetAudienceAccountIdsAsync(
             Guid accountId,

@@ -1,4 +1,5 @@
 using CloudM.Application.DTOs.PresenceDTOs;
+using CloudM.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -18,6 +19,12 @@ namespace CloudM.Application.Services.PresenceServices
         Task<PresenceSnapshotResponse> GetSnapshotAsync(
             Guid viewerAccountId,
             IReadOnlyCollection<Guid> accountIds,
+            DateTime nowUtc,
+            CancellationToken cancellationToken = default);
+        Task NotifyVisibilityChangedAsync(
+            Guid accountId,
+            OnlineStatusVisibilityEnum previousVisibility,
+            OnlineStatusVisibilityEnum currentVisibility,
             DateTime nowUtc,
             CancellationToken cancellationToken = default);
         Task<int> ProcessOfflineCandidatesAsync(DateTime nowUtc, int batchSize, CancellationToken cancellationToken = default);
