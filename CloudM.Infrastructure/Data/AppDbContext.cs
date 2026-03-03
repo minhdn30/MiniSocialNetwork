@@ -87,9 +87,6 @@ namespace CloudM.Infrastructure.Data
                       .IsUnique()
                       .HasDatabaseName("IX_ExternalLogins_AccountId_Provider_Unique");
 
-                entity.HasIndex(e => e.AccountId)
-                      .HasDatabaseName("IX_ExternalLogins_AccountId");
-
                 entity.HasOne(e => e.Account)
                       .WithMany(a => a.ExternalLogins)
                       .HasForeignKey(e => e.AccountId)
@@ -159,12 +156,12 @@ namespace CloudM.Infrastructure.Data
                 .HasKey(p => p.PostId);
             //for Post in Feed
             modelBuilder.Entity<Post>()
-                .HasIndex(p => new { p.IsDeleted, p.Privacy, p.CreatedAt })
+                .HasIndex(p => new { p.IsDeleted, p.Privacy, p.CreatedAt, p.PostId })
                 .HasDatabaseName("IX_Posts_Feed");
             //for Post in Profile
             modelBuilder.Entity<Post>()
-                .HasIndex(p => new { p.AccountId, p.IsDeleted, p.CreatedAt })
-                .HasDatabaseName("IX_Posts_Account_CreatedAt");
+                .HasIndex(p => new { p.AccountId, p.IsDeleted, p.CreatedAt, p.PostId })
+                .HasDatabaseName("IX_Posts_Account_CreatedAt_PostId");
 
             modelBuilder.Entity<Post>()
                 .Property(p => p.Content)
@@ -226,14 +223,6 @@ namespace CloudM.Infrastructure.Data
             modelBuilder.Entity<PostReact>()
                 .HasKey(r => new { r.PostId, r.AccountId });
 
-            modelBuilder.Entity<PostReact>()
-                .HasKey(r => new { r.PostId, r.AccountId });
-
-            // Covering index for post detail queries (count reacts, check if reacted)
-            modelBuilder.Entity<PostReact>()
-                .HasIndex(r => r.PostId)
-                .HasDatabaseName("IX_PostReact_PostId_Covering");
-
             // PostReact → Account
             modelBuilder.Entity<PostReact>()
                 .HasOne(r => r.Account)
@@ -257,10 +246,6 @@ namespace CloudM.Infrastructure.Data
             modelBuilder.Entity<PostSave>()
                 .HasIndex(s => new { s.AccountId, s.CreatedAt, s.PostId })
                 .HasDatabaseName("IX_PostSaves_Account_CreatedAt");
-
-            modelBuilder.Entity<PostSave>()
-                .HasIndex(s => s.PostId)
-                .HasDatabaseName("IX_PostSaves_PostId");
 
             modelBuilder.Entity<PostSave>()
                 .HasOne(s => s.Account)
@@ -615,7 +600,7 @@ namespace CloudM.Infrastructure.Data
 
             // MOST IMPORTANT index for chat message loading
             modelBuilder.Entity<Message>()
-                .HasIndex(m => new { m.ConversationId, m.SentAt });
+                .HasIndex(m => new { m.ConversationId, m.SentAt, m.MessageId });
 
             // Index for sender-based filtering / audit
             modelBuilder.Entity<Message>()

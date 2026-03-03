@@ -77,8 +77,16 @@ namespace CloudM.Infrastructure.Repositories.Conversations
             return Task.FromResult(conversation);
         }
 
-        public async Task<(List<ConversationListModel> Items, int TotalCount)> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize)
+        public async Task<(List<ConversationListModel> Items, bool HasMore)> GetConversationsByCursorAsync(
+            Guid currentId,
+            bool? isPrivate,
+            string? search,
+            DateTime? cursorLastMessageSentAt,
+            Guid? cursorConversationId,
+            int limit)
         {
+            if (limit <= 0) limit = 20;
+
             var baseQuery = _context.ConversationMembers
                 .AsNoTracking()
                 .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted && !cm.HasLeft
@@ -108,9 +116,6 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 );
             }
 
-            var totalCount = await baseQuery.CountAsync();
-
-            // Simplest possible projection that includes the sort key
             var query = baseQuery.Select(cm => new
             {
                 cm.ConversationId,
@@ -132,19 +137,33 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     .OrderByDescending(m => m.SentAt)
                     .Select(m => m.SentAt)
                     .FirstOrDefault()
-            });
+            })
+            .Where(x => x.LastMessageSentAt.HasValue);
+
+            if (cursorLastMessageSentAt.HasValue && cursorConversationId.HasValue)
+            {
+                query = query.Where(x =>
+                    x.LastMessageSentAt!.Value < cursorLastMessageSentAt.Value ||
+                    (x.LastMessageSentAt!.Value == cursorLastMessageSentAt.Value &&
+                     x.ConversationId.CompareTo(cursorConversationId.Value) < 0));
+            }
 
             var pagedData = await query
                 .OrderByDescending(x => x.LastMessageSentAt)
                 .ThenByDescending(x => x.ConversationId)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+                .Take(limit + 1)
                 .ToListAsync();
+
+            var hasMore = pagedData.Count > limit;
+            if (hasMore)
+            {
+                pagedData = pagedData.Take(limit).ToList();
+            }
 
             var conversationIds = pagedData.Select(c => c.ConversationId).ToList();
             if (conversationIds.Count == 0)
             {
-                return (new List<ConversationListModel>(), totalCount);
+                return (new List<ConversationListModel>(), false);
             }
 
             // Fetch OtherMember info separately
@@ -413,7 +432,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 };
             }).ToList();
 
-            return (result, totalCount);
+            return (result, hasMore);
         }
 
         public async Task<ConversationListModel?> GetConversationMetaDataAsync(Guid conversationId, Guid currentId)

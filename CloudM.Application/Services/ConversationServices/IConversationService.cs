@@ -15,7 +15,13 @@ namespace CloudM.Application.Services.ConversationServices
         Task<ConversationResponse> CreatePrivateConversationAsync(Guid currentId, Guid otherId);
         Task<ConversationResponse> CreateGroupConversationAsync(Guid currentId, CreateGroupConversationRequest request);
         Task UpdateGroupConversationInfoAsync(Guid conversationId, Guid currentId, UpdateGroupConversationRequest request);
-        Task<PagedResponse<ConversationListItemResponse>> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize);
+        Task<(List<ConversationListItemResponse> Items, bool HasMore)> GetConversationsByCursorAsync(
+            Guid currentId,
+            bool? isPrivate,
+            string? search,
+            DateTime? cursorLastMessageSentAt,
+            Guid? cursorConversationId,
+            int limit);
         Task<ConversationMessagesResponse> GetConversationMessagesWithMetaDataAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize);
         Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, string? cursor, int pageSize);
         Task<int> GetUnreadConversationCountAsync(Guid currentId);

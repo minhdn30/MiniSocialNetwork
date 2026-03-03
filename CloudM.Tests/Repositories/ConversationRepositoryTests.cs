@@ -10,7 +10,7 @@ namespace CloudM.Tests.Repositories
     public class ConversationRepositoryTests
     {
         [Fact]
-        public async Task GetConversationsPagedAsync_ShouldKeepContractParity_ForMixedConversationData()
+        public async Task GetConversationsByCursorAsync_ShouldKeepContractParity_ForMixedConversationData()
         {
             var options = new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase($"conv-repo-{Guid.NewGuid()}")
@@ -183,10 +183,10 @@ namespace CloudM.Tests.Repositories
 
             await context.SaveChangesAsync();
 
-            var (items, totalCount) = await repo.GetConversationsPagedAsync(currentId, null, null, 1, 10);
+            var (items, hasMore) = await repo.GetConversationsByCursorAsync(currentId, null, null, null, null, 10);
 
-            totalCount.Should().Be(2);
             items.Should().HaveCount(2);
+            hasMore.Should().BeFalse();
 
             var groupItem = items.First(x => x.ConversationId == groupConvId);
             var privateItem = items.First(x => x.ConversationId == privateConvId);

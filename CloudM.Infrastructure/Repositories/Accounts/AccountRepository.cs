@@ -156,7 +156,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                         Status = a.Status
                     },
 
-                    PostCount = a.Posts.Count(p => !p.IsDeleted),
+                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any()),
                     FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
                     FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
 
@@ -221,7 +221,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     a.Gender,
                     a.Address,
                     a.CreatedAt,
-                    PostCount = a.Posts.Count(p => !p.IsDeleted),
+                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any()),
                     FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
                     FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
                     IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
@@ -282,7 +282,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     a.Gender,
                     a.Address,
                     a.CreatedAt,
-                    PostCount = a.Posts.Count(p => !p.IsDeleted),
+                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any()),
                     FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
                     FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
                     IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),

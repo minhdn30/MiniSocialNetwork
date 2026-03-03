@@ -30,28 +30,80 @@ namespace CloudM.Infrastructure.Repositories.Messages
                             cm.AccountId == currentId &&
                             !cm.HasLeft);
             var clearedAt = member?.ClearedAt;
-            var query = _context.Messages
+
+            var baseQuery = _context.Messages
                 .AsNoTracking()
                 .Where(m => m.ConversationId == conversationId &&
                        (clearedAt == null || m.SentAt >= clearedAt) &&
                        m.Account.Status == AccountStatusEnum.Active &&
-                       !m.HiddenBy.Any(hb => hb.AccountId == currentId))
-                .OrderByDescending(m => m.SentAt);
+                       !m.HiddenBy.Any(hb => hb.AccountId == currentId));
 
-            var totalItems = await query.CountAsync();
+            var cursorDirection = MessageCursorDirection.Older;
+            DateTime? cursorSentAt = null;
+            Guid? cursorMessageId = null;
 
-            var offset = 0;
-            if (!string.IsNullOrWhiteSpace(cursor) && int.TryParse(cursor, out var parsedOffset) && parsedOffset > 0)
+            if (!string.IsNullOrWhiteSpace(cursor))
             {
-                offset = parsedOffset;
-            }
-            if (offset > totalItems)
-            {
-                offset = totalItems;
+                if (TryParseKeysetCursor(cursor, out var parsedDirection, out var parsedSentAt, out var parsedMessageId))
+                {
+                    cursorDirection = parsedDirection;
+                    cursorSentAt = parsedSentAt;
+                    cursorMessageId = parsedMessageId;
+                }
+                else if (int.TryParse(cursor, out var legacyOffset) &&
+                         legacyOffset > 0 &&
+                         legacyOffset <= 10000)
+                {
+                    // legacy fallback for offset cursor persisted in old client states
+                    var legacyAnchor = await baseQuery
+                        .OrderByDescending(m => m.SentAt)
+                        .ThenByDescending(m => m.MessageId)
+                        .Skip(legacyOffset - 1)
+                        .Select(m => new { m.SentAt, m.MessageId })
+                        .FirstOrDefaultAsync();
+
+                    if (legacyAnchor == null)
+                    {
+                        return (new List<MessageBasicModel>(), null, null, false, false);
+                    }
+
+                    cursorDirection = MessageCursorDirection.Older;
+                    cursorSentAt = legacyAnchor.SentAt;
+                    cursorMessageId = legacyAnchor.MessageId;
+                }
             }
 
-            var messages = await query
-                .Skip(offset)
+            var pageQuery = baseQuery;
+            if (cursorSentAt.HasValue && cursorMessageId.HasValue)
+            {
+                if (cursorDirection == MessageCursorDirection.Older)
+                {
+                    pageQuery = pageQuery.Where(m =>
+                        m.SentAt < cursorSentAt.Value ||
+                        (m.SentAt == cursorSentAt.Value &&
+                         m.MessageId.CompareTo(cursorMessageId.Value) < 0));
+                }
+                else if (cursorDirection == MessageCursorDirection.Newer)
+                {
+                    pageQuery = pageQuery.Where(m =>
+                        m.SentAt > cursorSentAt.Value ||
+                        (m.SentAt == cursorSentAt.Value &&
+                         m.MessageId.CompareTo(cursorMessageId.Value) > 0));
+                }
+                else
+                {
+                    pageQuery = pageQuery.Where(m =>
+                        m.SentAt < cursorSentAt.Value ||
+                        (m.SentAt == cursorSentAt.Value &&
+                         m.MessageId.CompareTo(cursorMessageId.Value) <= 0));
+                }
+            }
+
+            pageQuery = cursorDirection == MessageCursorDirection.Newer
+                ? pageQuery.OrderBy(m => m.SentAt).ThenBy(m => m.MessageId)
+                : pageQuery.OrderByDescending(m => m.SentAt).ThenByDescending(m => m.MessageId);
+
+            var messages = await pageQuery
                 .Take(pageSize)
                 .Select(m => new MessageBasicModel
                 {
@@ -95,6 +147,14 @@ namespace CloudM.Infrastructure.Repositories.Messages
                     } : null
                 })
                 .ToListAsync();
+
+            if (cursorDirection == MessageCursorDirection.Newer)
+            {
+                messages = messages
+                    .OrderByDescending(m => m.SentAt)
+                    .ThenByDescending(m => m.MessageId)
+                    .ToList();
+            }
 
             if (messages.Count > 0)
             {
@@ -396,12 +456,108 @@ namespace CloudM.Infrastructure.Repositories.Messages
                 }
             }
 
-            var hasMoreOlder = offset + messages.Count < totalItems;
-            var hasMoreNewer = offset > 0;
-            var olderCursor = hasMoreOlder ? (offset + messages.Count).ToString() : null;
-            var newerCursor = hasMoreNewer ? Math.Max(0, offset - pageSize).ToString() : null;
+            if (messages.Count == 0)
+            {
+                return (messages, null, null, false, false);
+            }
+
+            var newestMessage = messages[0];
+            var oldestMessage = messages[messages.Count - 1];
+
+            var hasMoreOlder = await baseQuery.AnyAsync(m =>
+                m.SentAt < oldestMessage.SentAt ||
+                (m.SentAt == oldestMessage.SentAt &&
+                 m.MessageId.CompareTo(oldestMessage.MessageId) < 0));
+
+            var hasMoreNewer = await baseQuery.AnyAsync(m =>
+                m.SentAt > newestMessage.SentAt ||
+                (m.SentAt == newestMessage.SentAt &&
+                 m.MessageId.CompareTo(newestMessage.MessageId) > 0));
+
+            var olderCursor = hasMoreOlder
+                ? BuildKeysetCursor(MessageCursorDirection.Older, oldestMessage.SentAt, oldestMessage.MessageId)
+                : null;
+            var newerCursor = hasMoreNewer
+                ? BuildKeysetCursor(MessageCursorDirection.Newer, newestMessage.SentAt, newestMessage.MessageId)
+                : null;
 
             return (messages, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer);
+        }
+
+        private static string BuildKeysetCursor(MessageCursorDirection direction, DateTime sentAt, Guid messageId)
+        {
+            var normalizedSentAt = sentAt.Kind == DateTimeKind.Utc
+                ? sentAt
+                : DateTime.SpecifyKind(sentAt, DateTimeKind.Utc);
+
+            var directionToken = direction switch
+            {
+                MessageCursorDirection.Newer => "n",
+                MessageCursorDirection.Context => "c",
+                _ => "o"
+            };
+
+            return $"{directionToken}|{normalizedSentAt.Ticks}|{messageId:N}";
+        }
+
+        private static bool TryParseKeysetCursor(
+            string cursor,
+            out MessageCursorDirection direction,
+            out DateTime sentAt,
+            out Guid messageId)
+        {
+            direction = MessageCursorDirection.Older;
+            sentAt = default;
+            messageId = Guid.Empty;
+
+            var parts = cursor.Split('|');
+            if (parts.Length != 3)
+            {
+                return false;
+            }
+
+            if (parts[0] == "n")
+            {
+                direction = MessageCursorDirection.Newer;
+            }
+            else if (parts[0] == "c")
+            {
+                direction = MessageCursorDirection.Context;
+            }
+            else if (parts[0] == "o")
+            {
+                direction = MessageCursorDirection.Older;
+            }
+            else
+            {
+                return false;
+            }
+
+            if (!long.TryParse(parts[1], out var ticks))
+            {
+                return false;
+            }
+
+            if (!Guid.TryParse(parts[2], out var parsedMessageId) || parsedMessageId == Guid.Empty)
+            {
+                return false;
+            }
+
+            if (ticks <= 0 || ticks > DateTime.MaxValue.Ticks)
+            {
+                return false;
+            }
+
+            sentAt = new DateTime(ticks, DateTimeKind.Utc);
+            messageId = parsedMessageId;
+            return true;
+        }
+
+        private enum MessageCursorDirection
+        {
+            Older,
+            Newer,
+            Context
         }
         public Task AddMessageAsync(Message message)
         {

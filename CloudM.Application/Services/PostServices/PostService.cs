@@ -257,71 +257,26 @@ namespace CloudM.Application.Services.PostServices
 
             if (post.Account.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to update posts.");
-            _mapper.Map(request, post);
+
+            if ((request.RemoveMediaIds?.Any() ?? false) || (request.NewMediaFiles?.Any() ?? false))
+                throw new BadRequestException("Updating media is not supported. You can only update content and privacy.");
+
+            if (request.Content != null && post.Content != request.Content)
+            {
+                post.Content = request.Content;
+            }
+
+            if (request.Privacy.HasValue)
+            {
+                post.Privacy = (PostPrivacyEnum)request.Privacy.Value;
+            }
+
+            if (post.Medias == null || !post.Medias.Any())
+            {
+                throw new BadRequestException("Post must contain at least one media file.");
+            }
+
             post.UpdatedAt = DateTime.UtcNow;
-            //remove medias if any
-            if (request.RemoveMediaIds != null && request.RemoveMediaIds.Any())
-            {
-                var removedMedias = new List<PostMedia>();
-                foreach (var mediaId in request.RemoveMediaIds)
-                {
-                    var media = await _postMediaRepository.GetPostMediaById(mediaId);
-                    if (media != null && media.PostId == postId)
-                    {
-                        if (!string.IsNullOrEmpty(media.MediaUrl))
-                        {
-                            var publicId = _cloudinaryService.GetPublicIdFromUrl(media.MediaUrl);
-                            if (!string.IsNullOrEmpty(publicId))
-                            {
-                                await _cloudinaryService.DeleteMediaAsync(publicId, media.Type);                               
-                            }
-                        }
-                        removedMedias.Add(media);
-                    }
-                }
-                if (removedMedias.Any())
-                {
-                    await _postMediaRepository.DeletePostMedias(removedMedias);
-                }
-            }
-            //add new medias if any
-            if (request.NewMediaFiles != null && request.NewMediaFiles.Any())
-            {
-                var newPostMedias = new List<PostMedia>();
-                foreach (var media in request.NewMediaFiles)
-                {
-                    var detectedType = await _fileTypeDetector.GetMediaTypeAsync(media);
-                    if (detectedType == null) continue;  // Skip unsupported media types
-                    string? url = null;
-                    switch (detectedType.Value)
-                    {
-                        case MediaTypeEnum.Image:
-                            url = await _cloudinaryService.UploadImageAsync(media);
-                            break;
-                        case MediaTypeEnum.Video:
-                            url = await _cloudinaryService.UploadVideoAsync(media);
-                            break;
-                        //Audio and Document upload later
-                        default:
-                            continue;
-                    };
-                    if (!string.IsNullOrEmpty(url))
-                    {
-                        var newMedia = new PostMedia
-                        {
-                            PostId = post.PostId,
-                            MediaUrl = url,
-                            Type = detectedType.Value
-                        };
-                        newPostMedias.Add(newMedia);
-                        post.Medias.Add(newMedia);
-                    }
-                }
-                if (newPostMedias.Any())
-                {
-                    await _postMediaRepository.AddPostMedias(newPostMedias);
-                }
-            }
 
             await _postRepository.UpdatePost(post);
             await _unitOfWork.CommitAsync();
@@ -362,10 +317,9 @@ namespace CloudM.Application.Services.PostServices
                 post.Privacy = (PostPrivacyEnum)request.Privacy.Value;
             }
 
-            // Check if Post becomes empty
-            if (string.IsNullOrWhiteSpace(post.Content) && (post.Medias == null || !post.Medias.Any()))
+            if (post.Medias == null || !post.Medias.Any())
             {
-                throw new BadRequestException("Post must have content or media files.");
+                throw new BadRequestException("Post must contain at least one media file.");
             }
 
             await _postRepository.UpdatePost(post);
@@ -404,37 +358,30 @@ namespace CloudM.Application.Services.PostServices
 
             return post.AccountId;
         }
-        public async Task<PagedResponse<PostPersonalListModel>> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)
+        public async Task<(List<PostPersonalListModel> Items, bool HasMore)> GetPostsByAccountIdByCursorAsync(
+            Guid accountId,
+            Guid? currentId,
+            DateTime? cursorCreatedAt,
+            Guid? cursorPostId,
+            int limit)
         {
-            const int defaultPage = 1;
-            const int defaultPageSize = 10;
-            const int maxPageSize = 50;
-
-            if (page < defaultPage)
-            {
-                page = defaultPage;
-            }
-
-            if (pageSize <= 0)
-            {
-                pageSize = defaultPageSize;
-            }
-            else if (pageSize > maxPageSize)
-            {
-                pageSize = maxPageSize;
-            }
+            if (limit <= 0) limit = 10;
+            if (limit > 50) limit = 50;
 
             if (!await _accountRepository.IsAccountIdExist(accountId))
                 throw new NotFoundException($"Account with ID {accountId} does not exist.");
 
-            var (items, total) = await _postRepository.GetPostsByAccountId(accountId, currentId, page, pageSize);
-            return new PagedResponse<PostPersonalListModel>
-            {
-                Items = items,
-                TotalItems = total,
-                Page = page,
-                PageSize = pageSize
-            };
+            var candidates = await _postRepository.GetPostsByAccountIdByCursor(
+                accountId,
+                currentId,
+                cursorCreatedAt,
+                cursorPostId,
+                limit + 1);
+
+            var hasMore = candidates.Count > limit;
+            var items = hasMore ? candidates.Take(limit).ToList() : candidates;
+
+            return (items, hasMore);
         }
         public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {

@@ -138,11 +138,46 @@ namespace CloudM.API.Controllers
 
         [Authorize]
         [HttpGet("profile/{accountId}")]
-        public async Task<ActionResult<PagedResponse<PostPersonalListModel>>> GetPostsByAccountId([FromRoute] Guid accountId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> GetPostsByAccountId(
+            [FromRoute] Guid accountId,
+            [FromQuery] int limit = 10,
+            [FromQuery] DateTime? cursorCreatedAt = null,
+            [FromQuery] Guid? cursorPostId = null)
         {
             var currentId = User.GetAccountId();
-            var result = await _postService.GetPostsByAccountId(accountId, currentId, page, pageSize);
-            return Ok(result);
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (cursorCreatedAt.HasValue != cursorPostId.HasValue)
+                return BadRequest(new { message = "cursorCreatedAt and cursorPostId must be provided together." });
+
+            var result = await _postService.GetPostsByAccountIdByCursorAsync(
+                accountId,
+                currentId,
+                cursorCreatedAt,
+                cursorPostId,
+                limit);
+
+            DateTime? nextCursorCreatedAt = null;
+            Guid? nextCursorPostId = null;
+            if (result.HasMore && result.Items.Count > 0)
+            {
+                var lastItem = result.Items.Last();
+                nextCursorCreatedAt = lastItem.CreatedAt;
+                nextCursorPostId = lastItem.PostId;
+            }
+
+            return Ok(new
+            {
+                Items = result.Items,
+                NextCursor = nextCursorCreatedAt.HasValue && nextCursorPostId.HasValue
+                    ? new
+                    {
+                        CreatedAt = nextCursorCreatedAt,
+                        PostId = nextCursorPostId
+                    }
+                    : null
+            });
         }
 
         [Authorize]

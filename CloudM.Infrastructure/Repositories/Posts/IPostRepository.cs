@@ -20,7 +20,12 @@ namespace CloudM.Infrastructure.Repositories.Posts
         Task AddPost(Post post);
         Task UpdatePost(Post post);
         Task SoftDeletePostAsync(Guid postId);
-        Task<(IEnumerable<PostPersonalListModel> posts, int TotalItems)> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize);
+        Task<List<PostPersonalListModel>> GetPostsByAccountIdByCursor(
+            Guid accountId,
+            Guid? currentId,
+            DateTime? cursorCreatedAt,
+            Guid? cursorPostId,
+            int limit);
         Task<int> CountPostsByAccountIdAsync(Guid accountId);
         Task<bool> IsPostExist(Guid postId);
         Task<bool> IsPostCodeExist(string postCode);

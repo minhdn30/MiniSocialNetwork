@@ -3,6 +3,7 @@ using System;
 using CloudM.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CloudM.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260303082702_OptimizeKeysetTieBreakerIndexes")]
+    partial class OptimizeKeysetTieBreakerIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -401,6 +404,9 @@ namespace CloudM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("IX_ExternalLogins_AccountId");
+
                     b.HasIndex("AccountId", "Provider")
                         .IsUnique()
                         .HasDatabaseName("IX_ExternalLogins_AccountId_Provider_Unique");
@@ -626,11 +632,11 @@ namespace CloudM.Infrastructure.Migrations
                     b.HasIndex("PostCode")
                         .IsUnique();
 
+                    b.HasIndex("IsDeleted", "Privacy", "CreatedAt")
+                        .HasDatabaseName("IX_Posts_Feed");
+
                     b.HasIndex("AccountId", "IsDeleted", "CreatedAt", "PostId")
                         .HasDatabaseName("IX_Posts_Account_CreatedAt_PostId");
-
-                    b.HasIndex("IsDeleted", "Privacy", "CreatedAt", "PostId")
-                        .HasDatabaseName("IX_Posts_Feed");
 
                     b.ToTable("Posts");
                 });

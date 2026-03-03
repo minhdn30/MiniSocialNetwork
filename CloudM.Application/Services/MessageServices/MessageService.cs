@@ -598,11 +598,12 @@ namespace CloudM.Application.Services.MessageServices
             if (normalizedKeyword.Length == 0)
             {
                 var recentLimit = EmptyKeywordRecentContactsLimit;
-                var (recentConversations, _) = await _conversationRepository.GetConversationsPagedAsync(
+                var (recentConversations, _) = await _conversationRepository.GetConversationsByCursorAsync(
                     senderId,
                     null,
                     null,
-                    1,
+                    null,
+                    null,
                     recentLimit);
 
                 var recentItems = new List<PostShareTargetSearchItemResponse>();

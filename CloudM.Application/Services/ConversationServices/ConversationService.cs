@@ -433,9 +433,24 @@ namespace CloudM.Application.Services.ConversationServices
                 currentId);
         }
 
-        public async Task<PagedResponse<ConversationListItemResponse>> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize)
+        public async Task<(List<ConversationListItemResponse> Items, bool HasMore)> GetConversationsByCursorAsync(
+            Guid currentId,
+            bool? isPrivate,
+            string? search,
+            DateTime? cursorLastMessageSentAt,
+            Guid? cursorConversationId,
+            int limit)
         {
-            var (items, totalCount) = await _conversationRepository.GetConversationsPagedAsync(currentId, isPrivate, search, page, pageSize);
+            if (limit <= 0) limit = 20;
+            if (limit > 50) limit = 50;
+
+            var (items, hasMore) = await _conversationRepository.GetConversationsByCursorAsync(
+                currentId,
+                isPrivate,
+                search,
+                cursorLastMessageSentAt,
+                cursorConversationId,
+                limit);
 
             var responseItems = items.Select(item => new ConversationListItemResponse
             {
@@ -468,7 +483,7 @@ namespace CloudM.Application.Services.ConversationServices
 
             await ApplyStoryRingForOtherMembersAsync(currentId, responseItems.Select(x => x.OtherMember));
 
-            return new PagedResponse<ConversationListItemResponse>(responseItems, page, pageSize, totalCount);
+            return (responseItems, hasMore);
         }
 
         public async Task<ConversationMessagesResponse> GetConversationMessagesWithMetaDataAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize)
@@ -738,17 +753,15 @@ namespace CloudM.Application.Services.ConversationServices
                 throw new ForbiddenException("You are not a member of this conversation.");
             }
 
-            var position = await _messageRepository.GetMessagePositionAsync(conversationId, currentId, messageId);
-            if (position < 0)
+            var targetMessage = await _messageRepository.GetVisibleMessageForAccountAsync(messageId, currentId);
+            if (targetMessage == null || targetMessage.ConversationId != conversationId)
             {
                 throw new NotFoundException("Message not found in this conversation.");
             }
 
-            var page = (int)Math.Ceiling((double)position / pageSize);
-            if (page < 1) page = 1;
-            var contextOffsetCursor = ((page - 1) * pageSize).ToString();
+            var contextCursor = BuildMessageContextCursor(targetMessage.SentAt, targetMessage.MessageId);
             var (items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer) =
-                await _messageRepository.GetMessagesByConversationId(conversationId, currentId, contextOffsetCursor, pageSize);
+                await _messageRepository.GetMessagesByConversationId(conversationId, currentId, contextCursor, pageSize);
 
             // Always include metaData for context loading (frontend needs it when clearing messages)
             ConversationMetaData? metaData = null;
@@ -804,6 +817,15 @@ namespace CloudM.Application.Services.ConversationServices
                 MetaData = metaData,
                 Messages = new CursorResponse<MessageBasicModel>(items, olderCursor, newerCursor, hasMoreOlder, hasMoreNewer)
             };
+        }
+
+        private static string BuildMessageContextCursor(DateTime sentAt, Guid messageId)
+        {
+            var normalizedSentAt = sentAt.Kind == DateTimeKind.Utc
+                ? sentAt
+                : DateTime.SpecifyKind(sentAt, DateTimeKind.Utc);
+
+            return $"c|{normalizedSentAt.Ticks}|{messageId:N}";
         }
 
         private async Task ApplyStoryRingForOtherMembersAsync(Guid currentId, IEnumerable<OtherMemberInfo?> otherMembers)

@@ -3,6 +3,7 @@ using System;
 using CloudM.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CloudM.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260303081926_DropRedundantPostInteractionIndexes")]
+    partial class DropRedundantPostInteractionIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -401,6 +404,9 @@ namespace CloudM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("IX_ExternalLogins_AccountId");
+
                     b.HasIndex("AccountId", "Provider")
                         .IsUnique()
                         .HasDatabaseName("IX_ExternalLogins_AccountId_Provider_Unique");
@@ -474,10 +480,10 @@ namespace CloudM.Infrastructure.Migrations
 
                     b.HasIndex("ReplyToMessageId");
 
+                    b.HasIndex("ConversationId", "SentAt");
+
                     b.HasIndex("ConversationId", "AccountId", "SentAt")
                         .HasDatabaseName("IX_Message_Conversation_Account_SentAt");
-
-                    b.HasIndex("ConversationId", "SentAt", "MessageId");
 
                     b.ToTable("Messages");
                 });
@@ -626,10 +632,10 @@ namespace CloudM.Infrastructure.Migrations
                     b.HasIndex("PostCode")
                         .IsUnique();
 
-                    b.HasIndex("AccountId", "IsDeleted", "CreatedAt", "PostId")
-                        .HasDatabaseName("IX_Posts_Account_CreatedAt_PostId");
+                    b.HasIndex("AccountId", "IsDeleted", "CreatedAt")
+                        .HasDatabaseName("IX_Posts_Account_CreatedAt");
 
-                    b.HasIndex("IsDeleted", "Privacy", "CreatedAt", "PostId")
+                    b.HasIndex("IsDeleted", "Privacy", "CreatedAt")
                         .HasDatabaseName("IX_Posts_Feed");
 
                     b.ToTable("Posts");

@@ -188,8 +188,15 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 post.IsDeleted = true;
             }
         }
-        public async Task<(IEnumerable<PostPersonalListModel> posts, int TotalItems)> GetPostsByAccountId(Guid accountId, Guid? currentId, int page, int pageSize)
+        public async Task<List<PostPersonalListModel>> GetPostsByAccountIdByCursor(
+            Guid accountId,
+            Guid? currentId,
+            DateTime? cursorCreatedAt,
+            Guid? cursorPostId,
+            int limit)
         {
+            if (limit <= 0) limit = 10;
+
             bool isOwner = currentId == accountId;
             bool isFollower = false;
 
@@ -212,19 +219,25 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         p.Privacy == PostPrivacyEnum.Public ||
                         (p.Privacy == PostPrivacyEnum.FollowOnly && isFollower)
                     )
-                )
-                .OrderByDescending(p => p.CreatedAt)
-                .ThenByDescending(p => p.PostId);
+                );
 
-            var totalItems = await query.CountAsync();
+            if (cursorCreatedAt.HasValue && cursorPostId.HasValue)
+            {
+                query = query.Where(p =>
+                    p.CreatedAt < cursorCreatedAt.Value ||
+                    (p.CreatedAt == cursorCreatedAt.Value &&
+                     p.PostId.CompareTo(cursorPostId.Value) < 0));
+            }
 
             var posts = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+                .OrderByDescending(p => p.CreatedAt)
+                .ThenByDescending(p => p.PostId)
+                .Take(limit)
                 .Select(p => new PostPersonalListModel
                 {
                     PostId = p.PostId,
                     PostCode = p.PostCode,
+                    CreatedAt = p.CreatedAt,
                     Medias = p.Medias
                         .OrderBy(m => m.CreatedAt)
                         .Select(m => new MediaPostPersonalListModel
@@ -241,13 +254,16 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 })
                 .ToListAsync();
 
-            return (posts, totalItems);
+            return posts;
         }
 
         public async Task<int> CountPostsByAccountIdAsync(Guid accountId)
         {
             return await _context.Posts
-                .Where(p => p.AccountId == accountId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active)
+                .Where(p => p.AccountId == accountId &&
+                            !p.IsDeleted &&
+                            p.Medias.Any() &&
+                            p.Account.Status == AccountStatusEnum.Active)
                 .CountAsync();
         }
         public async Task<bool> IsPostExist(Guid postId)

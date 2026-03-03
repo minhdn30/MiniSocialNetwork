@@ -284,10 +284,10 @@ namespace CloudM.Tests.Services
 
         #endregion
 
-        #region GetPostsByAccountId Tests
+        #region GetPostsByAccountIdByCursorAsync Tests
 
         [Fact]
-        public async Task GetPostsByAccountId_WhenAccountExists_ReturnsPagedResponse()
+        public async Task GetPostsByAccountIdByCursorAsync_WhenAccountExists_ReturnsCursorResponse()
         {
             // Arrange
             var accountId = Guid.NewGuid();
@@ -299,29 +299,26 @@ namespace CloudM.Tests.Services
             };
 
             _mockAccountRepo.Setup(x => x.IsAccountIdExist(accountId)).ReturnsAsync(true);
-            _mockPostRepo.Setup(x => x.GetPostsByAccountId(accountId, currentId, 1, 10))
-                .ReturnsAsync((posts, 2));
+            _mockPostRepo.Setup(x => x.GetPostsByAccountIdByCursor(accountId, currentId, null, null, 11))
+                .ReturnsAsync(posts);
 
             // Act
-            var result = await _postService.GetPostsByAccountId(accountId, currentId, 1, 10);
+            var result = await _postService.GetPostsByAccountIdByCursorAsync(accountId, currentId, null, null, 10);
 
             // Assert
-            result.Should().NotBeNull();
             result.Items.Should().HaveCount(2);
-            result.TotalItems.Should().Be(2);
-            result.Page.Should().Be(1);
-            result.PageSize.Should().Be(10);
+            result.HasMore.Should().BeFalse();
         }
 
         [Fact]
-        public async Task GetPostsByAccountId_WhenAccountDoesNotExist_ThrowsNotFoundException()
+        public async Task GetPostsByAccountIdByCursorAsync_WhenAccountDoesNotExist_ThrowsNotFoundException()
         {
             // Arrange
             var accountId = Guid.NewGuid();
             _mockAccountRepo.Setup(x => x.IsAccountIdExist(accountId)).ReturnsAsync(false);
 
             // Act & Assert
-            await Assert.ThrowsAsync<NotFoundException>(() => _postService.GetPostsByAccountId(accountId, null, 1, 10));
+            await Assert.ThrowsAsync<NotFoundException>(() => _postService.GetPostsByAccountIdByCursorAsync(accountId, null, null, null, 10));
         }
 
         #endregion
@@ -436,6 +433,64 @@ namespace CloudM.Tests.Services
 
         #endregion
 
+        #region UpdatePost Tests
+
+        [Fact]
+        public async Task UpdatePost_WhenRequestContainsRemoveMediaIds_ThrowsBadRequestException()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Account = new Account { AccountId = currentId, Status = AccountStatusEnum.Active },
+                Medias = new List<PostMedia> { new PostMedia { MediaId = Guid.NewGuid(), PostId = postId } }
+            };
+
+            var request = new PostUpdateRequest
+            {
+                RemoveMediaIds = new List<Guid> { Guid.NewGuid() }
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostById(postId)).ReturnsAsync(post);
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() => _postService.UpdatePost(postId, currentId, request));
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdatePost_WhenRequestContainsNewMediaFiles_ThrowsBadRequestException()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Account = new Account { AccountId = currentId, Status = AccountStatusEnum.Active },
+                Medias = new List<PostMedia> { new PostMedia { MediaId = Guid.NewGuid(), PostId = postId } }
+            };
+
+            var request = new PostUpdateRequest
+            {
+                NewMediaFiles = new List<IFormFile> { new Mock<IFormFile>().Object }
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostById(postId)).ReturnsAsync(post);
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() => _postService.UpdatePost(postId, currentId, request));
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        #endregion
+
         #region UpdatePostContent Tests
 
         [Fact]
@@ -529,6 +584,29 @@ namespace CloudM.Tests.Services
             // Act & Assert
             await Assert.ThrowsAsync<BadRequestException>(() =>
                 _postService.UpdatePostContent(postId, currentId, request));
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenPostHasNoMedia_ThrowsBadRequestException()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "still has text",
+                Medias = new List<PostMedia>()
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() =>
+                _postService.UpdatePostContent(postId, currentId, new PostUpdateContentRequest()));
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
         }
 
         #endregion

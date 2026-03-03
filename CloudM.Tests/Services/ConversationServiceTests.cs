@@ -148,10 +148,10 @@ namespace CloudM.Tests.Services
 
         #endregion
 
-        #region GetConversationsPagedAsync Tests
+        #region GetConversationsByCursorAsync Tests
 
         [Fact]
-        public async Task GetConversationsPagedAsync_LastMessageHasReplyFlag_ShouldKeepReplyPreviewAfterReload()
+        public async Task GetConversationsByCursorAsync_LastMessageHasReplyFlag_ShouldKeepReplyPreviewAfterReload()
         {
             // Arrange
             var currentId = Guid.NewGuid();
@@ -186,16 +186,17 @@ namespace CloudM.Tests.Services
             };
 
             _conversationRepositoryMock
-                .Setup(x => x.GetConversationsPagedAsync(currentId, null, null, 1, 20))
-                .ReturnsAsync((items, 1));
+                .Setup(x => x.GetConversationsByCursorAsync(currentId, null, null, null, null, 20))
+                .ReturnsAsync((items, false));
 
             // Act
-            var result = await _conversationService.GetConversationsPagedAsync(currentId, null, null, 1, 20);
+            var result = await _conversationService.GetConversationsByCursorAsync(currentId, null, null, null, null, 20);
 
             // Assert
             result.Should().NotBeNull();
             result.Items.Should().HaveCount(1);
             result.Items.First().LastMessagePreview.Should().Be("Replied: alooo");
+            result.HasMore.Should().BeFalse();
         }
 
         #endregion

@@ -15,6 +15,7 @@ namespace CloudM.Infrastructure.Models
         public int MediaCount { get; set; }
         public int ReactCount { get; set; }
         public int CommentCount { get; set; }
+        public DateTime CreatedAt { get; set; }
         public DateTime? SavedAt { get; set; }
     }
 }

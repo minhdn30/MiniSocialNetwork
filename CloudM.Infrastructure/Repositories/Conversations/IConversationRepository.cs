@@ -14,7 +14,13 @@ namespace CloudM.Infrastructure.Repositories.Conversations
         Task AddConversationAsync(Conversation conversation);
         Task<bool> IsPrivateConversationExistBetweenTwoAccounts(Guid accountId1, Guid accountId2);
         Task<Conversation> CreatePrivateConversationAsync(Guid currentId, Guid otherId);
-        Task<(List<ConversationListModel> Items, int TotalCount)> GetConversationsPagedAsync(Guid currentId, bool? isPrivate, string? search, int page, int pageSize);
+        Task<(List<ConversationListModel> Items, bool HasMore)> GetConversationsByCursorAsync(
+            Guid currentId,
+            bool? isPrivate,
+            string? search,
+            DateTime? cursorLastMessageSentAt,
+            Guid? cursorConversationId,
+            int limit);
         Task<ConversationListModel?> GetConversationMetaDataAsync(Guid conversationId, Guid currentId);
         Task<Guid?> GetPrivateConversationIdAsync(Guid accountId1, Guid accountId2);
         Task<Conversation?> GetConversationByIdAsync(Guid conversationId);

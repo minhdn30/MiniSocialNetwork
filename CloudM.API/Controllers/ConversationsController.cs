@@ -32,14 +32,53 @@ namespace CloudM.API.Controllers
         }
         [Authorize]
         [HttpGet]
-        public async Task<IActionResult> GetConversations([FromQuery] bool? isPrivate, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> GetConversations(
+            [FromQuery] bool? isPrivate,
+            [FromQuery] string? search,
+            [FromQuery] int limit = 20,
+            [FromQuery] DateTime? cursorLastMessageSentAt = null,
+            [FromQuery] Guid? cursorConversationId = null)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            var chats = await _conversationService.GetConversationsPagedAsync(currentId.Value, isPrivate, search, page, pageSize);
-            return Ok(chats);
+            if (cursorLastMessageSentAt.HasValue != cursorConversationId.HasValue)
+                return BadRequest(new { message = "cursorLastMessageSentAt and cursorConversationId must be provided together." });
+
+            var result = await _conversationService.GetConversationsByCursorAsync(
+                currentId.Value,
+                isPrivate,
+                search,
+                cursorLastMessageSentAt,
+                cursorConversationId,
+                limit);
+
+            var items = result.Items;
+            DateTime? nextCursorLastMessageSentAt = null;
+            Guid? nextCursorConversationId = null;
+
+            if (result.HasMore && items.Count > 0)
+            {
+                var lastItem = items.Last();
+                if (lastItem.LastMessageSentAt.HasValue)
+                {
+                    nextCursorLastMessageSentAt = lastItem.LastMessageSentAt.Value;
+                    nextCursorConversationId = lastItem.ConversationId;
+                }
+            }
+
+            return Ok(new
+            {
+                Items = items,
+                NextCursor = nextCursorLastMessageSentAt.HasValue && nextCursorConversationId.HasValue
+                    ? new
+                    {
+                        LastMessageSentAt = nextCursorLastMessageSentAt,
+                        ConversationId = nextCursorConversationId
+                    }
+                    : null
+            });
         }
 
         [Authorize]
