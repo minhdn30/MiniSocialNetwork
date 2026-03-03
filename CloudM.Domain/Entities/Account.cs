@@ -55,6 +55,7 @@ namespace CloudM.Domain.Entities
 
         // Reacts
         public virtual ICollection<PostReact> PostReacts { get; set; } = new List<PostReact>();
+        public virtual ICollection<PostSave> PostSaves { get; set; } = new List<PostSave>();
         public virtual ICollection<CommentReact> CommentReacts { get; set; } = new List<CommentReact>();
         //chat
         public virtual ICollection<ConversationMember> Conversations { get; set; } = new List<ConversationMember>();

@@ -8,6 +8,7 @@ using CloudM.Application.DTOs.PostMediaDTOs;
 using CloudM.Application.Helpers.ClaimHelpers;
 using CloudM.Application.Services.CommentServices;
 using CloudM.Application.Services.PostReactServices;
+using CloudM.Application.Services.PostSaveServices;
 using CloudM.Application.Services.PostServices;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
@@ -20,15 +21,18 @@ namespace CloudM.API.Controllers
     {
         private readonly IPostService _postService;
         private readonly IPostReactService _postReactService;
+        private readonly IPostSaveService _postSaveService;
         private readonly ICommentService _commentService;
 
         public PostsController(
             IPostService postService, 
             IPostReactService postReactService, 
+            IPostSaveService postSaveService,
             ICommentService commentService)
         {
             _postService = postService;
             _postReactService = postReactService;
+            _postSaveService = postSaveService;
             _commentService = commentService;
         }
 
@@ -142,6 +146,49 @@ namespace CloudM.API.Controllers
         }
 
         [Authorize]
+        [HttpGet("saved")]
+        public async Task<IActionResult> GetSavedPosts(
+            [FromQuery] int limit = 12,
+            [FromQuery] DateTime? cursorCreatedAt = null,
+            [FromQuery] Guid? cursorPostId = null)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (cursorCreatedAt.HasValue != cursorPostId.HasValue)
+                return BadRequest(new { message = "cursorCreatedAt and cursorPostId must be provided together." });
+
+            var result = await _postSaveService.GetSavedPostsByCursorAsync(
+                currentId.Value,
+                cursorCreatedAt,
+                cursorPostId,
+                limit);
+            var items = result.Items;
+
+            DateTime? nextCursorCreatedAt = null;
+            Guid? nextCursorPostId = null;
+            if (items.Count > 0)
+            {
+                var lastItem = items.Last();
+                nextCursorCreatedAt = lastItem.SavedAt;
+                nextCursorPostId = lastItem.PostId;
+            }
+
+            return Ok(new
+            {
+                Items = items,
+                NextCursor = result.HasMore && items.Count > 0 && nextCursorCreatedAt.HasValue
+                    ? new
+                    {
+                        CreatedAt = nextCursorCreatedAt,
+                        PostId = nextCursorPostId
+                    }
+                    : null
+            });
+        }
+
+        [Authorize]
         [HttpGet("feed")]
         public async Task<IActionResult> GetFeedPostsByScore([FromQuery] int limit = 10, 
             [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorPostId = null)
@@ -179,6 +226,26 @@ namespace CloudM.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
             var result = await _postReactService.ToggleReactOnPost(postId, currentId.Value);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("{postId}/save")]
+        public async Task<IActionResult> SavePost([FromRoute] Guid postId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            var result = await _postSaveService.SavePostAsync(currentId.Value, postId);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpDelete("{postId}/save")]
+        public async Task<IActionResult> UnsavePost([FromRoute] Guid postId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            var result = await _postSaveService.UnsavePostAsync(currentId.Value, postId);
             return Ok(result);
         }
 

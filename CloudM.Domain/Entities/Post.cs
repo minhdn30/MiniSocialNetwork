@@ -25,6 +25,7 @@ namespace CloudM.Domain.Entities
         public virtual Account Account { get; set; } = null!;
         public virtual ICollection<PostMedia> Medias { get; set; } = new List<PostMedia>();
         public virtual ICollection<PostReact> Reacts { get; set; } = new List<PostReact>();
+        public virtual ICollection<PostSave> Saves { get; set; } = new List<PostSave>();
         public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
     }
 

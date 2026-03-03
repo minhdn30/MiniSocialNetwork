@@ -21,6 +21,7 @@ namespace CloudM.Application.DTOs.PostDTOs
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public bool IsReactedByCurrentUser { get; set; }
+        public bool IsSavedByCurrentUser { get; set; }
         public bool IsOwner { get; set; } = false;
         public int TotalMedias { get; set; } = 0;
         public int TotalReacts { get; set; } = 0;

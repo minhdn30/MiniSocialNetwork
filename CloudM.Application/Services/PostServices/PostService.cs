@@ -20,6 +20,7 @@ using CloudM.Infrastructure.Repositories.Comments;
 using CloudM.Infrastructure.Repositories.Follows;
 using CloudM.Infrastructure.Repositories.PostMedias;
 using CloudM.Infrastructure.Repositories.PostReacts;
+using CloudM.Infrastructure.Repositories.PostSaves;
 using CloudM.Infrastructure.Repositories.Posts;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
 using System;
@@ -37,6 +38,7 @@ namespace CloudM.Application.Services.PostServices
         private readonly IPostRepository _postRepository;
         private readonly IPostMediaRepository _postMediaRepository;
         private readonly IPostReactRepository _postReactRepository;
+        private readonly IPostSaveRepository _postSaveRepository;
         private readonly ICommentRepository _commentRepository;
         private readonly IAccountRepository _accountRepository;
         private readonly ICloudinaryService _cloudinaryService;
@@ -46,6 +48,7 @@ namespace CloudM.Application.Services.PostServices
         private readonly IRealtimeService _realtimeService;
         private readonly IStoryRingStateHelper _storyRingStateHelper;
         public PostService(IPostReactRepository postReactRepository,
+                           IPostSaveRepository postSaveRepository,
                            IPostMediaRepository postMediaRepository,
                            IPostRepository postRepository,
                            ICommentRepository commentRepository,
@@ -61,6 +64,7 @@ namespace CloudM.Application.Services.PostServices
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
             _postReactRepository = postReactRepository;
+            _postSaveRepository = postSaveRepository;
             _commentRepository = commentRepository;
             _accountRepository = accountRepository;
             _cloudinaryService = cloudinaryService;
@@ -81,6 +85,7 @@ namespace CloudM.Application.Services.PostServices
             result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
             result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
+            result.IsSavedByCurrentUser = currentId.HasValue && await _postSaveRepository.IsPostSavedByCurrentAsync(currentId.Value, postId);
             return result;
         }
         public async Task<PostDetailModel> GetPostDetailByPostId(Guid postId, Guid currentId)
@@ -199,6 +204,7 @@ namespace CloudM.Application.Services.PostServices
                         result.TotalReacts = 0;
                         result.TotalComments = 0;
                         result.IsReactedByCurrentUser = false;
+                        result.IsSavedByCurrentUser = false;
                         
                         // Ensure medias are mapped (if not done by AutoMapper)
                         if (post.Medias != null && (result.Medias == null || !result.Medias.Any()))
@@ -325,6 +331,7 @@ namespace CloudM.Application.Services.PostServices
             result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
             result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
+            result.IsSavedByCurrentUser = await _postSaveRepository.IsPostSavedByCurrentAsync(currentId, postId);
 
             // Send realtime notification
             await _realtimeService.NotifyPostUpdatedAsync(postId, currentId, result);

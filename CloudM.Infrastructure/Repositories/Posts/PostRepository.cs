@@ -95,6 +95,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
 
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsFollowedByCurrentUser = isFollower
                 })
@@ -161,6 +162,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
 
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsFollowedByCurrentUser = isFollower
                 })
@@ -307,6 +309,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                   IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                    IsOwner = p.AccountId == currentId
                 }).ToListAsync();
         }
@@ -369,6 +372,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
                     ReplyCount = p.Comments.Count(c => c.ParentCommentId != null && c.Account.Status == AccountStatusEnum.Active),
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsFollowedAuthor = followedIdsQuery.Contains(p.AccountId)
                 })
@@ -453,6 +457,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         x.CommentCount,
                         x.ReplyCount,
                         x.IsReactedByCurrentUser,
+                        x.IsSavedByCurrentUser,
                         x.IsOwner,
                         x.IsFollowedAuthor,
                         Score = score
@@ -517,6 +522,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     ReplyCount = x.ReplyCount,
                     IsFollowedAuthor = x.IsFollowedAuthor,
                     IsReactedByCurrentUser = x.IsReactedByCurrentUser,
+                    IsSavedByCurrentUser = x.IsSavedByCurrentUser,
                     IsOwner = x.IsOwner
                 })
                 .ToList();
