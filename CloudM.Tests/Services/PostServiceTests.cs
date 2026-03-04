@@ -584,12 +584,11 @@ namespace CloudM.Tests.Services
         #region UpdatePostContent Tests
 
         [Fact]
-        public async Task UpdatePostContent_WhenPrivacyChangesToPrivate_WithExistingTags_ThrowsBadRequestException()
+        public async Task UpdatePostContent_WhenPrivacyChangesToPrivate_WithExistingTags_UpdatesSuccessfully()
         {
             // Arrange
             var postId = Guid.NewGuid();
             var currentId = Guid.NewGuid();
-            var existingTaggedId = Guid.NewGuid();
             var post = new Post
             {
                 PostId = postId,
@@ -605,23 +604,28 @@ namespace CloudM.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
-            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId))
-                .ReturnsAsync(new List<Guid> { existingTaggedId });
+            _mockPostRepo.Setup(x => x.UpdatePost(It.IsAny<Post>())).Returns(Task.CompletedTask);
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
+                .Returns(Task.CompletedTask);
 
-            // Act & Assert
-            await Assert.ThrowsAsync<BadRequestException>(() =>
-                _postService.UpdatePostContent(postId, currentId, request));
-            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
-            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+            // Act
+            var result = await _postService.UpdatePostContent(postId, currentId, request);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Privacy.Should().Be(PostPrivacyEnum.Private);
+            _mockPostRepo.Verify(x => x.GetTaggedAccountIdsByPostIdAsync(It.IsAny<Guid>()), Times.Never);
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Once);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Once);
         }
 
         [Fact]
-        public async Task UpdatePostContent_WhenPrivacyChangesToFollowOnly_WithNonFollowerTaggedAccount_ThrowsBadRequestException()
+        public async Task UpdatePostContent_WhenPrivacyChangesToFollowOnly_WithNonFollowerTaggedAccount_UpdatesSuccessfully()
         {
             // Arrange
             var postId = Guid.NewGuid();
             var currentId = Guid.NewGuid();
-            var existingTaggedId = Guid.NewGuid();
             var post = new Post
             {
                 PostId = postId,
@@ -637,16 +641,21 @@ namespace CloudM.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
-            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId))
-                .ReturnsAsync(new List<Guid> { existingTaggedId });
-            _mockFollowRepo.Setup(x => x.GetFollowerIdsInTargetsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
-                .ReturnsAsync(new HashSet<Guid>());
+            _mockPostRepo.Setup(x => x.UpdatePost(It.IsAny<Post>())).Returns(Task.CompletedTask);
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
+                .Returns(Task.CompletedTask);
 
-            // Act & Assert
-            await Assert.ThrowsAsync<BadRequestException>(() =>
-                _postService.UpdatePostContent(postId, currentId, request));
-            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
-            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+            // Act
+            var result = await _postService.UpdatePostContent(postId, currentId, request);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Privacy.Should().Be(PostPrivacyEnum.FollowOnly);
+            _mockPostRepo.Verify(x => x.GetTaggedAccountIdsByPostIdAsync(It.IsAny<Guid>()), Times.Never);
+            _mockFollowRepo.Verify(x => x.GetFollowerIdsInTargetsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Once);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Once);
         }
 
         [Fact]
@@ -671,7 +680,6 @@ namespace CloudM.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
-            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId)).ReturnsAsync(new List<Guid>());
             _mockPostRepo.Setup(x => x.UpdatePost(It.IsAny<Post>())).Returns(Task.CompletedTask);
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
             _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
@@ -950,7 +958,7 @@ namespace CloudM.Tests.Services
             result.Privacy.Should().Be(PostPrivacyEnum.Private);
             result.UpdatedAt.Should().Be(previousUpdatedAt);
             _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Once);
-            _mockPostRepo.Verify(x => x.GetTaggedAccountIdsByPostIdAsync(postId), Times.Once);
+            _mockPostRepo.Verify(x => x.GetTaggedAccountIdsByPostIdAsync(postId), Times.Never);
         }
 
         [Fact]
