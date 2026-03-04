@@ -480,6 +480,37 @@ namespace CloudM.Application.Services.AccountServices
             return result;
         }
 
+        public async Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
+            Guid currentId,
+            string keyword,
+            IEnumerable<Guid>? excludeAccountIds,
+            int limit = 10)
+        {
+            var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+
+            var results = await _accountRepository.SearchAccountsForPostTagAsync(
+                currentId,
+                normalizedKeyword,
+                excludeAccountIds,
+                limit);
+
+            return results.Select(x => new PostTagAccountSearchResponse
+            {
+                AccountId = x.AccountId,
+                Username = x.Username,
+                FullName = x.FullName,
+                AvatarUrl = x.AvatarUrl,
+                IsFollowing = x.IsFollowing,
+                IsFollower = x.IsFollower,
+                LastContactedAt = x.LastContactedAt,
+                MatchScore = x.MatchScore,
+                FollowingScore = x.FollowingScore,
+                FollowerScore = x.FollowerScore,
+                RecentChatScore = x.RecentChatScore,
+                TotalScore = x.TotalScore
+            }).ToList();
+        }
+
         private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid targetId, Guid? currentId)
         {
             return await _storyRingStateHelper.ResolveAsync(currentId, targetId);

@@ -35,5 +35,10 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             Guid currentId,
             string keyword,
             int limit = 20);
+        Task<List<PostTagAccountSearchModel>> SearchAccountsForPostTagAsync(
+            Guid currentId,
+            string keyword,
+            IEnumerable<Guid>? excludeAccountIds,
+            int limit = 10);
     }
 }
