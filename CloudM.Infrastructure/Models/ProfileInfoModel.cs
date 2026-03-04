@@ -36,5 +36,6 @@ namespace CloudM.Infrastructure.Models
         public AccountPrivacyEnum StoryHighlightPrivacy { get; set; }
         public GroupChatInvitePermissionEnum GroupChatInvitePermission { get; set; }
         public OnlineStatusVisibilityEnum OnlineStatusVisibility { get; set; }
+        public TagPermissionEnum TagPermission { get; set; }
     }
 }

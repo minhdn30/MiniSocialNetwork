@@ -344,7 +344,8 @@ namespace CloudM.Application.Services.AccountServices
                 FollowingPrivacy = profileModel.FollowingPrivacy,
                 StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
-                OnlineStatusVisibility = profileModel.OnlineStatusVisibility
+                OnlineStatusVisibility = profileModel.OnlineStatusVisibility,
+                TagPermission = profileModel.TagPermission
             };
 
             // enforce privacy logic
@@ -421,7 +422,8 @@ namespace CloudM.Application.Services.AccountServices
                 FollowingPrivacy = profileModel.FollowingPrivacy,
                 StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
-                OnlineStatusVisibility = profileModel.OnlineStatusVisibility
+                OnlineStatusVisibility = profileModel.OnlineStatusVisibility,
+                TagPermission = profileModel.TagPermission
             };
 
             // Enforce privacy logic
