@@ -16,6 +16,7 @@ using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.Comments;
+using CloudM.Infrastructure.Repositories.Follows;
 using CloudM.Infrastructure.Repositories.PostMedias;
 using CloudM.Infrastructure.Repositories.PostReacts;
 using CloudM.Infrastructure.Repositories.PostSaves;
@@ -34,6 +35,7 @@ namespace CloudM.Tests.Services
         private readonly Mock<IPostSaveRepository> _mockPostSaveRepo;
         private readonly Mock<ICommentRepository> _mockCommentRepo;
         private readonly Mock<IAccountRepository> _mockAccountRepo;
+        private readonly Mock<IFollowRepository> _mockFollowRepo;
         private readonly Mock<ICloudinaryService> _mockCloudinaryService;
         private readonly Mock<IFileTypeDetector> _mockFileTypeDetector;
         private readonly Mock<IMapper> _mockMapper;
@@ -50,6 +52,7 @@ namespace CloudM.Tests.Services
             _mockPostSaveRepo = new Mock<IPostSaveRepository>();
             _mockCommentRepo = new Mock<ICommentRepository>();
             _mockAccountRepo = new Mock<IAccountRepository>();
+            _mockFollowRepo = new Mock<IFollowRepository>();
             _mockCloudinaryService = new Mock<ICloudinaryService>();
             _mockFileTypeDetector = new Mock<IFileTypeDetector>();
             _mockMapper = new Mock<IMapper>();
@@ -64,6 +67,7 @@ namespace CloudM.Tests.Services
                 _mockPostRepo.Object,
                 _mockCommentRepo.Object,
                 _mockAccountRepo.Object,
+                _mockFollowRepo.Object,
                 _mockCloudinaryService.Object,
                 _mockFileTypeDetector.Object,
                 _mockMapper.Object,
@@ -433,6 +437,92 @@ namespace CloudM.Tests.Services
 
         #endregion
 
+        #region CreatePost Tag Visibility Tests
+
+        [Fact]
+        public async Task CreatePost_WhenPrivatePrivacyWithTaggedAccounts_ThrowsBadRequestException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var taggedId = Guid.NewGuid();
+            var currentAccount = new Account
+            {
+                AccountId = currentId,
+                Status = AccountStatusEnum.Active
+            };
+
+            var taggedAccount = new Account
+            {
+                AccountId = taggedId,
+                Status = AccountStatusEnum.Active,
+                Settings = new AccountSettings
+                {
+                    AccountId = taggedId,
+                    TagPermission = TagPermissionEnum.Anyone
+                }
+            };
+
+            var request = new PostCreateRequest
+            {
+                Privacy = (int)PostPrivacyEnum.Private,
+                TaggedAccountIds = new List<Guid> { taggedId },
+                MediaFiles = new List<IFormFile>()
+            };
+
+            _mockAccountRepo.Setup(x => x.GetAccountById(currentId)).ReturnsAsync(currentAccount);
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { taggedAccount });
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() => _postService.CreatePost(currentId, request));
+            _mockPostRepo.Verify(x => x.AddPost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreatePost_WhenFollowOnlyPrivacyWithNonFollowerTag_ThrowsBadRequestException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var taggedId = Guid.NewGuid();
+            var currentAccount = new Account
+            {
+                AccountId = currentId,
+                Status = AccountStatusEnum.Active
+            };
+
+            var taggedAccount = new Account
+            {
+                AccountId = taggedId,
+                Status = AccountStatusEnum.Active,
+                Settings = new AccountSettings
+                {
+                    AccountId = taggedId,
+                    TagPermission = TagPermissionEnum.Anyone
+                }
+            };
+
+            var request = new PostCreateRequest
+            {
+                Privacy = (int)PostPrivacyEnum.FollowOnly,
+                TaggedAccountIds = new List<Guid> { taggedId },
+                MediaFiles = new List<IFormFile>()
+            };
+
+            _mockAccountRepo.Setup(x => x.GetAccountById(currentId)).ReturnsAsync(currentAccount);
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { taggedAccount });
+            _mockFollowRepo.Setup(x => x.GetFollowerIdsInTargetsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new HashSet<Guid>());
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() => _postService.CreatePost(currentId, request));
+            _mockPostRepo.Verify(x => x.AddPost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        #endregion
+
         #region UpdatePost Tests
 
         [Fact]
@@ -494,6 +584,72 @@ namespace CloudM.Tests.Services
         #region UpdatePostContent Tests
 
         [Fact]
+        public async Task UpdatePostContent_WhenPrivacyChangesToPrivate_WithExistingTags_ThrowsBadRequestException()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var existingTaggedId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Old content",
+                Privacy = PostPrivacyEnum.Public,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                Privacy = (int)PostPrivacyEnum.Private
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId))
+                .ReturnsAsync(new List<Guid> { existingTaggedId });
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() =>
+                _postService.UpdatePostContent(postId, currentId, request));
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenPrivacyChangesToFollowOnly_WithNonFollowerTaggedAccount_ThrowsBadRequestException()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var existingTaggedId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Old content",
+                Privacy = PostPrivacyEnum.Public,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                Privacy = (int)PostPrivacyEnum.FollowOnly
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId))
+                .ReturnsAsync(new List<Guid> { existingTaggedId });
+            _mockFollowRepo.Setup(x => x.GetFollowerIdsInTargetsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new HashSet<Guid>());
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() =>
+                _postService.UpdatePostContent(postId, currentId, request));
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        [Fact]
         public async Task UpdatePostContent_WhenValidRequest_UpdatesSuccessfully()
         {
             // Arrange
@@ -515,6 +671,7 @@ namespace CloudM.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId)).ReturnsAsync(new List<Guid>());
             _mockPostRepo.Setup(x => x.UpdatePost(It.IsAny<Post>())).Returns(Task.CompletedTask);
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
             _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
@@ -528,6 +685,272 @@ namespace CloudM.Tests.Services
             result.PostId.Should().Be(postId);
             result.Content.Should().Be("New content");
             result.Privacy.Should().Be(PostPrivacyEnum.FollowOnly);
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenNoTagMutation_DoesNotQueryTagLogic()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Old content",
+                Privacy = PostPrivacyEnum.Public,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                Content = "New content only",
+                Privacy = (int)PostPrivacyEnum.Public
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.UpdatePost(It.IsAny<Post>())).Returns(Task.CompletedTask);
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _postService.UpdatePostContent(postId, currentId, request);
+
+            // Assert
+            result.Should().NotBeNull();
+            _mockPostRepo.Verify(x => x.GetTaggedAccountIdsByPostIdAsync(It.IsAny<Guid>()), Times.Never);
+            _mockAccountRepo.Verify(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()), Times.Never);
+            _mockFollowRepo.Verify(x => x.GetFollowingIdsAsync(It.IsAny<Guid>()), Times.Never);
+            _mockPostRepo.Verify(x => x.AddPostTagsAsync(It.IsAny<IEnumerable<PostTag>>()), Times.Never);
+            _mockPostRepo.Verify(x => x.RemovePostTagsAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenAddAndRemoveContainSameAccount_ThrowsBadRequestException()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var tagId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Old content",
+                Privacy = PostPrivacyEnum.Public,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                AddNewTagIds = new List<Guid> { tagId },
+                RemoveTagIds = new List<Guid> { tagId }
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() =>
+                _postService.UpdatePostContent(postId, currentId, request));
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenAddNewTagAnyonePermission_AddsTagSuccessfully()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var targetId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Old content",
+                Privacy = PostPrivacyEnum.Public,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                AddNewTagIds = new List<Guid> { targetId }
+            };
+
+            var targetAccount = new Account
+            {
+                AccountId = targetId,
+                Username = "target.user",
+                FullName = "Target User",
+                Status = AccountStatusEnum.Active,
+                Settings = new AccountSettings
+                {
+                    AccountId = targetId,
+                    TagPermission = TagPermissionEnum.Anyone
+                }
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId)).ReturnsAsync(new List<Guid>());
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { targetAccount });
+            _mockPostRepo.Setup(x => x.AddPostTagsAsync(It.IsAny<IEnumerable<PostTag>>())).Returns(Task.CompletedTask);
+            _mockPostRepo.Setup(x => x.UpdatePost(It.IsAny<Post>())).Returns(Task.CompletedTask);
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _postService.UpdatePostContent(postId, currentId, request);
+
+            // Assert
+            result.Should().NotBeNull();
+            _mockPostRepo.Verify(
+                x => x.AddPostTagsAsync(It.Is<IEnumerable<PostTag>>(tags =>
+                    tags.Any(t => t.PostId == postId && t.TaggedAccountId == targetId))),
+                Times.Once);
+            _mockFollowRepo.Verify(x => x.GetFollowingIdsAsync(It.IsAny<Guid>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenAddTagInFollowOnly_WithNonFollowerTaggedAccount_ThrowsBadRequestException()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var targetId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Old content",
+                Privacy = PostPrivacyEnum.FollowOnly,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                AddNewTagIds = new List<Guid> { targetId }
+            };
+
+            var targetAccount = new Account
+            {
+                AccountId = targetId,
+                Username = "target.user",
+                FullName = "Target User",
+                Status = AccountStatusEnum.Active,
+                Settings = new AccountSettings
+                {
+                    AccountId = targetId,
+                    TagPermission = TagPermissionEnum.Anyone
+                }
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId)).ReturnsAsync(new List<Guid>());
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { targetAccount });
+            _mockFollowRepo.Setup(x => x.GetFollowerIdsInTargetsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new HashSet<Guid>());
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() =>
+                _postService.UpdatePostContent(postId, currentId, request));
+            _mockPostRepo.Verify(x => x.AddPostTagsAsync(It.IsAny<IEnumerable<PostTag>>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenOnlyTagListChanges_DoesNotUpdatePostUpdatedAt()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var targetId = Guid.NewGuid();
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Stable content",
+                Privacy = PostPrivacyEnum.Public,
+                UpdatedAt = null,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                AddNewTagIds = new List<Guid> { targetId }
+            };
+
+            var targetAccount = new Account
+            {
+                AccountId = targetId,
+                Username = "target.user",
+                FullName = "Target User",
+                Status = AccountStatusEnum.Active,
+                Settings = new AccountSettings
+                {
+                    AccountId = targetId,
+                    TagPermission = TagPermissionEnum.Anyone
+                }
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId)).ReturnsAsync(new List<Guid>());
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { targetAccount });
+            _mockPostRepo.Setup(x => x.AddPostTagsAsync(It.IsAny<IEnumerable<PostTag>>())).Returns(Task.CompletedTask);
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _postService.UpdatePostContent(postId, currentId, request);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.UpdatedAt.Should().BeNull();
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdatePostContent_WhenOnlyPrivacyChanges_DoesNotUpdateUpdatedAt()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var previousUpdatedAt = DateTime.UtcNow.AddHours(-2);
+            var post = new Post
+            {
+                PostId = postId,
+                AccountId = currentId,
+                Content = "Stable content",
+                Privacy = PostPrivacyEnum.Public,
+                UpdatedAt = previousUpdatedAt,
+                Medias = new List<PostMedia> { new PostMedia() }
+            };
+
+            var request = new PostUpdateContentRequest
+            {
+                Privacy = (int)PostPrivacyEnum.Private
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostForUpdateContent(postId)).ReturnsAsync(post);
+            _mockPostRepo.Setup(x => x.GetTaggedAccountIdsByPostIdAsync(postId)).ReturnsAsync(new List<Guid>());
+            _mockPostRepo.Setup(x => x.UpdatePost(It.IsAny<Post>())).Returns(Task.CompletedTask);
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyPostContentUpdatedAsync(postId, currentId, It.IsAny<PostUpdateContentResponse>()))
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _postService.UpdatePostContent(postId, currentId, request);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Privacy.Should().Be(PostPrivacyEnum.Private);
+            result.UpdatedAt.Should().Be(previousUpdatedAt);
+            _mockPostRepo.Verify(x => x.UpdatePost(It.IsAny<Post>()), Times.Once);
+            _mockPostRepo.Verify(x => x.GetTaggedAccountIdsByPostIdAsync(postId), Times.Once);
         }
 
         [Fact]

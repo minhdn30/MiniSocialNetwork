@@ -194,10 +194,19 @@ namespace CloudM.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
             var normalizedKeyword = request.Keyword?.Trim() ?? string.Empty;
+            PostPrivacyEnum? postPrivacy = null;
+            if (request.Privacy.HasValue)
+            {
+                if (!Enum.IsDefined(typeof(PostPrivacyEnum), request.Privacy.Value))
+                    return BadRequest(new { message = "Invalid PostPrivacyEnum value." });
+
+                postPrivacy = (PostPrivacyEnum)request.Privacy.Value;
+            }
 
             var result = await _accountService.SearchAccountsForPostTagAsync(
                 currentId.Value,
                 normalizedKeyword,
+                postPrivacy,
                 request.ExcludeAccountIds,
                 request.Limit);
 

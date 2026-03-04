@@ -61,9 +61,19 @@ namespace CloudM.Application.Mapping
             CreateMap<PostUpdateRequest, Post>()
                 .ForMember(dest => dest.Medias, opt => opt.Ignore())
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+            CreateMap<PostTag, PostTaggedAccountResponse>()
+                .ForMember(dest => dest.AccountId, opt => opt.MapFrom(src => src.TaggedAccountId))
+                .ForMember(dest => dest.Username, opt => opt.MapFrom(src => src.TaggedAccount.Username))
+                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.TaggedAccount.FullName))
+                .ForMember(dest => dest.AvatarUrl, opt => opt.MapFrom(src => src.TaggedAccount.AvatarUrl));
             CreateMap<Post, PostDetailResponse>()
                 .ForMember(dest => dest.Owner, opt => opt.MapFrom(src => src.Account))
                 .ForMember(dest => dest.Medias, opt => opt.MapFrom(src => src.Medias))
+                .ForMember(
+                    dest => dest.TaggedAccounts,
+                    opt => opt.MapFrom(src => src.Tags.Where(t =>
+                        t.TaggedAccount != null &&
+                        t.TaggedAccount.Status == AccountStatusEnum.Active)))
                 .ForMember(dest => dest.TotalComments, opt => opt.MapFrom(src => src.Comments.Count(c => c.ParentCommentId == null)))
                 .ForMember(dest => dest.TotalReacts, opt => opt.MapFrom(src => src.Reacts.Count))
                 .ForMember(dest => dest.TotalMedias, opt => opt.MapFrom(src => src.Medias.Count));

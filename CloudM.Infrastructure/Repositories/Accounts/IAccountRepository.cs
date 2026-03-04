@@ -38,6 +38,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         Task<List<PostTagAccountSearchModel>> SearchAccountsForPostTagAsync(
             Guid currentId,
             string keyword,
+            PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
             int limit = 10);
     }

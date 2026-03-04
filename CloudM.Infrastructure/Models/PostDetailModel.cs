@@ -16,6 +16,7 @@ namespace CloudM.Infrastructure.Models
         public int FeedAspectRatio { get; set; }
         public string? Content { get; set; }
         public List<PostMediaProfilePreviewModel> Medias { get; set; } = new();
+        public List<PostTaggedAccountModel> TaggedAccounts { get; set; } = new();
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public bool IsReactedByCurrentUser { get; set; }

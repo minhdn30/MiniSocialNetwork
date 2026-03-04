@@ -616,9 +616,16 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         public async Task<List<PostTagAccountSearchModel>> SearchAccountsForPostTagAsync(
             Guid currentId,
             string keyword,
+            PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
             int limit = 10)
         {
+            if (postPrivacy == PostPrivacyEnum.Private)
+            {
+                return new List<PostTagAccountSearchModel>();
+            }
+
+            var requireFollowerVisibility = postPrivacy == PostPrivacyEnum.FollowOnly;
             var excludeIds = (excludeAccountIds ?? Enumerable.Empty<Guid>())
                 .Where(id => id != Guid.Empty && id != currentId)
                 .Distinct()
@@ -629,7 +636,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
             if (normalizedKeyword.Length == 0)
             {
-                return await GetEmptyKeywordPostTagCandidatesAsync(currentId, excludeIds, safeLimit);
+                return new List<PostTagAccountSearchModel>();
             }
 
             var prefetchLimit = Math.Min(
@@ -670,6 +677,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 .Where(x =>
                     x.TagPermission == TagPermissionEnum.Anyone ||
                     (x.TagPermission == TagPermissionEnum.Followers && x.IsFollowing))
+                .Where(x => !requireFollowerVisibility || x.IsFollower)
                 .Where(x =>
                     x.UsernameContains ||
                     x.FullNameContains ||
@@ -912,6 +920,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         private async Task<List<PostTagAccountSearchModel>> GetEmptyKeywordPostTagCandidatesAsync(
             Guid currentId,
+            bool requireFollowerVisibility,
             List<Guid> excludeIds,
             int takeCount)
         {
@@ -967,6 +976,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 .Where(x =>
                     x.TagPermission == TagPermissionEnum.Anyone ||
                     (x.TagPermission == TagPermissionEnum.Followers && x.IsFollowing))
+                .Where(x => !requireFollowerVisibility || x.IsFollower)
                 .OrderByDescending(x => x.IsFollowing)
                 .ThenByDescending(x => x.IsFollower)
                 .ThenByDescending(x => x.HasRecentChat)

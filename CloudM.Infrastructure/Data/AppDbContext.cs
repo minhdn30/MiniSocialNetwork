@@ -23,6 +23,7 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<PostMedia> PostMedias { get; set; }
         public virtual DbSet<PostReact> PostReacts { get; set; }
         public virtual DbSet<PostSave> PostSaves { get; set; }
+        public virtual DbSet<PostTag> PostTags { get; set; }
         public virtual DbSet<Story> Stories { get; set; }
         public virtual DbSet<StoryView> StoryViews { get; set; }
         public virtual DbSet<StoryHighlightGroup> StoryHighlightGroups { get; set; }
@@ -211,6 +212,13 @@ namespace CloudM.Infrastructure.Data
                 .HasForeignKey(s => s.PostId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Post → Tags
+            modelBuilder.Entity<Post>()
+                .HasMany(p => p.Tags)
+                .WithOne(t => t.Post)
+                .HasForeignKey(t => t.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // =====================
             // POST MEDIA
             // =====================
@@ -257,6 +265,28 @@ namespace CloudM.Infrastructure.Data
                 .HasOne(s => s.Post)
                 .WithMany(p => p.Saves)
                 .HasForeignKey(s => s.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // =====================
+            // POST TAG
+            // =====================
+            modelBuilder.Entity<PostTag>()
+                .HasKey(t => new { t.PostId, t.TaggedAccountId });
+
+            modelBuilder.Entity<PostTag>()
+                .HasIndex(t => new { t.TaggedAccountId, t.CreatedAt })
+                .HasDatabaseName("IX_PostTags_TaggedAccount_CreatedAt");
+
+            modelBuilder.Entity<PostTag>()
+                .HasOne(t => t.Post)
+                .WithMany(p => p.Tags)
+                .HasForeignKey(t => t.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PostTag>()
+                .HasOne(t => t.TaggedAccount)
+                .WithMany(a => a.PostTags)
+                .HasForeignKey(t => t.TaggedAccountId)
                 .OnDelete(DeleteBehavior.Cascade);
 
 

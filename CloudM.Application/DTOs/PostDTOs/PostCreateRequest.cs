@@ -17,6 +17,7 @@ namespace CloudM.Application.DTOs.PostDTOs
         //use int? for optional enum, because FromForm cannot bind nullable enum directly
         public int? Privacy { get; set; }
         public int? FeedAspectRatio { get; set; }
+        public List<Guid>? TaggedAccountIds { get; set; }
         [Required(ErrorMessage = "At least one image is required.")]
         [MinLength(1, ErrorMessage = "At least one image is required.")]
         public List<IFormFile> MediaFiles { get; set; } = new();
