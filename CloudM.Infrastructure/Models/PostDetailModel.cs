@@ -17,6 +17,7 @@ namespace CloudM.Infrastructure.Models
         public string? Content { get; set; }
         public List<PostMediaProfilePreviewModel> Medias { get; set; } = new();
         public List<PostTaggedAccountModel> TaggedAccounts { get; set; } = new();
+        public int TotalTaggedAccounts { get; set; } = 0;
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public bool IsReactedByCurrentUser { get; set; }

@@ -15,6 +15,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
     public class PostRepository : IPostRepository
     {
         private readonly AppDbContext _context;
+
         public PostRepository(AppDbContext context)
         {
             _context = context;
@@ -93,17 +94,6 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         })
                         .ToList(),
 
-                    TaggedAccounts = p.Tags
-                        .Where(t => t.TaggedAccount.Status == AccountStatusEnum.Active)
-                        .Select(t => new PostTaggedAccountModel
-                        {
-                            AccountId = t.TaggedAccountId,
-                            Username = t.TaggedAccount.Username,
-                            FullName = t.TaggedAccount.FullName,
-                            AvatarUrl = t.TaggedAccount.AvatarUrl
-                        })
-                        .ToList(),
-
                     TotalMedias = p.Medias.Count(),
                     TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
                     TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
@@ -114,6 +104,13 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     IsFollowedByCurrentUser = isFollower
                 })
                 .FirstOrDefaultAsync();
+
+            if (post != null)
+            {
+                var taggedInfo = await GetOrderedTaggedAccountsByPostIdAsync(post.PostId, currentId, 2);
+                post.TaggedAccounts = taggedInfo.Items;
+                post.TotalTaggedAccounts = taggedInfo.Total;
+            }
 
             return post;
         }
@@ -171,17 +168,6 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         })
                         .ToList(),
 
-                    TaggedAccounts = p.Tags
-                        .Where(t => t.TaggedAccount.Status == AccountStatusEnum.Active)
-                        .Select(t => new PostTaggedAccountModel
-                        {
-                            AccountId = t.TaggedAccountId,
-                            Username = t.TaggedAccount.Username,
-                            FullName = t.TaggedAccount.FullName,
-                            AvatarUrl = t.TaggedAccount.AvatarUrl
-                        })
-                        .ToList(),
-
                     TotalMedias = p.Medias.Count(),
                     TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
                     TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
@@ -192,6 +178,13 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     IsFollowedByCurrentUser = isFollower
                 })
                 .FirstOrDefaultAsync();
+
+            if (post != null)
+            {
+                var taggedInfo = await GetOrderedTaggedAccountsByPostIdAsync(post.PostId, currentId, 2);
+                post.TaggedAccounts = taggedInfo.Items;
+                post.TotalTaggedAccounts = taggedInfo.Total;
+            }
 
             return post;
         }
@@ -348,6 +341,122 @@ namespace CloudM.Infrastructure.Repositories.Posts
             }
 
             _context.PostTags.RemoveRange(tagsToRemove);
+        }
+
+        public async Task<List<PostTaggedAccountModel>?> GetTaggedAccountsByPostIdAsync(Guid postId, Guid currentId)
+        {
+            var postInfo = await _context.Posts
+                .AsNoTracking()
+                .Where(p =>
+                    p.PostId == postId &&
+                    !p.IsDeleted &&
+                    p.Account.Status == AccountStatusEnum.Active)
+                .Select(p => new
+                {
+                    p.AccountId,
+                    p.Privacy
+                })
+                .FirstOrDefaultAsync();
+
+            if (postInfo == null)
+            {
+                return null;
+            }
+
+            var canViewPost = postInfo.AccountId == currentId;
+            if (!canViewPost)
+            {
+                if (postInfo.Privacy == PostPrivacyEnum.Public)
+                {
+                    canViewPost = true;
+                }
+                else if (postInfo.Privacy == PostPrivacyEnum.FollowOnly)
+                {
+                    canViewPost = await _context.Follows.AnyAsync(f =>
+                        f.FollowerId == currentId &&
+                        f.FollowedId == postInfo.AccountId);
+                }
+            }
+
+            if (!canViewPost)
+            {
+                return null;
+            }
+
+            var taggedInfo = await GetOrderedTaggedAccountsByPostIdAsync(postId, currentId);
+            return taggedInfo.Items;
+        }
+
+        private async Task<(List<PostTaggedAccountModel> Items, int Total)> GetOrderedTaggedAccountsByPostIdAsync(
+            Guid postId,
+            Guid currentId,
+            int? take = null)
+        {
+            var taggedAccounts = await _context.PostTags
+                .AsNoTracking()
+                .Where(t =>
+                    t.PostId == postId &&
+                    (t.TaggedAccount.Status == AccountStatusEnum.Active || t.TaggedAccountId == currentId))
+                .Select(t => new PostTaggedAccountRawModel
+                {
+                    AccountId = t.TaggedAccountId,
+                    Username = t.TaggedAccount.Username,
+                    FullName = t.TaggedAccount.FullName,
+                    AvatarUrl = t.TaggedAccount.AvatarUrl,
+                    CreatedAt = t.CreatedAt
+                })
+                .ToListAsync();
+
+            if (taggedAccounts.Count == 0)
+            {
+                return (new List<PostTaggedAccountModel>(), 0);
+            }
+
+            var taggedAccountIds = taggedAccounts
+                .Select(x => x.AccountId)
+                .Distinct()
+                .ToList();
+
+            var followingIdSet = (await _context.Follows
+                    .AsNoTracking()
+                    .Where(f =>
+                        f.FollowerId == currentId &&
+                        taggedAccountIds.Contains(f.FollowedId))
+                    .Select(f => f.FollowedId)
+                    .ToListAsync())
+                .ToHashSet();
+
+            var followerIdSet = (await _context.Follows
+                    .AsNoTracking()
+                    .Where(f =>
+                        f.FollowedId == currentId &&
+                        taggedAccountIds.Contains(f.FollowerId))
+                    .Select(f => f.FollowerId)
+                    .ToListAsync())
+                .ToHashSet();
+
+            var orderedAccounts = taggedAccounts
+                .OrderByDescending(x => x.AccountId == currentId)
+                .ThenByDescending(x => followingIdSet.Contains(x.AccountId))
+                .ThenByDescending(x => followerIdSet.Contains(x.AccountId))
+                .ThenBy(x => x.CreatedAt)
+                .Select(x => new PostTaggedAccountModel
+                {
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl,
+                    IsFollowing = followingIdSet.Contains(x.AccountId),
+                    IsFollower = followerIdSet.Contains(x.AccountId)
+                })
+                .ToList();
+
+            var total = orderedAccounts.Count;
+            var items = take.HasValue && take.Value > 0
+                ? orderedAccounts.Take(take.Value).ToList()
+                : orderedAccounts;
+
+            return (items, total);
         }
 
         //no use
@@ -585,40 +694,127 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .ToDictionary(
                     g => g.Key,
                     g => g.Select(x => x.Media).ToList());
+            
+            var taggedAccounts = await _context.PostTags
+                .AsNoTracking()
+                .Where(t =>
+                    topPostIds.Contains(t.PostId) &&
+                    t.TaggedAccount.Status == AccountStatusEnum.Active)
+                .Select(t => new
+                {
+                    t.PostId,
+                    t.TaggedAccountId,
+                    t.TaggedAccount.Username,
+                    t.TaggedAccount.FullName,
+                    t.TaggedAccount.AvatarUrl,
+                    t.CreatedAt
+                })
+                .ToListAsync();
+
+            var taggedAccountIds = taggedAccounts
+                .Select(x => x.TaggedAccountId)
+                .Distinct()
+                .ToList();
+
+            var followingIdSet = taggedAccountIds.Count == 0
+                ? new HashSet<Guid>()
+                : (await _context.Follows
+                    .AsNoTracking()
+                    .Where(f =>
+                        f.FollowerId == currentId &&
+                        taggedAccountIds.Contains(f.FollowedId))
+                    .Select(f => f.FollowedId)
+                    .ToListAsync())
+                .ToHashSet();
+
+            var followerIdSet = taggedAccountIds.Count == 0
+                ? new HashSet<Guid>()
+                : (await _context.Follows
+                    .AsNoTracking()
+                    .Where(f =>
+                        f.FollowedId == currentId &&
+                        taggedAccountIds.Contains(f.FollowerId))
+                    .Select(f => f.FollowerId)
+                    .ToListAsync())
+                .ToHashSet();
+
+            var taggedAccountLookup = taggedAccounts
+                .GroupBy(x => x.PostId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        Total = g.Count(),
+                        Preview = g
+                            .OrderByDescending(x => x.TaggedAccountId == currentId)
+                            .ThenByDescending(x => followingIdSet.Contains(x.TaggedAccountId))
+                            .ThenByDescending(x => followerIdSet.Contains(x.TaggedAccountId))
+                            .ThenBy(x => x.CreatedAt)
+                            .Select(x => new PostTaggedAccountModel
+                            {
+                                AccountId = x.TaggedAccountId,
+                                Username = x.Username,
+                                FullName = x.FullName,
+                                AvatarUrl = x.AvatarUrl,
+                                IsFollowing = followingIdSet.Contains(x.TaggedAccountId),
+                                IsFollower = followerIdSet.Contains(x.TaggedAccountId)
+                            })
+                            .Take(2)
+                            .ToList()
+                    });
 
             return topScoredPosts
-                .Select(x => new PostFeedModel
+                .Select(x =>
                 {
-                    PostId = x.PostId,
-                    PostCode = x.PostCode,
-                    Content = x.Content,
-                    Privacy = x.Privacy,
-                    FeedAspectRatio = x.FeedAspectRatio,
-                    CreatedAt = x.CreatedAt,
-                    Author = new AccountOnFeedModel
+                    var postMedias = mediaLookup.TryGetValue(x.PostId, out var mediaItems)
+                        ? mediaItems
+                        : new List<MediaPostPersonalListModel>();
+
+                    var postTagInfo = taggedAccountLookup.TryGetValue(x.PostId, out var tagItems)
+                        ? tagItems
+                        : null;
+
+                    return new PostFeedModel
                     {
-                        AccountId = x.AuthorAccountId,
-                        Username = x.AuthorUsername,
-                        FullName = x.AuthorFullName,
-                        AvatarUrl = x.AuthorAvatarUrl,
-                        Status = x.AuthorStatus,
-                        IsFollowedByCurrentUser = x.IsOwner || x.IsFollowedAuthor
-                    },
-                    Medias = mediaLookup.TryGetValue(x.PostId, out var postMedias)
-                        ? postMedias
-                        : new List<MediaPostPersonalListModel>(),
-                    MediaCount = x.MediaCount,
-                    ReactCount = x.ReactCount,
-                    CommentCount = x.CommentCount,
-                    ReplyCount = x.ReplyCount,
-                    IsFollowedAuthor = x.IsFollowedAuthor,
-                    IsReactedByCurrentUser = x.IsReactedByCurrentUser,
-                    IsSavedByCurrentUser = x.IsSavedByCurrentUser,
-                    IsOwner = x.IsOwner
+                        PostId = x.PostId,
+                        PostCode = x.PostCode,
+                        Content = x.Content,
+                        Privacy = x.Privacy,
+                        FeedAspectRatio = x.FeedAspectRatio,
+                        CreatedAt = x.CreatedAt,
+                        Author = new AccountOnFeedModel
+                        {
+                            AccountId = x.AuthorAccountId,
+                            Username = x.AuthorUsername,
+                            FullName = x.AuthorFullName,
+                            AvatarUrl = x.AuthorAvatarUrl,
+                            Status = x.AuthorStatus,
+                            IsFollowedByCurrentUser = x.IsOwner || x.IsFollowedAuthor
+                        },
+                        Medias = postMedias,
+                        TaggedAccountsPreview = postTagInfo?.Preview
+                            ?? new List<PostTaggedAccountModel>(),
+                        TotalTaggedAccounts = postTagInfo?.Total ?? 0,
+                        MediaCount = x.MediaCount,
+                        ReactCount = x.ReactCount,
+                        CommentCount = x.CommentCount,
+                        ReplyCount = x.ReplyCount,
+                        IsFollowedAuthor = x.IsFollowedAuthor,
+                        IsReactedByCurrentUser = x.IsReactedByCurrentUser,
+                        IsSavedByCurrentUser = x.IsSavedByCurrentUser,
+                        IsOwner = x.IsOwner
+                    };
                 })
                 .ToList();
         }
 
-
+        private sealed class PostTaggedAccountRawModel
+        {
+            public Guid AccountId { get; set; }
+            public string Username { get; set; } = string.Empty;
+            public string FullName { get; set; } = string.Empty;
+            public string? AvatarUrl { get; set; }
+            public DateTime CreatedAt { get; set; }
+        }
     }
 }

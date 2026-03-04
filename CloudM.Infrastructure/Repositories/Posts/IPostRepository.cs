@@ -32,6 +32,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
         Task<List<Guid>> GetTaggedAccountIdsByPostIdAsync(Guid postId);
         Task AddPostTagsAsync(IEnumerable<PostTag> postTags);
         Task RemovePostTagsAsync(Guid postId, IEnumerable<Guid> taggedAccountIds);
+        Task<List<PostTaggedAccountModel>?> GetTaggedAccountsByPostIdAsync(Guid postId, Guid currentId);
         Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
         Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
     }

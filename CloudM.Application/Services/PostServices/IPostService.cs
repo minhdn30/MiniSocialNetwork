@@ -14,6 +14,7 @@ namespace CloudM.Application.Services.PostServices
     public interface IPostService
     {
         Task<PostDetailResponse?> GetPostById(Guid postId, Guid? currentId);
+        Task<List<PostTaggedAccountResponse>> GetTaggedAccountsByPostId(Guid postId, Guid currentId);
         Task<PostDetailModel> GetPostDetailByPostId(Guid postId, Guid currentId);
         Task<PostDetailModel> GetPostDetailByPostCode(string postCode, Guid currentId);
         Task<PostDetailResponse> CreatePost(Guid accountId, PostCreateRequest request);

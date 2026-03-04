@@ -13,6 +13,8 @@ namespace CloudM.Infrastructure.Models
         public AspectRatioEnum FeedAspectRatio { get; set; }
         public DateTime CreatedAt { get; set; }
         public List<MediaPostPersonalListModel>? Medias { get; set; } = new();
+        public List<PostTaggedAccountModel> TaggedAccountsPreview { get; set; } = new();
+        public int TotalTaggedAccounts { get; set; }
         public int MediaCount { get; set; }
         public int ReactCount { get; set; }
         public int CommentCount { get; set; }

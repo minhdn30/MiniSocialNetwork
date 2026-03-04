@@ -57,6 +57,21 @@ namespace CloudM.API.Controllers
         }
 
         [Authorize]
+        [HttpGet("{postId}/tags")]
+        public async Task<IActionResult> GetTaggedAccountsByPostId([FromRoute] Guid postId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var items = await _postService.GetTaggedAccountsByPostId(postId, currentId.Value);
+            return Ok(new
+            {
+                Items = items,
+                TotalItems = items.Count
+            });
+        }
+
+        [Authorize]
         [HttpGet("p/{postCode}")]
         public async Task<IActionResult> GetPostDetailByPostCodeAsync([FromRoute] string postCode)
         {

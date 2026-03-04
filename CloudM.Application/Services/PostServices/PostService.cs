@@ -93,6 +93,28 @@ namespace CloudM.Application.Services.PostServices
             result.IsSavedByCurrentUser = currentId.HasValue && await _postSaveRepository.IsPostSavedByCurrentAsync(currentId.Value, postId);
             return result;
         }
+
+        public async Task<List<PostTaggedAccountResponse>> GetTaggedAccountsByPostId(Guid postId, Guid currentId)
+        {
+            var taggedAccounts = await _postRepository.GetTaggedAccountsByPostIdAsync(postId, currentId);
+            if (taggedAccounts == null)
+            {
+                throw new NotFoundException($"Post with ID {postId} not found or has been deleted.");
+            }
+
+            return taggedAccounts
+                .Select(x => new PostTaggedAccountResponse
+                {
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl,
+                    IsFollowing = x.IsFollowing,
+                    IsFollower = x.IsFollower
+                })
+                .ToList();
+        }
+
         public async Task<PostDetailModel> GetPostDetailByPostId(Guid postId, Guid currentId)
         {
             var post = await _postRepository.GetPostDetailByPostId(postId, currentId);
@@ -659,7 +681,9 @@ namespace CloudM.Application.Services.PostServices
                     AccountId = x.AccountId,
                     Username = x.Username,
                     FullName = x.FullName,
-                    AvatarUrl = x.AvatarUrl
+                    AvatarUrl = x.AvatarUrl,
+                    IsFollowing = false,
+                    IsFollower = false
                 })
                 .ToList();
         }
