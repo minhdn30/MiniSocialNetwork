@@ -619,6 +619,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         public async Task<List<PostTagAccountSearchModel>> SearchAccountsForPostTagAsync(
             Guid currentId,
+            Guid? visibilityOwnerId,
             string keyword,
             PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
@@ -630,6 +631,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             }
 
             var requireFollowerVisibility = postPrivacy == PostPrivacyEnum.FollowOnly;
+            var effectiveVisibilityOwnerId = visibilityOwnerId.HasValue && visibilityOwnerId.Value != Guid.Empty
+                ? visibilityOwnerId.Value
+                : currentId;
             var excludeIds = (excludeAccountIds ?? Enumerable.Empty<Guid>())
                 .Where(id => id != Guid.Empty && id != currentId)
                 .Distinct()
@@ -671,6 +675,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                         : TagPermissionEnum.Anyone,
                     IsFollowing = _context.Follows.Any(f => f.FollowerId == currentId && f.FollowedId == a.AccountId),
                     IsFollower = _context.Follows.Any(f => f.FollowerId == a.AccountId && f.FollowedId == currentId),
+                    IsVisibilityFollower = _context.Follows.Any(f => f.FollowerId == a.AccountId && f.FollowedId == effectiveVisibilityOwnerId),
                     UsernameStartsWith = EF.Functions.ILike(a.Username, startsWithPattern),
                     FullNameStartsWith = EF.Functions.ILike(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(startsWithPattern)),
                     UsernameContains = EF.Functions.ILike(a.Username, containsPattern),
@@ -679,7 +684,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     FullNameSimilarity = AppDbContext.Similarity(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(normalizedKeyword))
                 })
                 .Where(x => x.TagPermission != TagPermissionEnum.NoOne)
-                .Where(x => !requireFollowerVisibility || x.IsFollower)
+                .Where(x => !requireFollowerVisibility || x.IsVisibilityFollower || x.AccountId == effectiveVisibilityOwnerId)
                 .Where(x =>
                     x.UsernameContains ||
                     x.FullNameContains ||
@@ -773,6 +778,25 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             return await _context.Accounts
                 .Include(a => a.Settings)
                 .Where(a => accountIds.Contains(a.AccountId))
+                .ToListAsync();
+        }
+
+        public async Task<List<Account>> GetAccountsByUsernames(IEnumerable<string> usernames)
+        {
+            var normalizedUsernames = (usernames ?? Enumerable.Empty<string>())
+                .Select(x => (x ?? string.Empty).Trim().ToLower())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToList();
+
+            if (normalizedUsernames.Count == 0)
+            {
+                return new List<Account>();
+            }
+
+            return await _context.Accounts
+                .Include(a => a.Settings)
+                .Where(a => normalizedUsernames.Contains(a.Username.ToLower()))
                 .ToListAsync();
         }
 
@@ -1240,6 +1264,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             public TagPermissionEnum TagPermission { get; set; }
             public bool IsFollowing { get; set; }
             public bool IsFollower { get; set; }
+            public bool IsVisibilityFollower { get; set; }
             public bool HasRecentChat { get; set; }
             public bool UsernameStartsWith { get; set; }
             public bool FullNameStartsWith { get; set; }

@@ -3,6 +3,7 @@ using CloudM.Application.DTOs.AccountDTOs;
 using CloudM.Application.DTOs.CommentDTOs;
 using CloudM.Application.DTOs.CommonDTOs;
 using CloudM.Application.Helpers.StoryHelpers;
+using CloudM.Application.Helpers.ValidationHelpers;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
@@ -88,6 +89,7 @@ namespace CloudM.Application.Services.CommentServices
             var comment = _mapper.Map<Comment>(request);
             comment.PostId = postId;
             comment.AccountId = accountId;
+            comment.Content = await SanitizeMentionsAsync(comment.Content, post);
 
             return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
@@ -146,7 +148,7 @@ namespace CloudM.Application.Services.CommentServices
             await ValidatePostPrivacyAsync(post, accountId, "modify comments on");
 
             // Only update content as requested
-            comment.Content = request.Content;
+            comment.Content = await SanitizeMentionsAsync(request.Content, post);
             comment.UpdatedAt = DateTime.UtcNow;
 
             await _commentRepository.UpdateComment(comment);
@@ -363,6 +365,139 @@ namespace CloudM.Application.Services.CommentServices
         private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid currentId, Guid targetAccountId)
         {
             return await _storyRingStateHelper.ResolveAsync(currentId, targetAccountId);
+        }
+
+        private async Task<string> SanitizeMentionsAsync(string? content, Post post)
+        {
+            var safeContent = content ?? string.Empty;
+            var mentionTokens = MentionParser.ExtractTokens(safeContent);
+            if (mentionTokens.Count == 0)
+            {
+                return safeContent;
+            }
+
+            var canonicalMentionAccountIds = mentionTokens
+                .Where(x => x.IsCanonical && x.AccountId.HasValue)
+                .Select(x => x.AccountId!.Value)
+                .Distinct()
+                .ToList();
+
+            var plainMentionUsernames = mentionTokens
+                .Where(x => !x.IsCanonical)
+                .Select(x => MentionParser.NormalizeUsername(x.Username))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var accountsByIds = canonicalMentionAccountIds.Count > 0
+                ? await _accountRepository.GetAccountsByIds(canonicalMentionAccountIds)
+                : new List<Account>();
+            var accountById = accountsByIds
+                .Where(x => x.Status == AccountStatusEnum.Active)
+                .ToDictionary(x => x.AccountId, x => x);
+
+            var accountByUsername = (await _accountRepository.GetAccountsByUsernames(plainMentionUsernames))
+                .Where(x => x.Status == AccountStatusEnum.Active)
+                .GroupBy(x => (x.Username ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            var candidateAccounts = accountById.Values
+                .Concat(accountByUsername.Values)
+                .GroupBy(x => x.AccountId)
+                .Select(g => g.First())
+                .ToList();
+
+            var visibilityCandidateIds = candidateAccounts
+                .Where(x => x.AccountId != post.AccountId)
+                .Select(x => x.AccountId)
+                .Distinct()
+                .ToList();
+
+            HashSet<Guid> followOnlyVisibleAccountIds = new();
+            if (post.Privacy == PostPrivacyEnum.FollowOnly && visibilityCandidateIds.Count > 0)
+            {
+                followOnlyVisibleAccountIds = await _followRepository.GetFollowerIdsInTargetsAsync(
+                    post.AccountId,
+                    visibilityCandidateIds);
+            }
+
+            var builder = new StringBuilder();
+            var currentIndex = 0;
+            foreach (var token in mentionTokens)
+            {
+                if (token.StartIndex > currentIndex)
+                {
+                    builder.Append(safeContent.AsSpan(currentIndex, token.StartIndex - currentIndex));
+                }
+
+                var resolvedAccount = ResolveMentionTargetAccount(token, accountById, accountByUsername);
+                if (resolvedAccount != null && IsMentionAllowedByBusinessRules(resolvedAccount, post, followOnlyVisibleAccountIds))
+                {
+                    builder.Append(MentionParser.BuildCanonicalMentionText(resolvedAccount.Username, resolvedAccount.AccountId));
+                }
+                else
+                {
+                    builder.Append(MentionParser.BuildPlainMentionText(token.Username));
+                }
+
+                currentIndex = token.StartIndex + token.Length;
+            }
+
+            if (currentIndex < safeContent.Length)
+            {
+                builder.Append(safeContent.AsSpan(currentIndex));
+            }
+
+            return builder.ToString();
+        }
+
+        private static Account? ResolveMentionTargetAccount(
+            MentionParser.MentionToken token,
+            IReadOnlyDictionary<Guid, Account> accountById,
+            IReadOnlyDictionary<string, Account> accountByUsername)
+        {
+            if (token.IsCanonical && token.AccountId.HasValue && accountById.TryGetValue(token.AccountId.Value, out var accountByTokenId))
+            {
+                return accountByTokenId;
+            }
+
+            var normalizedUsername = MentionParser.NormalizeUsername(token.Username);
+            if (string.IsNullOrWhiteSpace(normalizedUsername))
+            {
+                return null;
+            }
+
+            return accountByUsername.TryGetValue(normalizedUsername, out var accountByTokenUsername)
+                ? accountByTokenUsername
+                : null;
+        }
+
+        private static bool IsMentionAllowedByBusinessRules(
+            Account targetAccount,
+            Post post,
+            IReadOnlySet<Guid> followOnlyVisibleAccountIds)
+        {
+            if (targetAccount.Settings?.TagPermission == TagPermissionEnum.NoOne)
+            {
+                return false;
+            }
+
+            if (targetAccount.AccountId == post.AccountId)
+            {
+                return true;
+            }
+
+            if (post.Privacy == PostPrivacyEnum.Public)
+            {
+                return true;
+            }
+
+            if (post.Privacy == PostPrivacyEnum.FollowOnly)
+            {
+                return followOnlyVisibleAccountIds.Contains(targetAccount.AccountId);
+            }
+
+            return false;
         }
     }
 }
