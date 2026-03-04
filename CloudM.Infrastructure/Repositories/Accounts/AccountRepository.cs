@@ -261,6 +261,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 StoryHighlightPrivacy = s?.StoryHighlightPrivacy ?? AccountPrivacyEnum.Public,
                 GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
                 OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,
+                TagPermission = s?.TagPermission ?? TagPermissionEnum.Followers,
             };
         }
 
@@ -321,7 +322,8 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public,
                 StoryHighlightPrivacy = s?.StoryHighlightPrivacy ?? AccountPrivacyEnum.Public,
                 GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
-                OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly
+                OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,
+                TagPermission = s?.TagPermission ?? TagPermissionEnum.Followers
             };
         }
 

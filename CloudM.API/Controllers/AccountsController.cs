@@ -132,6 +132,9 @@ namespace CloudM.API.Controllers
             if (request.OnlineStatusVisibility.HasValue && !IsValidEnumValue(request.OnlineStatusVisibility.Value))
                 return BadRequest(new { message = "Invalid OnlineStatusVisibilityEnum value." });
 
+            if (request.TagPermission.HasValue && !IsValidEnumValue(request.TagPermission.Value))
+                return BadRequest(new { message = "Invalid TagPermissionEnum value." });
+
             var result = await _accountSettingService.UpdateSettingsAsync(accountId.Value, request);
             return Ok(result);
         }
