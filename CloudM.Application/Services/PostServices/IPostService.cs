@@ -27,6 +27,12 @@ namespace CloudM.Application.Services.PostServices
             DateTime? cursorCreatedAt,
             Guid? cursorPostId,
             int limit);
+        Task<(List<PostPersonalListModel> Items, bool HasMore)> GetTaggedPostsByAccountIdByCursorAsync(
+            Guid accountId,
+            Guid currentId,
+            DateTime? cursorCreatedAt,
+            Guid? cursorPostId,
+            int limit);
         Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
 
     }
