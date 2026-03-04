@@ -27,6 +27,12 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         private const int DefaultPostShareSearchLimit = 20;
         private const int MaxPostShareSearchLimit = 50;
         private const int MaxPostShareSearchPrefetch = 300;
+        private const int DefaultPostTagSearchLimit = 10;
+        private const int MaxPostTagSearchLimit = 30;
+        private const int PostTagSearchPrefetchMultiplier = 6;
+        private const int MinPostTagSearchPrefetch = 60;
+        private const int MaxPostTagSearchPrefetch = 240;
+        private const int EmptyKeywordPostTagPrefetch = 120;
 
         private readonly AppDbContext _context;
         public AccountRepository(AppDbContext context)
@@ -607,6 +613,151 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             return results;
         }
 
+        public async Task<List<PostTagAccountSearchModel>> SearchAccountsForPostTagAsync(
+            Guid currentId,
+            string keyword,
+            IEnumerable<Guid>? excludeAccountIds,
+            int limit = 10)
+        {
+            var excludeIds = (excludeAccountIds ?? Enumerable.Empty<Guid>())
+                .Where(id => id != Guid.Empty && id != currentId)
+                .Distinct()
+                .ToList();
+
+            var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+            var safeLimit = NormalizePostTagSearchLimit(limit);
+
+            if (normalizedKeyword.Length == 0)
+            {
+                return await GetEmptyKeywordPostTagCandidatesAsync(currentId, excludeIds, safeLimit);
+            }
+
+            var prefetchLimit = Math.Min(
+                Math.Max(safeLimit * PostTagSearchPrefetchMultiplier, MinPostTagSearchPrefetch),
+                MaxPostTagSearchPrefetch);
+
+            var containsPattern = $"%{normalizedKeyword}%";
+            var startsWithPattern = $"{normalizedKeyword}%";
+
+            var query = _context.Accounts
+                .AsNoTracking()
+                .Where(a => a.Status == AccountStatusEnum.Active && a.AccountId != currentId);
+
+            if (excludeIds.Count > 0)
+            {
+                query = query.Where(a => !excludeIds.Contains(a.AccountId));
+            }
+
+            var preliminaryCandidates = await query
+                .Select(a => new PreliminaryPostTagSearchCandidate
+                {
+                    AccountId = a.AccountId,
+                    Username = a.Username,
+                    FullName = a.FullName,
+                    AvatarUrl = a.AvatarUrl,
+                    TagPermission = a.Settings != null
+                        ? a.Settings.TagPermission
+                        : TagPermissionEnum.Followers,
+                    IsFollowing = _context.Follows.Any(f => f.FollowerId == currentId && f.FollowedId == a.AccountId),
+                    IsFollower = _context.Follows.Any(f => f.FollowerId == a.AccountId && f.FollowedId == currentId),
+                    UsernameStartsWith = EF.Functions.ILike(a.Username, startsWithPattern),
+                    FullNameStartsWith = EF.Functions.ILike(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(startsWithPattern)),
+                    UsernameContains = EF.Functions.ILike(a.Username, containsPattern),
+                    FullNameContains = EF.Functions.ILike(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(containsPattern)),
+                    UsernameSimilarity = AppDbContext.Similarity(a.Username, normalizedKeyword),
+                    FullNameSimilarity = AppDbContext.Similarity(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(normalizedKeyword))
+                })
+                .Where(x =>
+                    x.TagPermission == TagPermissionEnum.Anyone ||
+                    (x.TagPermission == TagPermissionEnum.Followers && x.IsFollowing))
+                .Where(x =>
+                    x.UsernameContains ||
+                    x.FullNameContains ||
+                    x.UsernameSimilarity >= FuzzySimilarityThreshold ||
+                    x.FullNameSimilarity >= FuzzySimilarityThreshold)
+                .OrderByDescending(x => x.UsernameStartsWith)
+                .ThenByDescending(x => x.FullNameStartsWith)
+                .ThenByDescending(x => x.UsernameContains)
+                .ThenByDescending(x => x.FullNameContains)
+                .ThenByDescending(x => x.UsernameSimilarity)
+                .ThenByDescending(x => x.FullNameSimilarity)
+                .ThenBy(x => x.Username)
+                .Take(prefetchLimit)
+                .ToListAsync();
+
+            if (preliminaryCandidates.Count == 0)
+            {
+                return new List<PostTagAccountSearchModel>();
+            }
+
+            var candidateIds = preliminaryCandidates
+                .Select(x => x.AccountId)
+                .Distinct()
+                .ToList();
+
+            var directChatRows = await _context.Conversations
+                .AsNoTracking()
+                .Where(c => !c.IsDeleted && !c.IsGroup)
+                .Where(c => c.Members.Any(m => m.AccountId == currentId && !m.HasLeft))
+                .Where(c => c.Members.Any(m => candidateIds.Contains(m.AccountId) && !m.HasLeft))
+                .Select(c => new
+                {
+                    OtherAccountId = c.Members
+                        .Where(m => m.AccountId != currentId && candidateIds.Contains(m.AccountId) && !m.HasLeft)
+                        .Select(m => m.AccountId)
+                        .FirstOrDefault(),
+                    LastMessageAt = c.Messages.Select(m => (DateTime?)m.SentAt).Max()
+                })
+                .Where(x => x.OtherAccountId != Guid.Empty && x.LastMessageAt.HasValue)
+                .ToListAsync();
+
+            var lastDirectMessageMap = directChatRows
+                .GroupBy(x => x.OtherAccountId)
+                .ToDictionary(g => g.Key, g => g.Max(x => x.LastMessageAt)!.Value);
+
+            var nowUtc = DateTime.UtcNow;
+
+            var rankedResults = preliminaryCandidates
+                .Select(candidate =>
+                {
+                    var matchScore = ComputePostTagMatchScore(candidate);
+                    var followingScore = candidate.IsFollowing ? 520d : 0d;
+                    var followerScore = candidate.IsFollower ? 200d : 0d;
+
+                    lastDirectMessageMap.TryGetValue(candidate.AccountId, out var lastContactedAt);
+                    var recentChatScore = ComputeRecentChatScore(lastContactedAt, nowUtc);
+
+                    var totalScore = matchScore + followingScore + followerScore + recentChatScore;
+
+                    return new PostTagAccountSearchModel
+                    {
+                        AccountId = candidate.AccountId,
+                        Username = candidate.Username,
+                        FullName = candidate.FullName,
+                        AvatarUrl = candidate.AvatarUrl,
+                        IsFollowing = candidate.IsFollowing,
+                        IsFollower = candidate.IsFollower,
+                        LastContactedAt = lastContactedAt,
+                        MatchScore = matchScore,
+                        FollowingScore = followingScore,
+                        FollowerScore = followerScore,
+                        RecentChatScore = recentChatScore,
+                        TotalScore = totalScore
+                    };
+                })
+                .OrderByDescending(x => x.TotalScore)
+                .ThenByDescending(x => x.MatchScore)
+                .ThenByDescending(x => x.RecentChatScore)
+                .ThenByDescending(x => x.IsFollowing)
+                .ThenByDescending(x => x.IsFollower)
+                .ThenByDescending(x => x.LastContactedAt)
+                .ThenBy(x => x.Username)
+                .Take(safeLimit)
+                .ToList();
+
+            return rankedResults;
+        }
+
         public async Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds)
         {
             return await _context.Accounts
@@ -759,6 +910,113 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             return Math.Min(limit, MaxInviteSearchLimit);
         }
 
+        private async Task<List<PostTagAccountSearchModel>> GetEmptyKeywordPostTagCandidatesAsync(
+            Guid currentId,
+            List<Guid> excludeIds,
+            int takeCount)
+        {
+            var recentDirectChatRows = await _context.Conversations
+                .AsNoTracking()
+                .Where(c => !c.IsDeleted && !c.IsGroup)
+                .Where(c => c.Members.Any(m => m.AccountId == currentId && !m.HasLeft))
+                .Select(c => new
+                {
+                    OtherAccountId = c.Members
+                        .Where(m => m.AccountId != currentId && !m.HasLeft)
+                        .Select(m => m.AccountId)
+                        .FirstOrDefault(),
+                    LastMessageAt = c.Messages.Select(m => (DateTime?)m.SentAt).Max()
+                })
+                .Where(x => x.OtherAccountId != Guid.Empty && x.LastMessageAt.HasValue)
+                .GroupBy(x => x.OtherAccountId)
+                .Select(g => new
+                {
+                    AccountId = g.Key,
+                    LastMessageAt = g.Max(x => x.LastMessageAt)!.Value
+                })
+                .OrderByDescending(x => x.LastMessageAt)
+                .Take(EmptyKeywordPostTagPrefetch)
+                .ToListAsync();
+
+            var recentDirectMessageMap = recentDirectChatRows.ToDictionary(x => x.AccountId, x => x.LastMessageAt);
+            var recentAccountIds = recentDirectChatRows.Select(x => x.AccountId).ToList();
+
+            var candidatesQuery = _context.Accounts
+                .AsNoTracking()
+                .Where(a => a.Status == AccountStatusEnum.Active && a.AccountId != currentId);
+
+            if (excludeIds.Count > 0)
+            {
+                candidatesQuery = candidatesQuery.Where(a => !excludeIds.Contains(a.AccountId));
+            }
+
+            var candidates = await candidatesQuery
+                .Select(a => new PreliminaryPostTagSearchCandidate
+                {
+                    AccountId = a.AccountId,
+                    Username = a.Username,
+                    FullName = a.FullName,
+                    AvatarUrl = a.AvatarUrl,
+                    TagPermission = a.Settings != null
+                        ? a.Settings.TagPermission
+                        : TagPermissionEnum.Followers,
+                    IsFollowing = _context.Follows.Any(f => f.FollowerId == currentId && f.FollowedId == a.AccountId),
+                    IsFollower = _context.Follows.Any(f => f.FollowerId == a.AccountId && f.FollowedId == currentId),
+                    HasRecentChat = recentAccountIds.Contains(a.AccountId)
+                })
+                .Where(x =>
+                    x.TagPermission == TagPermissionEnum.Anyone ||
+                    (x.TagPermission == TagPermissionEnum.Followers && x.IsFollowing))
+                .OrderByDescending(x => x.IsFollowing)
+                .ThenByDescending(x => x.IsFollower)
+                .ThenByDescending(x => x.HasRecentChat)
+                .ThenBy(x => x.Username)
+                .Take(Math.Max(takeCount * 10, 80))
+                .ToListAsync();
+
+            if (candidates.Count == 0)
+            {
+                return new List<PostTagAccountSearchModel>();
+            }
+
+            var nowUtc = DateTime.UtcNow;
+
+            var results = candidates
+                .Select(candidate =>
+                {
+                    recentDirectMessageMap.TryGetValue(candidate.AccountId, out var lastContactedAt);
+                    var recentChatScore = ComputeRecentChatScore(lastContactedAt, nowUtc);
+                    var followingScore = candidate.IsFollowing ? 520d : 0d;
+                    var followerScore = candidate.IsFollower ? 200d : 0d;
+                    var totalScore = followingScore + followerScore + recentChatScore;
+
+                    return new PostTagAccountSearchModel
+                    {
+                        AccountId = candidate.AccountId,
+                        Username = candidate.Username,
+                        FullName = candidate.FullName,
+                        AvatarUrl = candidate.AvatarUrl,
+                        IsFollowing = candidate.IsFollowing,
+                        IsFollower = candidate.IsFollower,
+                        LastContactedAt = lastContactedAt,
+                        MatchScore = 0d,
+                        FollowingScore = followingScore,
+                        FollowerScore = followerScore,
+                        RecentChatScore = recentChatScore,
+                        TotalScore = totalScore
+                    };
+                })
+                .OrderByDescending(x => x.TotalScore)
+                .ThenByDescending(x => x.IsFollowing)
+                .ThenByDescending(x => x.IsFollower)
+                .ThenByDescending(x => x.LastContactedAt)
+                .ThenBy(x => x.Username)
+                .Take(takeCount)
+                .ToList();
+
+            return results;
+        }
+
         private static int NormalizePostShareSearchLimit(int limit)
         {
             if (limit <= 0)
@@ -767,6 +1025,16 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             }
 
             return Math.Min(limit, MaxPostShareSearchLimit);
+        }
+
+        private static int NormalizePostTagSearchLimit(int limit)
+        {
+            if (limit <= 0)
+            {
+                return DefaultPostTagSearchLimit;
+            }
+
+            return Math.Min(limit, MaxPostTagSearchLimit);
         }
 
         private static double ComputePostShareAccountMatchScore(PreliminaryPostShareAccountCandidate candidate)
@@ -851,6 +1119,47 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             return Math.Max(usernameScore, fullNameScore);
         }
 
+        private static double ComputePostTagMatchScore(PreliminaryPostTagSearchCandidate candidate)
+        {
+            double usernameScore;
+            if (candidate.UsernameStartsWith)
+            {
+                usernameScore = 3800d;
+            }
+            else if (candidate.UsernameContains)
+            {
+                usernameScore = 2500d;
+            }
+            else if (candidate.UsernameSimilarity >= FuzzySimilarityThreshold)
+            {
+                usernameScore = 900d + ((candidate.UsernameSimilarity - FuzzySimilarityThreshold) * 1200d);
+            }
+            else
+            {
+                usernameScore = 0d;
+            }
+
+            double fullNameScore;
+            if (candidate.FullNameStartsWith)
+            {
+                fullNameScore = 3400d;
+            }
+            else if (candidate.FullNameContains)
+            {
+                fullNameScore = 2100d;
+            }
+            else if (candidate.FullNameSimilarity >= FuzzySimilarityThreshold)
+            {
+                fullNameScore = 800d + ((candidate.FullNameSimilarity - FuzzySimilarityThreshold) * 900d);
+            }
+            else
+            {
+                fullNameScore = 0d;
+            }
+
+            return Math.Max(usernameScore, fullNameScore);
+        }
+
         private static double ComputeRecentChatScore(DateTime? lastDirectMessageAt, DateTime nowUtc)
         {
             if (!lastDirectMessageAt.HasValue)
@@ -904,6 +1213,24 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             public string Username { get; set; } = null!;
             public string FullName { get; set; } = null!;
             public string? AvatarUrl { get; set; }
+            public bool UsernameStartsWith { get; set; }
+            public bool FullNameStartsWith { get; set; }
+            public bool UsernameContains { get; set; }
+            public bool FullNameContains { get; set; }
+            public double UsernameSimilarity { get; set; }
+            public double FullNameSimilarity { get; set; }
+        }
+
+        private sealed class PreliminaryPostTagSearchCandidate
+        {
+            public Guid AccountId { get; set; }
+            public string Username { get; set; } = null!;
+            public string FullName { get; set; } = null!;
+            public string? AvatarUrl { get; set; }
+            public TagPermissionEnum TagPermission { get; set; }
+            public bool IsFollowing { get; set; }
+            public bool IsFollower { get; set; }
+            public bool HasRecentChat { get; set; }
             public bool UsernameStartsWith { get; set; }
             public bool FullNameStartsWith { get; set; }
             public bool UsernameContains { get; set; }

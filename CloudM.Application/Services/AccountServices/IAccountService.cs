@@ -20,6 +20,11 @@ namespace CloudM.Application.Services.AccountServices
         Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId);
         Task<ProfileInfoResponse?> GetAccountProfileByUsername(string username, Guid? currentId);
         Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId);
+        Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
+            Guid currentId,
+            string keyword,
+            IEnumerable<Guid>? excludeAccountIds,
+            int limit = 10);
         Task ReactivateAccountAsync(Guid accountId);
     }
 }

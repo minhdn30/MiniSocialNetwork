@@ -184,6 +184,25 @@ namespace CloudM.API.Controllers
             if(result == null) return NotFound(new {message = "Account not found."});
             return Ok(result);
         }
+
+        [Authorize]
+        [HttpGet("search/post-tag")]
+        public async Task<IActionResult> SearchAccountsForPostTag([FromQuery] SearchPostTagAccountsRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var normalizedKeyword = request.Keyword?.Trim() ?? string.Empty;
+
+            var result = await _accountService.SearchAccountsForPostTagAsync(
+                currentId.Value,
+                normalizedKeyword,
+                request.ExcludeAccountIds,
+                request.Limit);
+
+            return Ok(result);
+        }
         
 
         [Authorize]
