@@ -267,7 +267,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 StoryHighlightPrivacy = s?.StoryHighlightPrivacy ?? AccountPrivacyEnum.Public,
                 GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
                 OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,
-                TagPermission = s?.TagPermission ?? TagPermissionEnum.Followers,
+                TagPermission = s?.TagPermission == TagPermissionEnum.NoOne
+                    ? TagPermissionEnum.NoOne
+                    : TagPermissionEnum.Anyone,
             };
         }
 
@@ -329,7 +331,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 StoryHighlightPrivacy = s?.StoryHighlightPrivacy ?? AccountPrivacyEnum.Public,
                 GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
                 OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,
-                TagPermission = s?.TagPermission ?? TagPermissionEnum.Followers
+                TagPermission = s?.TagPermission == TagPermissionEnum.NoOne
+                    ? TagPermissionEnum.NoOne
+                    : TagPermissionEnum.Anyone
             };
         }
 
@@ -664,7 +668,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     AvatarUrl = a.AvatarUrl,
                     TagPermission = a.Settings != null
                         ? a.Settings.TagPermission
-                        : TagPermissionEnum.Followers,
+                        : TagPermissionEnum.Anyone,
                     IsFollowing = _context.Follows.Any(f => f.FollowerId == currentId && f.FollowedId == a.AccountId),
                     IsFollower = _context.Follows.Any(f => f.FollowerId == a.AccountId && f.FollowedId == currentId),
                     UsernameStartsWith = EF.Functions.ILike(a.Username, startsWithPattern),
@@ -674,9 +678,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     UsernameSimilarity = AppDbContext.Similarity(a.Username, normalizedKeyword),
                     FullNameSimilarity = AppDbContext.Similarity(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(normalizedKeyword))
                 })
-                .Where(x =>
-                    x.TagPermission == TagPermissionEnum.Anyone ||
-                    (x.TagPermission == TagPermissionEnum.Followers && x.IsFollowing))
+                .Where(x => x.TagPermission != TagPermissionEnum.NoOne)
                 .Where(x => !requireFollowerVisibility || x.IsFollower)
                 .Where(x =>
                     x.UsernameContains ||
@@ -968,14 +970,12 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     AvatarUrl = a.AvatarUrl,
                     TagPermission = a.Settings != null
                         ? a.Settings.TagPermission
-                        : TagPermissionEnum.Followers,
+                        : TagPermissionEnum.Anyone,
                     IsFollowing = _context.Follows.Any(f => f.FollowerId == currentId && f.FollowedId == a.AccountId),
                     IsFollower = _context.Follows.Any(f => f.FollowerId == a.AccountId && f.FollowedId == currentId),
                     HasRecentChat = recentAccountIds.Contains(a.AccountId)
                 })
-                .Where(x =>
-                    x.TagPermission == TagPermissionEnum.Anyone ||
-                    (x.TagPermission == TagPermissionEnum.Followers && x.IsFollowing))
+                .Where(x => x.TagPermission != TagPermissionEnum.NoOne)
                 .Where(x => !requireFollowerVisibility || x.IsFollower)
                 .OrderByDescending(x => x.IsFollowing)
                 .ThenByDescending(x => x.IsFollower)

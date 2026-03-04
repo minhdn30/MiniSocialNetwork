@@ -45,7 +45,9 @@ namespace CloudM.Application.Services.AccountSettingServices
                 // Return default settings if not found in database per user request (don't create yet)
                 settings = new AccountSettings { AccountId = accountId };
             }
-            return _mapper.Map<AccountSettingsResponse>(settings);
+            var response = _mapper.Map<AccountSettingsResponse>(settings);
+            response.TagPermission = NormalizeTagPermission(response.TagPermission);
+            return response;
         }
 
         public async Task<AccountSettingsResponse> UpdateSettingsAsync(Guid accountId, AccountSettingsUpdateRequest request)
@@ -57,16 +59,19 @@ namespace CloudM.Application.Services.AccountSettingServices
                 // Create if not exists when updating
                 settings = new AccountSettings { AccountId = accountId };
                 _mapper.Map(request, settings);
+                settings.TagPermission = NormalizeTagPermission(settings.TagPermission);
                 await _accountSettingRepository.AddAccountSettingsAsync(settings);
             }
             else
             {
                 _mapper.Map(request, settings);
+                settings.TagPermission = NormalizeTagPermission(settings.TagPermission);
                 await _accountSettingRepository.UpdateAccountSettingsAsync(settings);
             }
 
             await _unitOfWork.CommitAsync();
             var response = _mapper.Map<AccountSettingsResponse>(settings);
+            response.TagPermission = NormalizeTagPermission(response.TagPermission);
 
             // Trigger real-time notification
             _ = _realtimeService.NotifyAccountSettingsUpdatedAsync(accountId, response);
@@ -80,6 +85,13 @@ namespace CloudM.Application.Services.AccountSettingServices
             }
 
             return response;
+        }
+
+        private static TagPermissionEnum NormalizeTagPermission(TagPermissionEnum value)
+        {
+            return value == TagPermissionEnum.NoOne
+                ? TagPermissionEnum.NoOne
+                : TagPermissionEnum.Anyone;
         }
     }
 }

@@ -36,6 +36,7 @@ namespace CloudM.Application.Services.PostServices
     public class PostService : IPostService
     {
         private const int MaxPostTagCount = 20;
+        private const int MaxTagErrorDisplayCount = 5;
 
         private readonly IPostRepository _postRepository;
         private readonly IPostMediaRepository _postMediaRepository;
@@ -158,8 +159,12 @@ namespace CloudM.Application.Services.PostServices
             var effectiveCreatePrivacy = request.Privacy.HasValue
                 ? (PostPrivacyEnum)request.Privacy.Value
                 : PostPrivacyEnum.Public;
-            var validatedTaggedAccounts = await ValidateTaggedAccountsAsync(accountId, normalizedTagIds);
-            await EnsureTaggedAccountsCompatibleWithPrivacyAsync(accountId, effectiveCreatePrivacy, normalizedTagIds);
+            var validatedTaggedAccounts = await ValidateTaggedAccountsAsync(normalizedTagIds);
+            await EnsureTaggedAccountsCompatibleWithPrivacyAsync(
+                accountId,
+                effectiveCreatePrivacy,
+                normalizedTagIds,
+                validatedTaggedAccounts);
 
             // Generate Unique PostCode
             string postCode = StringHelper.GeneratePostCode(10);
@@ -359,7 +364,6 @@ namespace CloudM.Application.Services.PostServices
                 throw new ForbiddenException("You are not authorized to update this post.");
             }
 
-            var isPrivacyChanged = false;
             var shouldPersistPostFields = false;
             var hasTagChanged = false;
             if (request.Content != null)
@@ -376,7 +380,6 @@ namespace CloudM.Application.Services.PostServices
             if (request.Privacy.HasValue)
             {
                 var nextPrivacy = (PostPrivacyEnum)request.Privacy.Value;
-                isPrivacyChanged = post.Privacy != nextPrivacy;
                 post.Privacy = nextPrivacy;
                 shouldPersistPostFields = true;
             }
@@ -399,8 +402,7 @@ namespace CloudM.Application.Services.PostServices
                 }
             }
 
-            var shouldEvaluateTagPrivacy = hasTagMutationInput || isPrivacyChanged;
-            if (shouldEvaluateTagPrivacy)
+            if (hasTagMutationInput)
             {
                 var existingTagIds = (await _postRepository.GetTaggedAccountIdsByPostIdAsync(postId))
                     ?? new List<Guid>();
@@ -429,13 +431,13 @@ namespace CloudM.Application.Services.PostServices
 
                 if (addTagIds.Count > 0)
                 {
-                    await ValidateTaggedAccountsAsync(currentId, addTagIds);
+                    var validatedAddedAccounts = await ValidateTaggedAccountsAsync(addTagIds);
+                    await EnsureTaggedAccountsCompatibleWithPrivacyAsync(
+                        post.AccountId,
+                        effectivePrivacy,
+                        addTagIds,
+                        validatedAddedAccounts);
                 }
-
-                await EnsureTaggedAccountsCompatibleWithPrivacyAsync(
-                    post.AccountId,
-                    effectivePrivacy,
-                    finalTagIds);
 
                 if (removeTagIds.Count > 0)
                 {
@@ -613,7 +615,7 @@ namespace CloudM.Application.Services.PostServices
                 .ToList();
         }
 
-        private async Task<List<Account>> ValidateTaggedAccountsAsync(Guid currentId, List<Guid> taggedAccountIds)
+        private async Task<List<Account>> ValidateTaggedAccountsAsync(List<Guid> taggedAccountIds)
         {
             if (taggedAccountIds.Count == 0)
             {
@@ -633,33 +635,14 @@ namespace CloudM.Application.Services.PostServices
                 throw new BadRequestException("Some selected accounts are unavailable for tagging.");
             }
 
-            var requireFollowerCheck = taggedAccountIds
+            var disallowedAccounts = taggedAccountIds
                 .Select(x => activeAccountMap[x])
-                .Any(x => (x.Settings?.TagPermission ?? TagPermissionEnum.Followers) == TagPermissionEnum.Followers);
-
-            var followingIdSet = requireFollowerCheck
-                ? (await _followRepository.GetFollowingIdsAsync(currentId)).ToHashSet()
-                : new HashSet<Guid>();
-
-            var disallowedTagIds = taggedAccountIds
-                .Where(x =>
-                {
-                    var account = activeAccountMap[x];
-                    var permission = account.Settings?.TagPermission ?? TagPermissionEnum.Followers;
-
-                    return permission switch
-                    {
-                        TagPermissionEnum.NoOne => true,
-                        TagPermissionEnum.Followers => !followingIdSet.Contains(account.AccountId),
-                        TagPermissionEnum.Anyone => false,
-                        _ => true
-                    };
-                })
+                .Where(x => x.Settings?.TagPermission == TagPermissionEnum.NoOne)
                 .ToList();
 
-            if (disallowedTagIds.Count > 0)
+            if (disallowedAccounts.Count > 0)
             {
-                throw new BadRequestException("Some selected accounts do not allow you to tag them.");
+                throw new BadRequestException(BuildTagPermissionDeniedMessage(disallowedAccounts));
             }
 
             return taggedAccountIds
@@ -670,7 +653,8 @@ namespace CloudM.Application.Services.PostServices
         private async Task EnsureTaggedAccountsCompatibleWithPrivacyAsync(
             Guid ownerId,
             PostPrivacyEnum privacy,
-            List<Guid> taggedAccountIds)
+            List<Guid> taggedAccountIds,
+            IEnumerable<Account>? taggedAccounts = null)
         {
             if (taggedAccountIds.Count == 0)
             {
@@ -679,7 +663,7 @@ namespace CloudM.Application.Services.PostServices
 
             if (privacy == PostPrivacyEnum.Private)
             {
-                throw new BadRequestException("Private posts cannot include tagged people.");
+                throw new BadRequestException("You cannot tag people on a private post.");
             }
 
             if (privacy != PostPrivacyEnum.FollowOnly)
@@ -694,8 +678,81 @@ namespace CloudM.Application.Services.PostServices
 
             if (disallowedTagIds.Count > 0)
             {
-                throw new BadRequestException("Some selected people cannot be tagged with this visibility setting.");
+                var accountMap = (taggedAccounts ?? Enumerable.Empty<Account>())
+                    .GroupBy(x => x.AccountId)
+                    .ToDictionary(x => x.Key, x => x.First());
+
+                var missingIds = disallowedTagIds
+                    .Where(x => !accountMap.ContainsKey(x))
+                    .ToList();
+
+                if (missingIds.Count > 0)
+                {
+                    var accounts = await _accountRepository.GetAccountsByIds(missingIds);
+                    foreach (var account in accounts)
+                    {
+                        accountMap[account.AccountId] = account;
+                    }
+                }
+
+                throw new BadRequestException(BuildFollowOnlyTagVisibilityDeniedMessage(disallowedTagIds, accountMap));
             }
+        }
+
+        private static string BuildTagPermissionDeniedMessage(IEnumerable<Account> disallowedAccounts)
+        {
+            var usernameSummary = BuildTaggedUsernameSummary(
+                disallowedAccounts.Select(x => x.Username));
+
+            if (string.IsNullOrWhiteSpace(usernameSummary))
+            {
+                return "Some selected users do not allow being tagged.";
+            }
+
+            return $"These users do not allow being tagged: {usernameSummary}.";
+        }
+
+        private static string BuildFollowOnlyTagVisibilityDeniedMessage(
+            IEnumerable<Guid> disallowedTagIds,
+            IReadOnlyDictionary<Guid, Account> accountMap)
+        {
+            var usernameSummary = BuildTaggedUsernameSummary(
+                disallowedTagIds
+                    .Where(x => accountMap.ContainsKey(x))
+                    .Select(x => accountMap[x].Username));
+
+            if (string.IsNullOrWhiteSpace(usernameSummary))
+            {
+                return "Some selected users cannot be tagged in a Followers-only post.";
+            }
+
+            return $"These users cannot be tagged in a Followers-only post because they are not following you: {usernameSummary}.";
+        }
+
+        private static string BuildTaggedUsernameSummary(IEnumerable<string?> usernames)
+        {
+            var normalizedUsernames = (usernames ?? Enumerable.Empty<string?>())
+                .Select(x => (x ?? string.Empty).Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (normalizedUsernames.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var displayedUsernames = normalizedUsernames
+                .Take(MaxTagErrorDisplayCount)
+                .ToList();
+            var remainingCount = normalizedUsernames.Count - displayedUsernames.Count;
+
+            if (remainingCount > 0)
+            {
+                return $"{string.Join(", ", displayedUsernames)}, and {remainingCount} more";
+            }
+
+            return string.Join(", ", displayedUsernames);
         }
 
         private static List<PostTaggedAccountResponse> MapTaggedAccounts(IEnumerable<Account> accounts)
