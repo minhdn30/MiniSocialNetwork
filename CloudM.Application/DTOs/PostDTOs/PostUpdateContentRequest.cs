@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace CloudM.Application.DTOs.PostDTOs
@@ -7,5 +8,7 @@ namespace CloudM.Application.DTOs.PostDTOs
         [MaxLength(3000)]
         public string? Content { get; set; }
         public int? Privacy { get; set; }
+        public List<Guid>? AddNewTagIds { get; set; }
+        public List<Guid>? RemoveTagIds { get; set; }
     }
 }

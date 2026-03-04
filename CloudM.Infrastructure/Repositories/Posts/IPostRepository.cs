@@ -29,6 +29,9 @@ namespace CloudM.Infrastructure.Repositories.Posts
         Task<int> CountPostsByAccountIdAsync(Guid accountId);
         Task<bool> IsPostExist(Guid postId);
         Task<bool> IsPostCodeExist(string postCode);
+        Task<List<Guid>> GetTaggedAccountIdsByPostIdAsync(Guid postId);
+        Task AddPostTagsAsync(IEnumerable<PostTag> postTags);
+        Task RemovePostTagsAsync(Guid postId, IEnumerable<Guid> taggedAccountIds);
         Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
         Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
     }

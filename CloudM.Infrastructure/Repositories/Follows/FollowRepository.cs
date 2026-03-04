@@ -59,6 +59,27 @@ namespace CloudM.Infrastructure.Repositories.Follows
                 .ToListAsync();
         }
 
+        public async Task<HashSet<Guid>> GetFollowerIdsInTargetsAsync(Guid followedId, IEnumerable<Guid> targetIds)
+        {
+            var normalizedTargetIds = (targetIds ?? Enumerable.Empty<Guid>())
+                .Where(x => x != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (normalizedTargetIds.Count == 0)
+            {
+                return new HashSet<Guid>();
+            }
+
+            var followerIds = await _context.Follows
+                .Where(f => f.FollowedId == followedId && normalizedTargetIds.Contains(f.FollowerId))
+                .Select(f => f.FollowerId)
+                .Distinct()
+                .ToListAsync();
+
+            return followerIds.ToHashSet();
+        }
+
         public async Task<HashSet<Guid>> GetConnectedAccountIdsAsync(Guid currentId, IEnumerable<Guid> targetIds)
         {
             var normalizedTargetIds = targetIds

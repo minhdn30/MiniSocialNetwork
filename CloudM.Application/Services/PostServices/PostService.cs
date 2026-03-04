@@ -35,12 +35,15 @@ namespace CloudM.Application.Services.PostServices
 {
     public class PostService : IPostService
     {
+        private const int MaxPostTagCount = 20;
+
         private readonly IPostRepository _postRepository;
         private readonly IPostMediaRepository _postMediaRepository;
         private readonly IPostReactRepository _postReactRepository;
         private readonly IPostSaveRepository _postSaveRepository;
         private readonly ICommentRepository _commentRepository;
         private readonly IAccountRepository _accountRepository;
+        private readonly IFollowRepository _followRepository;
         private readonly ICloudinaryService _cloudinaryService;
         private readonly IFileTypeDetector _fileTypeDetector;
         private readonly IMapper _mapper;
@@ -53,6 +56,7 @@ namespace CloudM.Application.Services.PostServices
                            IPostRepository postRepository,
                            ICommentRepository commentRepository,
                            IAccountRepository accountRepository,
+                           IFollowRepository followRepository,
                            ICloudinaryService cloudinaryService,
                            IFileTypeDetector fileTypeDetector,
                            IMapper mapper,
@@ -67,6 +71,7 @@ namespace CloudM.Application.Services.PostServices
             _postSaveRepository = postSaveRepository;
             _commentRepository = commentRepository;
             _accountRepository = accountRepository;
+            _followRepository = followRepository;
             _cloudinaryService = cloudinaryService;
             _fileTypeDetector = fileTypeDetector;
             _mapper = mapper;
@@ -121,6 +126,18 @@ namespace CloudM.Application.Services.PostServices
 
             if (account.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to create posts.");
+
+            var normalizedTagIds = NormalizePostTagIds(request.TaggedAccountIds, accountId);
+            if (normalizedTagIds.Count > MaxPostTagCount)
+            {
+                throw new BadRequestException($"You can tag up to {MaxPostTagCount} accounts in one post.");
+            }
+
+            var effectiveCreatePrivacy = request.Privacy.HasValue
+                ? (PostPrivacyEnum)request.Privacy.Value
+                : PostPrivacyEnum.Public;
+            var validatedTaggedAccounts = await ValidateTaggedAccountsAsync(accountId, normalizedTagIds);
+            await EnsureTaggedAccountsCompatibleWithPrivacyAsync(accountId, effectiveCreatePrivacy, normalizedTagIds);
 
             // Generate Unique PostCode
             string postCode = StringHelper.GeneratePostCode(10);
@@ -192,6 +209,18 @@ namespace CloudM.Application.Services.PostServices
                         post.PostCode = postCode;
                         post.FeedAspectRatio = (AspectRatioEnum)(request.FeedAspectRatio ?? (int)AspectRatioEnum.Square);
                         post.Medias = mediaEntities;
+                        if (normalizedTagIds.Count > 0)
+                        {
+                            var nowUtc = DateTime.UtcNow;
+                            post.Tags = normalizedTagIds
+                                .Select((taggedAccountId, index) => new PostTag
+                                {
+                                    PostId = post.PostId,
+                                    TaggedAccountId = taggedAccountId,
+                                    CreatedAt = nowUtc.AddMilliseconds(index)
+                                })
+                                .ToList();
+                        }
 
                         await _postRepository.AddPost(post);
 
@@ -205,6 +234,7 @@ namespace CloudM.Application.Services.PostServices
                         result.TotalComments = 0;
                         result.IsReactedByCurrentUser = false;
                         result.IsSavedByCurrentUser = false;
+                        result.TaggedAccounts = MapTaggedAccounts(validatedTaggedAccounts);
                         
                         // Ensure medias are mapped (if not done by AutoMapper)
                         if (post.Medias != null && (result.Medias == null || !result.Medias.Any()))
@@ -306,15 +336,106 @@ namespace CloudM.Application.Services.PostServices
             {
                 throw new ForbiddenException("You are not authorized to update this post.");
             }
-            if (request.Content != null && post.Content != request.Content)
+
+            var isPrivacyChanged = false;
+            var shouldPersistPostFields = false;
+            var hasTagChanged = false;
+            if (request.Content != null)
             {
-                post.Content = request.Content;
-                post.UpdatedAt = DateTime.UtcNow;
+                shouldPersistPostFields = true;
+                if (post.Content != request.Content)
+                {
+                    post.Content = request.Content;
+                    // keep original behavior: UpdatedAt changes only when content changes
+                    post.UpdatedAt = DateTime.UtcNow;
+                }
             }
             
             if (request.Privacy.HasValue)
             {
-                post.Privacy = (PostPrivacyEnum)request.Privacy.Value;
+                var nextPrivacy = (PostPrivacyEnum)request.Privacy.Value;
+                isPrivacyChanged = post.Privacy != nextPrivacy;
+                post.Privacy = nextPrivacy;
+                shouldPersistPostFields = true;
+            }
+
+            var normalizedAddTagIds = NormalizePostTagIds(request.AddNewTagIds, currentId);
+            var normalizedRemoveTagIds = NormalizePostTagIds(request.RemoveTagIds, currentId);
+            var hasTagMutationInput = normalizedAddTagIds.Count > 0 || normalizedRemoveTagIds.Count > 0;
+            var effectivePrivacy = request.Privacy.HasValue
+                ? (PostPrivacyEnum)request.Privacy.Value
+                : post.Privacy;
+
+            if (normalizedAddTagIds.Count > 0 && normalizedRemoveTagIds.Count > 0)
+            {
+                var duplicatedIds = normalizedAddTagIds
+                    .Intersect(normalizedRemoveTagIds)
+                    .ToList();
+                if (duplicatedIds.Count > 0)
+                {
+                    throw new BadRequestException("A tagged account cannot be included in both addNewTagIds and removeTagIds.");
+                }
+            }
+
+            var shouldEvaluateTagPrivacy = hasTagMutationInput || isPrivacyChanged;
+            if (shouldEvaluateTagPrivacy)
+            {
+                var existingTagIds = (await _postRepository.GetTaggedAccountIdsByPostIdAsync(postId))
+                    ?? new List<Guid>();
+                var existingTagIdSet = existingTagIds.ToHashSet();
+
+                var removeTagIds = normalizedRemoveTagIds
+                    .Where(existingTagIdSet.Contains)
+                    .Distinct()
+                    .ToList();
+
+                var addTagIds = normalizedAddTagIds
+                    .Where(x => !existingTagIdSet.Contains(x))
+                    .Distinct()
+                    .ToList();
+
+                var finalTagIds = existingTagIds
+                    .Where(x => !removeTagIds.Contains(x))
+                    .Concat(addTagIds)
+                    .Distinct()
+                    .ToList();
+
+                if (finalTagIds.Count > MaxPostTagCount)
+                {
+                    throw new BadRequestException($"You can tag up to {MaxPostTagCount} accounts in one post.");
+                }
+
+                if (addTagIds.Count > 0)
+                {
+                    await ValidateTaggedAccountsAsync(currentId, addTagIds);
+                }
+
+                await EnsureTaggedAccountsCompatibleWithPrivacyAsync(
+                    post.AccountId,
+                    effectivePrivacy,
+                    finalTagIds);
+
+                if (removeTagIds.Count > 0)
+                {
+                    await _postRepository.RemovePostTagsAsync(postId, removeTagIds);
+                    hasTagChanged = true;
+                }
+
+                if (addTagIds.Count > 0)
+                {
+                    var nowUtc = DateTime.UtcNow;
+                    var newTags = addTagIds
+                        .Select((taggedAccountId, index) => new PostTag
+                        {
+                            PostId = postId,
+                            TaggedAccountId = taggedAccountId,
+                            CreatedAt = nowUtc.AddMilliseconds(index)
+                        })
+                        .ToList();
+
+                    await _postRepository.AddPostTagsAsync(newTags);
+                    hasTagChanged = true;
+                }
             }
 
             if (post.Medias == null || !post.Medias.Any())
@@ -322,8 +443,15 @@ namespace CloudM.Application.Services.PostServices
                 throw new BadRequestException("Post must contain at least one media file.");
             }
 
-            await _postRepository.UpdatePost(post);
-            await _unitOfWork.CommitAsync();
+            if (shouldPersistPostFields)
+            {
+                await _postRepository.UpdatePost(post);
+            }
+
+            if (shouldPersistPostFields || hasTagChanged)
+            {
+                await _unitOfWork.CommitAsync();
+            }
             
             var result = new PostUpdateContentResponse
             {
@@ -333,8 +461,11 @@ namespace CloudM.Application.Services.PostServices
                 UpdatedAt = post.UpdatedAt
             };
 
-            // Send realtime notification
-            await _realtimeService.NotifyPostContentUpdatedAsync(postId, currentId, result);
+            if (shouldPersistPostFields || hasTagChanged)
+            {
+                // Send realtime notification
+                await _realtimeService.NotifyPostContentUpdatedAsync(postId, currentId, result);
+            }
 
             return result;
         }
@@ -425,6 +556,112 @@ namespace CloudM.Application.Services.PostServices
             }
 
             owner.StoryRingState = await _storyRingStateHelper.ResolveAsync(currentId, owner.AccountId);
+        }
+
+        private static List<Guid> NormalizePostTagIds(IEnumerable<Guid>? tagIds, Guid currentId)
+        {
+            return (tagIds ?? Enumerable.Empty<Guid>())
+                .Where(x => x != Guid.Empty && x != currentId)
+                .Distinct()
+                .ToList();
+        }
+
+        private async Task<List<Account>> ValidateTaggedAccountsAsync(Guid currentId, List<Guid> taggedAccountIds)
+        {
+            if (taggedAccountIds.Count == 0)
+            {
+                return new List<Account>();
+            }
+
+            var accounts = await _accountRepository.GetAccountsByIds(taggedAccountIds);
+            var activeAccountMap = accounts
+                .Where(x => x.Status == AccountStatusEnum.Active)
+                .ToDictionary(x => x.AccountId, x => x);
+
+            var notFoundOrInactiveIds = taggedAccountIds
+                .Where(x => !activeAccountMap.ContainsKey(x))
+                .ToList();
+            if (notFoundOrInactiveIds.Count > 0)
+            {
+                throw new BadRequestException("Some selected accounts are unavailable for tagging.");
+            }
+
+            var requireFollowerCheck = taggedAccountIds
+                .Select(x => activeAccountMap[x])
+                .Any(x => (x.Settings?.TagPermission ?? TagPermissionEnum.Followers) == TagPermissionEnum.Followers);
+
+            var followingIdSet = requireFollowerCheck
+                ? (await _followRepository.GetFollowingIdsAsync(currentId)).ToHashSet()
+                : new HashSet<Guid>();
+
+            var disallowedTagIds = taggedAccountIds
+                .Where(x =>
+                {
+                    var account = activeAccountMap[x];
+                    var permission = account.Settings?.TagPermission ?? TagPermissionEnum.Followers;
+
+                    return permission switch
+                    {
+                        TagPermissionEnum.NoOne => true,
+                        TagPermissionEnum.Followers => !followingIdSet.Contains(account.AccountId),
+                        TagPermissionEnum.Anyone => false,
+                        _ => true
+                    };
+                })
+                .ToList();
+
+            if (disallowedTagIds.Count > 0)
+            {
+                throw new BadRequestException("Some selected accounts do not allow you to tag them.");
+            }
+
+            return taggedAccountIds
+                .Select(x => activeAccountMap[x])
+                .ToList();
+        }
+
+        private async Task EnsureTaggedAccountsCompatibleWithPrivacyAsync(
+            Guid ownerId,
+            PostPrivacyEnum privacy,
+            List<Guid> taggedAccountIds)
+        {
+            if (taggedAccountIds.Count == 0)
+            {
+                return;
+            }
+
+            if (privacy == PostPrivacyEnum.Private)
+            {
+                throw new BadRequestException("Private posts cannot include tagged people.");
+            }
+
+            if (privacy != PostPrivacyEnum.FollowOnly)
+            {
+                return;
+            }
+
+            var followerIdSet = await _followRepository.GetFollowerIdsInTargetsAsync(ownerId, taggedAccountIds);
+            var disallowedTagIds = taggedAccountIds
+                .Where(x => !followerIdSet.Contains(x))
+                .ToList();
+
+            if (disallowedTagIds.Count > 0)
+            {
+                throw new BadRequestException("Some selected people cannot be tagged with this visibility setting.");
+            }
+        }
+
+        private static List<PostTaggedAccountResponse> MapTaggedAccounts(IEnumerable<Account> accounts)
+        {
+            return (accounts ?? Enumerable.Empty<Account>())
+                .Select(x => new PostTaggedAccountResponse
+                {
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl
+                })
+                .ToList();
         }
     }
 }

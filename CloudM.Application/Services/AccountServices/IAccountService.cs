@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using CloudM.Application.DTOs.AccountDTOs;
 using CloudM.Application.DTOs.CommonDTOs;
+using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,7 @@ namespace CloudM.Application.Services.AccountServices
         Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
             Guid currentId,
             string keyword,
+            PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
             int limit = 10);
         Task ReactivateAccountAsync(Guid accountId);

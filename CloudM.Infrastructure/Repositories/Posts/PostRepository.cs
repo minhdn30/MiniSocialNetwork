@@ -22,8 +22,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
         public async Task<Post?> GetPostById(Guid postId)
         {
             return await _context.Posts
+                .AsSplitQuery()
                 .Include(p => p.Account)
                 .Include(p => p.Medias)
+                .Include(p => p.Tags)
+                    .ThenInclude(t => t.TaggedAccount)
                 .Include(p => p.Reacts)
                 .Include(p => p.Comments)
                 .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
@@ -87,6 +90,17 @@ namespace CloudM.Infrastructure.Repositories.Posts
                             PostCode = p.PostCode,
                             MediaUrl = m.MediaUrl,
                             MediaType = m.Type
+                        })
+                        .ToList(),
+
+                    TaggedAccounts = p.Tags
+                        .Where(t => t.TaggedAccount.Status == AccountStatusEnum.Active)
+                        .Select(t => new PostTaggedAccountModel
+                        {
+                            AccountId = t.TaggedAccountId,
+                            Username = t.TaggedAccount.Username,
+                            FullName = t.TaggedAccount.FullName,
+                            AvatarUrl = t.TaggedAccount.AvatarUrl
                         })
                         .ToList(),
 
@@ -154,6 +168,17 @@ namespace CloudM.Infrastructure.Repositories.Posts
                             PostCode = p.PostCode,
                             MediaUrl = m.MediaUrl,
                             MediaType = m.Type
+                        })
+                        .ToList(),
+
+                    TaggedAccounts = p.Tags
+                        .Where(t => t.TaggedAccount.Status == AccountStatusEnum.Active)
+                        .Select(t => new PostTaggedAccountModel
+                        {
+                            AccountId = t.TaggedAccountId,
+                            Username = t.TaggedAccount.Username,
+                            FullName = t.TaggedAccount.FullName,
+                            AvatarUrl = t.TaggedAccount.AvatarUrl
                         })
                         .ToList(),
 
@@ -275,6 +300,56 @@ namespace CloudM.Infrastructure.Repositories.Posts
         {
             return await _context.Posts.AnyAsync(p => p.PostCode == postCode);
         }
+
+        public async Task<List<Guid>> GetTaggedAccountIdsByPostIdAsync(Guid postId)
+        {
+            return await _context.PostTags
+                .AsNoTracking()
+                .Where(x =>
+                    x.PostId == postId &&
+                    x.TaggedAccount.Status == AccountStatusEnum.Active)
+                .Select(x => x.TaggedAccountId)
+                .ToListAsync();
+        }
+
+        public async Task AddPostTagsAsync(IEnumerable<PostTag> postTags)
+        {
+            var tags = (postTags ?? Enumerable.Empty<PostTag>())
+                .Where(x => x.PostId != Guid.Empty && x.TaggedAccountId != Guid.Empty)
+                .ToList();
+
+            if (tags.Count == 0)
+            {
+                return;
+            }
+
+            await _context.PostTags.AddRangeAsync(tags);
+        }
+
+        public async Task RemovePostTagsAsync(Guid postId, IEnumerable<Guid> taggedAccountIds)
+        {
+            var targetIds = (taggedAccountIds ?? Enumerable.Empty<Guid>())
+                .Where(x => x != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (targetIds.Count == 0)
+            {
+                return;
+            }
+
+            var tagsToRemove = await _context.PostTags
+                .Where(x => x.PostId == postId && targetIds.Contains(x.TaggedAccountId))
+                .ToListAsync();
+
+            if (tagsToRemove.Count == 0)
+            {
+                return;
+            }
+
+            _context.PostTags.RemoveRange(tagsToRemove);
+        }
+
         //no use
         public async Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {

@@ -483,14 +483,20 @@ namespace CloudM.Application.Services.AccountServices
         public async Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
             Guid currentId,
             string keyword,
+            PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
             int limit = 10)
         {
             var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+            if (normalizedKeyword.Length == 0)
+            {
+                return new List<PostTagAccountSearchResponse>();
+            }
 
             var results = await _accountRepository.SearchAccountsForPostTagAsync(
                 currentId,
                 normalizedKeyword,
+                postPrivacy,
                 excludeAccountIds,
                 limit);
 
