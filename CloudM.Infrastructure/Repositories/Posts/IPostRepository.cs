@@ -26,6 +26,12 @@ namespace CloudM.Infrastructure.Repositories.Posts
             DateTime? cursorCreatedAt,
             Guid? cursorPostId,
             int limit);
+        Task<List<PostPersonalListModel>> GetTaggedPostsByAccountIdByCursor(
+            Guid accountId,
+            Guid currentId,
+            DateTime? cursorCreatedAt,
+            Guid? cursorPostId,
+            int limit);
         Task<int> CountPostsByAccountIdAsync(Guid accountId);
         Task<bool> IsPostExist(Guid postId);
         Task<bool> IsPostCodeExist(string postCode);

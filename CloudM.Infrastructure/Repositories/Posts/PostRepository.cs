@@ -277,6 +277,69 @@ namespace CloudM.Infrastructure.Repositories.Posts
             return posts;
         }
 
+        public async Task<List<PostPersonalListModel>> GetTaggedPostsByAccountIdByCursor(
+            Guid accountId,
+            Guid currentId,
+            DateTime? cursorCreatedAt,
+            Guid? cursorPostId,
+            int limit)
+        {
+            if (limit <= 0) limit = 10;
+
+            var followedIdsQuery = _context.Follows
+                .AsNoTracking()
+                .Where(f => f.FollowerId == currentId)
+                .Select(f => f.FollowedId);
+
+            var query = _context.Posts
+                .AsNoTracking()
+                .Where(p =>
+                    !p.IsDeleted &&
+                    p.Account.Status == AccountStatusEnum.Active &&
+                    p.Medias.Any() &&
+                    p.Tags.Any(t => t.TaggedAccountId == accountId) &&
+                    (
+                        p.AccountId == currentId ||
+                        p.Privacy == PostPrivacyEnum.Public ||
+                        (p.Privacy == PostPrivacyEnum.FollowOnly &&
+                         followedIdsQuery.Contains(p.AccountId))
+                    )
+                );
+
+            if (cursorCreatedAt.HasValue && cursorPostId.HasValue)
+            {
+                query = query.Where(p =>
+                    p.CreatedAt < cursorCreatedAt.Value ||
+                    (p.CreatedAt == cursorCreatedAt.Value &&
+                     p.PostId.CompareTo(cursorPostId.Value) < 0));
+            }
+
+            return await query
+                .OrderByDescending(p => p.CreatedAt)
+                .ThenByDescending(p => p.PostId)
+                .Take(limit)
+                .Select(p => new PostPersonalListModel
+                {
+                    PostId = p.PostId,
+                    PostCode = p.PostCode,
+                    CreatedAt = p.CreatedAt,
+                    Medias = p.Medias
+                        .OrderBy(m => m.CreatedAt)
+                        .Select(m => new MediaPostPersonalListModel
+                        {
+                            MediaId = m.MediaId,
+                            MediaUrl = m.MediaUrl,
+                            Type = m.Type
+                        })
+                        .Take(1)
+                        .ToList(),
+                    MediaCount = p.Medias.Count(),
+                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active)
+                })
+                .ToListAsync();
+        }
+
         public async Task<int> CountPostsByAccountIdAsync(Guid accountId)
         {
             return await _context.Posts

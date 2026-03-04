@@ -200,6 +200,8 @@ namespace CloudM.API.Controllers
             });
         }
 
+        
+
         [Authorize]
         [HttpGet("saved")]
         public async Task<IActionResult> GetSavedPosts(
@@ -321,6 +323,49 @@ namespace CloudM.API.Controllers
 
             var result = await _postTagService.UntagMeFromPost(postId, currentId.Value);
             return Ok(result);
+        }
+        [Authorize]
+        [HttpGet("profile/{accountId}/tagged")]
+        public async Task<IActionResult> GetTaggedPostsByAccountId(
+            [FromRoute] Guid accountId,
+            [FromQuery] int limit = 12,
+            [FromQuery] DateTime? cursorCreatedAt = null,
+            [FromQuery] Guid? cursorPostId = null)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            if (cursorCreatedAt.HasValue != cursorPostId.HasValue)
+                return BadRequest(new { message = "cursorCreatedAt and cursorPostId must be provided together." });
+
+            var result = await _postService.GetTaggedPostsByAccountIdByCursorAsync(
+                accountId,
+                currentId.Value,
+                cursorCreatedAt,
+                cursorPostId,
+                limit);
+
+            DateTime? nextCursorCreatedAt = null;
+            Guid? nextCursorPostId = null;
+            if (result.HasMore && result.Items.Count > 0)
+            {
+                var lastItem = result.Items.Last();
+                nextCursorCreatedAt = lastItem.CreatedAt;
+                nextCursorPostId = lastItem.PostId;
+            }
+
+            return Ok(new
+            {
+                Items = result.Items,
+                NextCursor = nextCursorCreatedAt.HasValue && nextCursorPostId.HasValue
+                    ? new
+                    {
+                        CreatedAt = nextCursorCreatedAt,
+                        PostId = nextCursorPostId
+                    }
+                    : null
+            });
         }
     }
 }

@@ -536,6 +536,31 @@ namespace CloudM.Application.Services.PostServices
 
             return (items, hasMore);
         }
+        public async Task<(List<PostPersonalListModel> Items, bool HasMore)> GetTaggedPostsByAccountIdByCursorAsync(
+            Guid accountId,
+            Guid currentId,
+            DateTime? cursorCreatedAt,
+            Guid? cursorPostId,
+            int limit)
+        {
+            if (limit <= 0) limit = 10;
+            if (limit > 50) limit = 50;
+
+            if (!await _accountRepository.IsAccountIdExist(accountId))
+                throw new NotFoundException($"Account with ID {accountId} does not exist.");
+
+            var candidates = await _postRepository.GetTaggedPostsByAccountIdByCursor(
+                accountId,
+                currentId,
+                cursorCreatedAt,
+                cursorPostId,
+                limit + 1);
+
+            var hasMore = candidates.Count > limit;
+            var items = hasMore ? candidates.Take(limit).ToList() : candidates;
+
+            return (items, hasMore);
+        }
         public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {
             if (limit <= 0) limit = 10;
