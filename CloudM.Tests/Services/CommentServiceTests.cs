@@ -94,6 +94,90 @@ namespace CloudM.Tests.Services
         }
 
         [Fact]
+        public async Task AddCommentAsync_WhenInvalidMention_KeepsPlainTextAndDoesNotThrow()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+            var post = new Post { PostId = postId, AccountId = Guid.NewGuid(), Privacy = PostPrivacyEnum.Public };
+            var account = new Account { AccountId = accountId, Status = AccountStatusEnum.Active };
+            var request = new CommentCreateRequest { Content = "Hello @ghost" };
+            var comment = new Comment { CommentId = Guid.NewGuid(), Content = request.Content, PostId = postId, AccountId = accountId };
+
+            _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
+            _mockAccountRepo.Setup(x => x.GetAccountById(accountId)).ReturnsAsync(account);
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>())).ReturnsAsync(new List<Account>());
+            _mockAccountRepo.Setup(x => x.GetAccountsByUsernames(It.IsAny<IEnumerable<string>>())).ReturnsAsync(new List<Account>());
+            _mockMapper.Setup(x => x.Map<Comment>(request)).Returns(comment);
+            _mockMapper.Setup(x => x.Map<CommentResponse>(It.IsAny<Comment>()))
+                .Returns<Comment>(source => new CommentResponse
+                {
+                    CommentId = source.CommentId,
+                    Content = source.Content
+                });
+            _mockMapper.Setup(x => x.Map<AccountBasicInfoResponse>(account)).Returns(new AccountBasicInfoResponse());
+            _mockCommentRepo.Setup(x => x.AddComment(It.IsAny<Comment>())).Returns(Task.CompletedTask);
+            _mockCommentRepo.Setup(x => x.CountCommentsByPostId(postId)).ReturnsAsync(1);
+            _mockUnitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<Task<CommentResponse>>>(), It.IsAny<Func<Task>?>()))
+                .Returns<Func<Task<CommentResponse>>, Func<Task>?>((func, _) => func());
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyCommentCreatedAsync(postId, It.IsAny<CommentResponse>(), null))
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _commentService.AddCommentAsync(postId, accountId, request);
+
+            // Assert
+            result.Content.Should().Be("Hello @ghost");
+        }
+
+        [Fact]
+        public async Task AddCommentAsync_WhenValidMention_RewritesToCanonicalFormat()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+            var targetId = Guid.NewGuid();
+            var post = new Post { PostId = postId, AccountId = Guid.NewGuid(), Privacy = PostPrivacyEnum.Public };
+            var account = new Account { AccountId = accountId, Status = AccountStatusEnum.Active };
+            var target = new Account
+            {
+                AccountId = targetId,
+                Username = "minh",
+                Status = AccountStatusEnum.Active,
+                Settings = new AccountSettings { TagPermission = TagPermissionEnum.Anyone }
+            };
+            var request = new CommentCreateRequest { Content = "Hello @minh" };
+            var comment = new Comment { CommentId = Guid.NewGuid(), Content = request.Content, PostId = postId, AccountId = accountId };
+
+            _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
+            _mockAccountRepo.Setup(x => x.GetAccountById(accountId)).ReturnsAsync(account);
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>())).ReturnsAsync(new List<Account>());
+            _mockAccountRepo.Setup(x => x.GetAccountsByUsernames(It.IsAny<IEnumerable<string>>())).ReturnsAsync(new List<Account> { target });
+            _mockMapper.Setup(x => x.Map<Comment>(request)).Returns(comment);
+            _mockMapper.Setup(x => x.Map<CommentResponse>(It.IsAny<Comment>()))
+                .Returns<Comment>(source => new CommentResponse
+                {
+                    CommentId = source.CommentId,
+                    Content = source.Content
+                });
+            _mockMapper.Setup(x => x.Map<AccountBasicInfoResponse>(account)).Returns(new AccountBasicInfoResponse());
+            _mockCommentRepo.Setup(x => x.AddComment(It.IsAny<Comment>())).Returns(Task.CompletedTask);
+            _mockCommentRepo.Setup(x => x.CountCommentsByPostId(postId)).ReturnsAsync(1);
+            _mockUnitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<Task<CommentResponse>>>(), It.IsAny<Func<Task>?>()))
+                .Returns<Func<Task<CommentResponse>>, Func<Task>?>((func, _) => func());
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyCommentCreatedAsync(postId, It.IsAny<CommentResponse>(), null))
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _commentService.AddCommentAsync(postId, accountId, request);
+
+            // Assert
+            result.Content.Should().Be($"Hello @[minh]({targetId})");
+        }
+
+        [Fact]
         public async Task AddCommentAsync_WhenPostNotFound_ThrowsBadRequestException()
         {
             // Arrange

@@ -26,6 +26,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId);
         Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId);
         Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds);
+        Task<List<Account>> GetAccountsByUsernames(IEnumerable<string> usernames);
         Task<List<GroupInviteAccountSearchModel>> SearchAccountsForGroupInviteAsync(
             Guid currentId,
             string keyword,
@@ -37,6 +38,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             int limit = 20);
         Task<List<PostTagAccountSearchModel>> SearchAccountsForPostTagAsync(
             Guid currentId,
+            Guid? visibilityOwnerId,
             string keyword,
             PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,

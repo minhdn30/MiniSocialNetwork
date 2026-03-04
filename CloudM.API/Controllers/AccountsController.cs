@@ -205,6 +205,7 @@ namespace CloudM.API.Controllers
 
             var result = await _accountService.SearchAccountsForPostTagAsync(
                 currentId.Value,
+                request.OwnerId,
                 normalizedKeyword,
                 postPrivacy,
                 request.ExcludeAccountIds,

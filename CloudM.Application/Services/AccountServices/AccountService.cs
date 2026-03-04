@@ -482,6 +482,7 @@ namespace CloudM.Application.Services.AccountServices
 
         public async Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
             Guid currentId,
+            Guid? visibilityOwnerId,
             string keyword,
             PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
@@ -495,6 +496,7 @@ namespace CloudM.Application.Services.AccountServices
 
             var results = await _accountRepository.SearchAccountsForPostTagAsync(
                 currentId,
+                visibilityOwnerId,
                 normalizedKeyword,
                 postPrivacy,
                 excludeAccountIds,

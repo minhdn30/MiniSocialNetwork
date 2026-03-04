@@ -23,6 +23,7 @@ namespace CloudM.Application.Services.AccountServices
         Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId);
         Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
             Guid currentId,
+            Guid? visibilityOwnerId,
             string keyword,
             PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
