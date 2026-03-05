@@ -1,6 +1,7 @@
 using AutoMapper;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using Moq;
 using CloudM.Application.DTOs.AccountDTOs;
 using CloudM.Application.DTOs.CommonDTOs;
@@ -538,6 +539,272 @@ namespace CloudM.Tests.Services
 
             notifiedMentionIds.Should().NotBeNull();
             notifiedMentionIds!.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task SendMessageInGroupAsync_AllMention_ShouldNotifyAllMembersExceptSender()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var memberAId = Guid.NewGuid();
+            var memberBId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+
+            var sender = TestDataFactory.CreateAccount(accountId: senderId, username: "sender");
+            var memberA = TestDataFactory.CreateAccount(accountId: memberAId, username: "alice");
+            var memberB = TestDataFactory.CreateAccount(accountId: memberBId, username: "bob");
+            var conversation = TestDataFactory.CreateConversation(conversationId: conversationId, isGroup: true);
+
+            var request = new SendMessageRequest
+            {
+                Content = "hello @all team",
+                TempId = "tmp-group-mention-all-1"
+            };
+
+            Message? createdMessage = null;
+            IEnumerable<Guid>? notifiedMentionIds = null;
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, senderId))
+                .ReturnsAsync(true);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountById(senderId))
+                .ReturnsAsync(sender);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetConversationMembersAsync(conversationId))
+                .ReturnsAsync(new List<ConversationMember>
+                {
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = senderId,
+                        Account = sender,
+                        HasLeft = false
+                    },
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = memberAId,
+                        Account = memberA,
+                        HasLeft = false
+                    },
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = memberBId,
+                        Account = memberB,
+                        HasLeft = false
+                    }
+                });
+
+            _messageRepositoryMock
+                .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
+                .Callback<Message>(message => createdMessage = message)
+                .Returns(Task.CompletedTask);
+
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<SendMessageResponse>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<SendMessageResponse>> operation, Func<Task>? _) => operation());
+
+            _mapperMock
+                .Setup(x => x.Map<AccountChatInfoResponse>(sender))
+                .Returns(new AccountChatInfoResponse
+                {
+                    AccountId = senderId,
+                    Username = sender.Username,
+                    FullName = sender.FullName,
+                    AvatarUrl = sender.AvatarUrl,
+                    IsActive = true
+                });
+
+            _mapperMock
+                .Setup(x => x.Map<SendMessageResponse>(It.IsAny<Message>()))
+                .Returns<Message>(message => new SendMessageResponse
+                {
+                    MessageId = message.MessageId,
+                    ConversationId = message.ConversationId,
+                    Content = message.Content,
+                    MessageType = message.MessageType,
+                    SentAt = message.SentAt
+                });
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(conversationId))
+                .ReturnsAsync(new Dictionary<Guid, bool>
+                {
+                    { senderId, false },
+                    { memberAId, true },
+                    { memberBId, false }
+                });
+
+            _realtimeServiceMock
+                .Setup(x => x.NotifyNewMessageAsync(
+                    conversationId,
+                    It.IsAny<Dictionary<Guid, bool>>(),
+                    It.IsAny<SendMessageResponse>(),
+                    It.IsAny<IEnumerable<Guid>?>()))
+                .Callback<Guid, Dictionary<Guid, bool>, SendMessageResponse, IEnumerable<Guid>?>((_, _, _, mentionIds) =>
+                {
+                    notifiedMentionIds = mentionIds;
+                })
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _messageService.SendMessageInGroupAsync(senderId, conversationId, request);
+
+            // Assert
+            result.Content.Should().Be("hello @all team");
+
+            createdMessage.Should().NotBeNull();
+            createdMessage!.Content.Should().Be("hello @all team");
+
+            notifiedMentionIds.Should().NotBeNull();
+            notifiedMentionIds!.Should().Contain(memberAId);
+            notifiedMentionIds.Should().Contain(memberBId);
+            notifiedMentionIds.Should().NotContain(senderId);
+        }
+
+        [Fact]
+        public async Task SendMessageInGroupAsync_ConfiguredAllMentionKeyword_ShouldRespectConfiguredKeyword()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var memberAId = Guid.NewGuid();
+            var memberBId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+
+            var sender = TestDataFactory.CreateAccount(accountId: senderId, username: "sender");
+            var memberA = TestDataFactory.CreateAccount(accountId: memberAId, username: "alice");
+            var memberB = TestDataFactory.CreateAccount(accountId: memberBId, username: "bob");
+            var conversation = TestDataFactory.CreateConversation(conversationId: conversationId, isGroup: true);
+
+            var messageServiceWithCustomAllKeyword = new MessageService(
+                _messageRepositoryMock.Object,
+                _messageMediaRepositoryMock.Object,
+                _conversationRepositoryMock.Object,
+                _conversationMemberRepositoryMock.Object,
+                _accountRepositoryMock.Object,
+                _postRepositoryMock.Object,
+                _mapperMock.Object,
+                _cloudinaryServiceMock.Object,
+                _fileTypeDetectorMock.Object,
+                _storyRepositoryMock.Object,
+                _realtimeServiceMock.Object,
+                _unitOfWorkMock.Object,
+                Options.Create(new ChatMentionOptions { GroupAllKeyword = "everyone" })
+            );
+
+            var request = new SendMessageRequest
+            {
+                Content = "hello @everyone team",
+                TempId = "tmp-group-mention-all-2"
+            };
+
+            IEnumerable<Guid>? notifiedMentionIds = null;
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, senderId))
+                .ReturnsAsync(true);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountById(senderId))
+                .ReturnsAsync(sender);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetConversationMembersAsync(conversationId))
+                .ReturnsAsync(new List<ConversationMember>
+                {
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = senderId,
+                        Account = sender,
+                        HasLeft = false
+                    },
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = memberAId,
+                        Account = memberA,
+                        HasLeft = false
+                    },
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = memberBId,
+                        Account = memberB,
+                        HasLeft = false
+                    }
+                });
+
+            _messageRepositoryMock
+                .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
+                .Returns(Task.CompletedTask);
+
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<SendMessageResponse>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<SendMessageResponse>> operation, Func<Task>? _) => operation());
+
+            _mapperMock
+                .Setup(x => x.Map<AccountChatInfoResponse>(sender))
+                .Returns(new AccountChatInfoResponse
+                {
+                    AccountId = senderId,
+                    Username = sender.Username,
+                    FullName = sender.FullName,
+                    AvatarUrl = sender.AvatarUrl,
+                    IsActive = true
+                });
+
+            _mapperMock
+                .Setup(x => x.Map<SendMessageResponse>(It.IsAny<Message>()))
+                .Returns<Message>(message => new SendMessageResponse
+                {
+                    MessageId = message.MessageId,
+                    ConversationId = message.ConversationId,
+                    Content = message.Content,
+                    MessageType = message.MessageType,
+                    SentAt = message.SentAt
+                });
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(conversationId))
+                .ReturnsAsync(new Dictionary<Guid, bool>
+                {
+                    { senderId, false },
+                    { memberAId, false },
+                    { memberBId, false }
+                });
+
+            _realtimeServiceMock
+                .Setup(x => x.NotifyNewMessageAsync(
+                    conversationId,
+                    It.IsAny<Dictionary<Guid, bool>>(),
+                    It.IsAny<SendMessageResponse>(),
+                    It.IsAny<IEnumerable<Guid>?>()))
+                .Callback<Guid, Dictionary<Guid, bool>, SendMessageResponse, IEnumerable<Guid>?>((_, _, _, mentionIds) =>
+                {
+                    notifiedMentionIds = mentionIds;
+                })
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await messageServiceWithCustomAllKeyword.SendMessageInGroupAsync(senderId, conversationId, request);
+
+            // Assert
+            result.Content.Should().Be("hello @everyone team");
+            notifiedMentionIds.Should().NotBeNull();
+            notifiedMentionIds!.Should().Contain(memberAId);
+            notifiedMentionIds.Should().Contain(memberBId);
+            notifiedMentionIds.Should().NotContain(senderId);
         }
 
         #endregion

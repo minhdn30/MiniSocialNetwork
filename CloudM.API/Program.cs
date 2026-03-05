@@ -144,6 +144,8 @@ namespace CloudM.API
                 builder.Configuration.GetSection("ExternalAuth:Google"));
             builder.Services.Configure<OnlinePresenceOptions>(
                 builder.Configuration.GetSection("OnlinePresence"));
+            builder.Services.Configure<ChatMentionOptions>(
+                builder.Configuration.GetSection("ChatMention"));
             builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
             {
                 var redisConnectionString =

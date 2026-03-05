@@ -19,6 +19,7 @@ using CloudM.Infrastructure.Repositories.Posts;
 using CloudM.Infrastructure.Repositories.Stories;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
 using CloudM.Application.Services.RealtimeServices;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,11 +51,13 @@ namespace CloudM.Application.Services.MessageServices
         private readonly IMapper _mapper;
         private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly string _groupAllMentionKeyword;
 
         public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository,
             IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IAccountRepository accountRepository, IPostRepository postRepository, IMapper mapper, ICloudinaryService cloudinaryService,
-            IFileTypeDetector fileTypeDetector, IStoryRepository storyRepository, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
+            IFileTypeDetector fileTypeDetector, IStoryRepository storyRepository, IRealtimeService realtimeService, IUnitOfWork unitOfWork,
+            IOptions<ChatMentionOptions>? chatMentionOptions = null)
         {
             _messageRepository = messageRepository;
             _messageMediaRepository = messageMediaRepository;
@@ -68,6 +71,7 @@ namespace CloudM.Application.Services.MessageServices
             _mapper = mapper;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
+            _groupAllMentionKeyword = NormalizeGroupAllKeyword(chatMentionOptions?.Value?.GroupAllKeyword);
         }
 
         public async Task<CursorResponse<MessageBasicModel>> GetMessagesByConversationIdAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize)
@@ -300,7 +304,11 @@ namespace CloudM.Application.Services.MessageServices
                     .GroupBy(account => account.AccountId)
                     .Select(group => group.First())
                     .ToList();
-                var mentionSanitizeResult = SanitizeGroupMentions(request.Content, mentionCandidates);
+                var mentionSanitizeResult = SanitizeGroupMentions(
+                    request.Content,
+                    mentionCandidates,
+                    senderId,
+                    _groupAllMentionKeyword);
                 sanitizedContent = mentionSanitizeResult.SanitizedContent;
                 mentionedAccountIds = mentionSanitizeResult.MentionedAccountIds;
             }
@@ -1370,7 +1378,9 @@ namespace CloudM.Application.Services.MessageServices
 
         private static (string? SanitizedContent, HashSet<Guid> MentionedAccountIds) SanitizeGroupMentions(
             string? content,
-            IReadOnlyCollection<Account> mentionCandidates)
+            IReadOnlyCollection<Account> mentionCandidates,
+            Guid senderId,
+            string groupAllMentionKeyword)
         {
             var safeContent = content ?? string.Empty;
             var mentionTokens = MentionParser.ExtractTokens(safeContent);
@@ -1402,6 +1412,25 @@ namespace CloudM.Application.Services.MessageServices
                     builder.Append(safeContent.AsSpan(currentIndex, token.StartIndex - currentIndex));
                 }
 
+                if (!token.IsCanonical
+                    && !string.IsNullOrWhiteSpace(groupAllMentionKeyword)
+                    && string.Equals(token.Username, groupAllMentionKeyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    builder.Append(MentionParser.BuildPlainMentionText(token.Username));
+                    foreach (var account in activeCandidates)
+                    {
+                        if (account.AccountId == senderId)
+                        {
+                            continue;
+                        }
+
+                        mentionedAccountIds.Add(account.AccountId);
+                    }
+
+                    currentIndex = token.StartIndex + token.Length;
+                    continue;
+                }
+
                 var resolvedAccount = ResolveMentionTargetAccount(token, accountById, accountByUsername);
                 if (resolvedAccount != null)
                 {
@@ -1422,6 +1451,17 @@ namespace CloudM.Application.Services.MessageServices
             }
 
             return (builder.ToString(), mentionedAccountIds);
+        }
+
+        private static string NormalizeGroupAllKeyword(string? keyword)
+        {
+            var normalized = MentionParser.NormalizeUsername(keyword);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "all";
+            }
+
+            return normalized.Trim().ToLowerInvariant();
         }
 
         private static Account? ResolveMentionTargetAccount(
