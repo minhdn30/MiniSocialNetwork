@@ -69,6 +69,7 @@ namespace CloudM.Application.Services.RealtimeServices
 
         // notify when a new message is sent (includes per-member mute status)
         Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message);
+        Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message, IEnumerable<Guid>? mentionedAccountIds);
 
         // notify a specific user that their mute state changed for a conversation
         Task NotifyConversationMuteUpdatedAsync(Guid accountId, Guid conversationId, bool isMuted);

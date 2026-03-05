@@ -4,6 +4,7 @@ using CloudM.Application.DTOs.CommonDTOs;
 using CloudM.Application.DTOs.MessageDTOs;
 using CloudM.Application.DTOs.MessageMediaDTOs;
 using CloudM.Application.Helpers.FileTypeHelpers;
+using CloudM.Application.Helpers.ValidationHelpers;
 using CloudM.Infrastructure.Services.Cloudinary;
 using CloudM.Application.Services.ConversationServices;
 using CloudM.Domain.Entities;
@@ -285,6 +286,24 @@ namespace CloudM.Application.Services.MessageServices
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
             if (sender.Status != AccountStatusEnum.Active)
                 throw new ForbiddenException("You must reactivate your account to send messages.");
+
+            var sanitizedContent = request.Content;
+            var mentionedAccountIds = new HashSet<Guid>();
+            if (!string.IsNullOrEmpty(request.Content) && request.Content.Contains('@'))
+            {
+                var groupMembers = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+                var mentionCandidates = groupMembers
+                    .Where(member => member.Account != null
+                                     && member.Account.Status == AccountStatusEnum.Active
+                                     && !string.IsNullOrWhiteSpace(member.Account.Username))
+                    .Select(member => member.Account!)
+                    .GroupBy(account => account.AccountId)
+                    .Select(group => group.First())
+                    .ToList();
+                var mentionSanitizeResult = SanitizeGroupMentions(request.Content, mentionCandidates);
+                sanitizedContent = mentionSanitizeResult.SanitizedContent;
+                mentionedAccountIds = mentionSanitizeResult.MentionedAccountIds;
+            }
             
             var now = DateTime.UtcNow;
 
@@ -371,7 +390,7 @@ namespace CloudM.Application.Services.MessageServices
                     {
                         ConversationId = conversationId,
                         AccountId = senderId,
-                        Content = request.Content,
+                        Content = sanitizedContent,
                         MessageType = mediaEntities.Any() ? MessageTypeEnum.Media : MessageTypeEnum.Text,
                         SentAt = now,
                         IsEdited = false,
@@ -402,7 +421,7 @@ namespace CloudM.Application.Services.MessageServices
                     
                     // send realtime notification to conversation members
                     var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(result.ConversationId);
-                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, muteMap, result);
+                    await _realtimeService.NotifyNewMessageAsync(result.ConversationId, muteMap, result, mentionedAccountIds);
                     
                     return result;
                 },
@@ -1219,11 +1238,12 @@ namespace CloudM.Application.Services.MessageServices
                     async () =>
                     {
                         var now = DateTime.UtcNow;
+                        var forwardedContent = ConvertMentionsToPlainText(sourceMessage.Content);
                         var entity = new Message
                         {
                             ConversationId = conversationId,
                             AccountId = senderId,
-                            Content = sourceMessage.Content,
+                            Content = forwardedContent,
                             MessageType = sourceMessage.MessageType,
                             SentAt = now,
                             IsEdited = false,
@@ -1310,6 +1330,121 @@ namespace CloudM.Application.Services.MessageServices
         {
             var normalized = (content ?? string.Empty).Trim();
             return normalized.Length == 0 ? null : normalized;
+        }
+
+        private static string? ConvertMentionsToPlainText(string? content)
+        {
+            if (string.IsNullOrEmpty(content))
+            {
+                return content;
+            }
+
+            var mentionTokens = MentionParser.ExtractTokens(content);
+            if (mentionTokens.Count == 0)
+            {
+                return content;
+            }
+
+            var builder = new StringBuilder(content.Length);
+            var currentIndex = 0;
+
+            foreach (var token in mentionTokens)
+            {
+                if (token.StartIndex > currentIndex)
+                {
+                    builder.Append(content.AsSpan(currentIndex, token.StartIndex - currentIndex));
+                }
+
+                var plainMention = MentionParser.BuildPlainMentionText(token.Username);
+                builder.Append(string.IsNullOrWhiteSpace(plainMention) ? token.RawText : plainMention);
+                currentIndex = token.StartIndex + token.Length;
+            }
+
+            if (currentIndex < content.Length)
+            {
+                builder.Append(content.AsSpan(currentIndex));
+            }
+
+            return builder.ToString();
+        }
+
+        private static (string? SanitizedContent, HashSet<Guid> MentionedAccountIds) SanitizeGroupMentions(
+            string? content,
+            IReadOnlyCollection<Account> mentionCandidates)
+        {
+            var safeContent = content ?? string.Empty;
+            var mentionTokens = MentionParser.ExtractTokens(safeContent);
+            var mentionedAccountIds = new HashSet<Guid>();
+            if (mentionTokens.Count == 0)
+            {
+                return (content, mentionedAccountIds);
+            }
+
+            var activeCandidates = (mentionCandidates ?? Array.Empty<Account>())
+                .Where(account => account.Status == AccountStatusEnum.Active
+                                  && !string.IsNullOrWhiteSpace(account.Username))
+                .ToList();
+
+            var accountById = activeCandidates
+                .GroupBy(account => account.AccountId)
+                .ToDictionary(group => group.Key, group => group.First());
+            var accountByUsername = activeCandidates
+                .GroupBy(account => (account.Username ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+                .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+            var builder = new StringBuilder();
+            var currentIndex = 0;
+            foreach (var token in mentionTokens)
+            {
+                if (token.StartIndex > currentIndex)
+                {
+                    builder.Append(safeContent.AsSpan(currentIndex, token.StartIndex - currentIndex));
+                }
+
+                var resolvedAccount = ResolveMentionTargetAccount(token, accountById, accountByUsername);
+                if (resolvedAccount != null)
+                {
+                    builder.Append(MentionParser.BuildCanonicalMentionText(resolvedAccount.Username, resolvedAccount.AccountId));
+                    mentionedAccountIds.Add(resolvedAccount.AccountId);
+                }
+                else
+                {
+                    builder.Append(MentionParser.BuildPlainMentionText(token.Username));
+                }
+
+                currentIndex = token.StartIndex + token.Length;
+            }
+
+            if (currentIndex < safeContent.Length)
+            {
+                builder.Append(safeContent.AsSpan(currentIndex));
+            }
+
+            return (builder.ToString(), mentionedAccountIds);
+        }
+
+        private static Account? ResolveMentionTargetAccount(
+            MentionParser.MentionToken token,
+            IReadOnlyDictionary<Guid, Account> accountById,
+            IReadOnlyDictionary<string, Account> accountByUsername)
+        {
+            if (token.IsCanonical
+                && token.AccountId.HasValue
+                && accountById.TryGetValue(token.AccountId.Value, out var accountByTokenId))
+            {
+                return accountByTokenId;
+            }
+
+            var normalizedUsername = MentionParser.NormalizeUsername(token.Username);
+            if (string.IsNullOrWhiteSpace(normalizedUsername))
+            {
+                return null;
+            }
+
+            return accountByUsername.TryGetValue(normalizedUsername, out var accountByTokenUsername)
+                ? accountByTokenUsername
+                : null;
         }
 
         private static string ResolvePostShareFailureMessage(Exception ex)
