@@ -13,7 +13,7 @@ namespace CloudM.Application.Helpers.ValidationHelpers
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private static readonly Regex PlainMentionRegex = new(
-            @"(?<![A-Za-z0-9._])@(?<username>[A-Za-z0-9._]{1,30})",
+            @"(?<![A-Za-z0-9._])@(?<username>[A-Za-z0-9._]{1,30})(?![A-Za-z0-9._-])",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         public sealed class MentionToken

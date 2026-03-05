@@ -4,6 +4,7 @@ using CloudM.Application.DTOs.CommentDTOs;
 using CloudM.Application.DTOs.MessageDTOs;
 using CloudM.Application.DTOs.PostDTOs;
 using CloudM.Application.Services.RealtimeServices;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace CloudM.API.Services
@@ -145,6 +146,11 @@ namespace CloudM.API.Services
 
         public async Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message)
         {
+            await NotifyNewMessageAsync(conversationId, memberMuteMap, message, null);
+        }
+
+        public async Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message, IEnumerable<Guid>? mentionedAccountIds)
+        {
             // 1. Notify the "Conversation Room" group on ChatHub
             // For users with this specific chat window ACTIVE
             await _chatHubContext.Clients.Group(conversationId.ToString())
@@ -152,6 +158,7 @@ namespace CloudM.API.Services
 
             // 2. Notify each member on UserHub (Global Channel)
             // For global notifications (toasts, badges, auto-open) when NOT in this chat
+            var mentionedSet = (mentionedAccountIds ?? Enumerable.Empty<Guid>()).ToHashSet();
             foreach (var (memberId, isMuted) in memberMuteMap)
             {
                 await _userHubContext.Clients.User(memberId.ToString())
@@ -159,6 +166,7 @@ namespace CloudM.API.Services
                         ConversationId = conversationId,
                         Message = message,
                         IsMuted = isMuted,
+                        IsMentioned = mentionedSet.Contains(memberId),
                         TargetAccountId = memberId
                     });
             }

@@ -536,6 +536,7 @@ namespace CloudM.Application.Services.ConversationServices
                         AvatarUrl = m.Account.AvatarUrl,
                         DisplayName = m.Nickname ?? m.Account.Username,
                         Username = m.Account.Username,
+                        FullName = m.Account.FullName,
                         Nickname = m.Nickname,
                         Role = (m.IsAdmin || (ownerId.HasValue && ownerId.Value == m.AccountId)) ? 1 : 0
                     }).ToList();
@@ -800,6 +801,7 @@ namespace CloudM.Application.Services.ConversationServices
                     AvatarUrl = m.Account.AvatarUrl,
                     DisplayName = m.Nickname ?? m.Account.Username,
                     Username = m.Account.Username,
+                    FullName = m.Account.FullName,
                     Nickname = m.Nickname,
                     Role = (m.IsAdmin || (ownerId.HasValue && ownerId.Value == m.AccountId)) ? 1 : 0
                 }).ToList();
@@ -922,6 +924,7 @@ namespace CloudM.Application.Services.ConversationServices
                 AvatarUrl = member.Account?.AvatarUrl,
                 DisplayName = member.Nickname ?? member.Account?.Username,
                 Username = member.Account?.Username,
+                FullName = member.Account?.FullName,
                 Nickname = member.Nickname,
                 Role = (member.IsAdmin || (ownerId != Guid.Empty && ownerId == member.AccountId)) ? 1 : 0
             }).ToList();
