@@ -37,6 +37,6 @@ namespace CloudM.Application.Services.EmailVerificationServices
         // maximum row age in hours before stale verification records are cleaned up.
         public int RetentionHours { get; set; } = 24;
         // server-side secret used in otp hashing; should be unique per environment.
-        public string OtpPepper { get; set; } = "CHANGE_ME_OTP_PEPPER";
+        public string OtpPepper { get; set; } = string.Empty;
     }
 }

@@ -388,11 +388,23 @@ If you did not request this code, please ignore this email.<br/>
             options.LockMinutes = options.LockMinutes <= 0 ? 15 : options.LockMinutes;
             options.CleanupIntervalMinutes = options.CleanupIntervalMinutes <= 0 ? 30 : options.CleanupIntervalMinutes;
             options.RetentionHours = options.RetentionHours <= 0 ? 24 : options.RetentionHours;
-            options.OtpPepper = string.IsNullOrWhiteSpace(options.OtpPepper)
-                ? "CHANGE_ME_OTP_PEPPER"
-                : options.OtpPepper;
+            options.OtpPepper = RequireOtpPepper(options.OtpPepper);
 
             return options;
+        }
+
+        private static string RequireOtpPepper(string? otpPepper)
+        {
+            var sanitized = otpPepper?.Trim();
+            if (string.IsNullOrWhiteSpace(sanitized)
+                || string.Equals(sanitized, "__SET_IN_LOCAL_OR_ENV__", StringComparison.OrdinalIgnoreCase)
+                || sanitized.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+                || sanitized.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("EmailVerification:OtpPepper is not configured.");
+            }
+
+            return sanitized;
         }
     }
 }

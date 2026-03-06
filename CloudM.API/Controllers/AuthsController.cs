@@ -27,22 +27,6 @@ namespace CloudM.API.Controllers
         private static readonly Regex UsernameRegex = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
         private static readonly Regex PasswordAccentRegex = new(@"[\u00C0-\u024F\u1E00-\u1EFF]", RegexOptions.Compiled);
 
-        private static readonly string[] DefaultAllowedOrigins = new[]
-        {
-            "http://127.0.0.1:5500",
-            "http://localhost:5500",
-            "http://127.0.0.1:5502",
-            "http://localhost:5502",
-            "http://127.0.0.1:5503",
-            "http://localhost:5503",
-            "https://127.0.0.1:5500",
-            "https://localhost:5500",
-            "https://127.0.0.1:5502",
-            "https://localhost:5502",
-            "https://127.0.0.1:5503",
-            "https://localhost:5503"
-        };
-
         private readonly IAuthService _authService;
         private readonly IPasswordResetService _passwordResetService;
         private readonly IEmailVerificationService _emailVerificationService;
@@ -65,11 +49,7 @@ namespace CloudM.API.Controllers
 
         private string[] GetAllowedOrigins()
         {
-            var configured = _configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
-            if (configured == null || configured.Length == 0)
-            {
-                return DefaultAllowedOrigins;
-            }
+            var configured = _configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
             return configured
                 .Where(origin => !string.IsNullOrWhiteSpace(origin))
                 .Select(origin => origin.Trim().TrimEnd('/'))
