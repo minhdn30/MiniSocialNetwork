@@ -9,6 +9,8 @@ namespace CloudM.Domain.Enums
         CommentMention = 4,
         StoryReply = 5,
         PostReact = 6,
-        StoryReact = 7
+        StoryReact = 7,
+        FollowRequest = 8,
+        FollowRequestAccepted = 9
     }
 }

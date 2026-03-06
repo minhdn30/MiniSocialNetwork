@@ -102,10 +102,26 @@ namespace CloudM.API.Services
 
         // follow notifications
 
-        public async Task NotifyFollowChangedAsync(Guid currentId, Guid targetId, string action, int targetFollowers, int targetFollowing, int myFollowers, int myFollowing)
+        public async Task NotifyFollowChangedAsync(
+            Guid currentId,
+            Guid targetId,
+            string action,
+            int targetFollowers,
+            int targetFollowing,
+            int myFollowers,
+            int myFollowing,
+            string? currentUserAction = null)
         {
+            var isSensitiveTargetAction =
+                action == "follow_request" ||
+                action == "follow_request_removed";
+
             // notify target user (their follower count changed)
-            await _userHubContext.Clients.Group($"Account-{targetId}")
+            var targetClient = isSensitiveTargetAction
+                ? _userHubContext.Clients.User(targetId.ToString())
+                : _userHubContext.Clients.Group($"Account-{targetId}");
+
+            await targetClient
                 .SendAsync("ReceiveFollowNotification", new
                 {
                     CurrentId = currentId,
@@ -116,12 +132,19 @@ namespace CloudM.API.Services
                 });
 
             // notify current user (their following count changed)
-            var myAction = action == "follow" ? "follow_sent" : "unfollow_sent";
+            var myAction = !string.IsNullOrWhiteSpace(currentUserAction)
+                ? currentUserAction
+                : action == "follow"
+                    ? "follow_sent"
+                    : action == "unfollow"
+                        ? "unfollow_sent"
+                        : action;
             await _userHubContext.Clients.Group($"Account-{currentId}")
                 .SendAsync("ReceiveFollowNotification", new
                 {
                     CurrentId = currentId,
                     TargetId = currentId,
+                    RelatedTargetId = targetId,
                     Action = myAction,
                     Followers = myFollowers,
                     Following = myFollowing

@@ -114,6 +114,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     f.Follower.AvatarUrl,
                     f.CreatedAt,
                     IsFollowing = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == currentId.Value && fol.FollowedId == f.FollowerId),
+                    IsFollowRequested = currentId.HasValue && _context.FollowRequests.Any(fr => fr.RequesterId == currentId.Value && fr.TargetId == f.FollowerId),
                     IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowerId && fol.FollowedId == currentId.Value)
                 });
 
@@ -150,6 +151,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     AvatarUrl = x.AvatarUrl,
                     FullName = x.FullName,
                     IsFollowing = x.IsFollowing,
+                    IsFollowRequested = x.IsFollowRequested,
                     IsFollower = x.IsFollower
                 })
                 .ToListAsync();
@@ -170,6 +172,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     f.Followed.AvatarUrl,
                     f.CreatedAt,
                     IsFollowing = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == currentId.Value && fol.FollowedId == f.FollowedId),
+                    IsFollowRequested = currentId.HasValue && _context.FollowRequests.Any(fr => fr.RequesterId == currentId.Value && fr.TargetId == f.FollowedId),
                     IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowedId && fol.FollowedId == currentId.Value)
                 });
 
@@ -206,6 +209,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     AvatarUrl = x.AvatarUrl,
                     FullName = x.FullName,
                     IsFollowing = x.IsFollowing,
+                    IsFollowRequested = x.IsFollowRequested,
                     IsFollower = x.IsFollower
                 })
                 .ToListAsync();

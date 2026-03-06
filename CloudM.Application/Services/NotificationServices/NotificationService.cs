@@ -643,6 +643,8 @@ namespace CloudM.Application.Services.NotificationServices
             return type switch
             {
                 NotificationTypeEnum.Follow => $"{actorLabel} followed you",
+                NotificationTypeEnum.FollowRequest => $"{actorLabel} wants to follow you",
+                NotificationTypeEnum.FollowRequestAccepted => $"{actorLabel} accepted your follow request",
                 NotificationTypeEnum.PostComment => $"{actorLabel} commented on your post",
                 NotificationTypeEnum.CommentReply => $"{actorLabel} replied to your comment",
                 NotificationTypeEnum.PostTag => $"{actorLabel} tagged you in a post",

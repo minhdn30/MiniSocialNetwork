@@ -3,6 +3,8 @@ namespace CloudM.Application.Services.NotificationServices
     public static class NotificationAggregateKeys
     {
         public static string Follow(Guid actorId) => $"follow:{actorId}";
+        public static string FollowRequest(Guid actorId) => $"follow-request:{actorId}";
+        public static string FollowRequestAccepted(Guid actorId) => $"follow-request-accepted:{actorId}";
         public static string PostComment(Guid postId) => $"post-comment:{postId}";
         public static string CommentReply(Guid parentCommentId) => $"comment-reply:{parentCommentId}";
         public static string PostTag(Guid postId) => $"post-tag:{postId}";
