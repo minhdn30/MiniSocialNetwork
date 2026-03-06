@@ -94,14 +94,17 @@ namespace CloudM.API
                 throw new InvalidOperationException("Connection string 'Default' is not configured.");
             }
 
-            try
+            if (builder.Environment.IsDevelopment())
             {
-                var dbInfo = new NpgsqlConnectionStringBuilder(connectionString);
-                Console.WriteLine($"[DB] Host={dbInfo.Host};Port={dbInfo.Port};Database={dbInfo.Database};SslMode={dbInfo.SslMode};Pooling={dbInfo.Pooling};Timeout={dbInfo.Timeout};CommandTimeout={dbInfo.CommandTimeout};KeepAlive={dbInfo.KeepAlive}");
-            }
-            catch
-            {
-                Console.WriteLine("[DB] Connection string parse warning: could not print normalized DB info.");
+                try
+                {
+                    var dbInfo = new NpgsqlConnectionStringBuilder(connectionString);
+                    Console.WriteLine($"[DB] Host={dbInfo.Host};Port={dbInfo.Port};Database={dbInfo.Database};SslMode={dbInfo.SslMode};Pooling={dbInfo.Pooling};Timeout={dbInfo.Timeout};CommandTimeout={dbInfo.CommandTimeout};KeepAlive={dbInfo.KeepAlive}");
+                }
+                catch
+                {
+                    Console.WriteLine("[DB] Connection string parse warning: could not print normalized DB info.");
+                }
             }
 
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -264,25 +267,8 @@ namespace CloudM.API
             // AutoMapper
             builder.Services.AddAutoMapper(typeof(MappingProfile));
             // Cors
-            var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
-            if (allowedOrigins == null || allowedOrigins.Length == 0)
-            {
-                allowedOrigins = new[]
-                {
-                    "http://127.0.0.1:5500",
-                    "http://localhost:5500",
-                    "http://127.0.0.1:5502",
-                    "http://localhost:5502",
-                    "http://127.0.0.1:5503",
-                    "http://localhost:5503",
-                    "https://127.0.0.1:5500",
-                    "https://localhost:5500",
-                    "https://127.0.0.1:5502",
-                    "https://localhost:5502",
-                    "https://127.0.0.1:5503",
-                    "https://localhost:5503"
-                };
-            }
+            var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                ?? Array.Empty<string>();
 
             var normalizedAllowedOrigins = allowedOrigins
                 .Where(origin => !string.IsNullOrWhiteSpace(origin))
