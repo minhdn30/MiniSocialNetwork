@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
-using System;
-using System.IO;
 
 namespace CloudM.Infrastructure.Data
 {
@@ -20,7 +18,6 @@ namespace CloudM.Infrastructure.Data
             }
 
             var configBasePath = Directory.Exists(apiProjectPath) ? apiProjectPath : currentDirectory;
-
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(configBasePath)
                 .AddJsonFile("appsettings.json", optional: true)
@@ -28,21 +25,19 @@ namespace CloudM.Infrastructure.Data
                 .AddEnvironmentVariables()
                 .Build();
 
+            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
             var connectionString = configuration.GetConnectionString("Default")
                 ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default");
-
             if (string.IsNullOrWhiteSpace(connectionString))
             {
                 throw new InvalidOperationException(
                     "Connection string 'Default' was not found for design-time AppDbContext creation.");
             }
 
-            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
             optionsBuilder.UseNpgsql(connectionString, npgsqlOptions =>
             {
                 npgsqlOptions.CommandTimeout(30);
             });
-
             return new AppDbContext(optionsBuilder.Options);
         }
     }

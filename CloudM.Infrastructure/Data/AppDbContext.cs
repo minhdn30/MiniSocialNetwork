@@ -38,6 +38,9 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<MessageReact> MessageReacts { get; set; }
         public virtual DbSet<PinnedMessage> PinnedMessages { get; set; }
         public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
+        public virtual DbSet<Notification> Notifications { get; set; } = null!;
+        public virtual DbSet<NotificationContribution> NotificationContributions { get; set; } = null!;
+        public virtual DbSet<NotificationOutbox> NotificationOutboxes { get; set; } = null!;
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -149,6 +152,87 @@ namespace CloudM.Infrastructure.Data
                 .WithMany(a => a.Followers)
                 .HasForeignKey(f => f.FollowedId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            // =====================
+            // NOTIFICATION
+            // =====================
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.HasKey(x => x.NotificationId);
+
+                entity.Property(x => x.AggregateKey)
+                    .HasMaxLength(200)
+                    .IsRequired();
+
+                entity.Property(x => x.LastActorSnapshot)
+                    .HasMaxLength(2000);
+
+                entity.Property(x => x.PayloadJson)
+                    .HasMaxLength(4000);
+
+                entity.HasIndex(x => new { x.RecipientId, x.Type, x.AggregateKey })
+                    .IsUnique()
+                    .HasDatabaseName("IX_Notifications_Recipient_Type_Aggregate_Unique");
+
+                entity.HasIndex(x => new { x.RecipientId, x.LastEventAt, x.NotificationId })
+                    .HasDatabaseName("IX_Notifications_Recipient_LastEventAt_NotificationId");
+
+                entity.HasIndex(x => new { x.RecipientId, x.IsRead, x.LastEventAt, x.NotificationId })
+                    .HasDatabaseName("IX_Notifications_Recipient_IsRead_LastEventAt_NotificationId");
+
+                entity.HasOne(x => x.Recipient)
+                    .WithMany()
+                    .HasForeignKey(x => x.RecipientId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(x => x.Contributions)
+                    .WithOne(x => x.Notification)
+                    .HasForeignKey(x => x.NotificationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<NotificationContribution>(entity =>
+            {
+                entity.HasKey(x => x.ContributionId);
+
+                entity.HasIndex(x => new { x.NotificationId, x.SourceType, x.SourceId })
+                    .IsUnique()
+                    .HasDatabaseName("IX_NotificationContributions_Notification_Source_Unique");
+
+                entity.HasIndex(x => new { x.NotificationId, x.IsActive, x.UpdatedAt })
+                    .HasDatabaseName("IX_NotificationContributions_Notification_IsActive_UpdatedAt");
+
+                entity.HasOne(x => x.Actor)
+                    .WithMany()
+                    .HasForeignKey(x => x.ActorId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<NotificationOutbox>(entity =>
+            {
+                entity.HasKey(x => x.OutboxId);
+
+                entity.Property(x => x.EventType)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(x => x.PayloadJson)
+                    .IsRequired();
+
+                entity.Property(x => x.LastError)
+                    .HasMaxLength(2000);
+
+                entity.HasIndex(x => new { x.Status, x.NextRetryAt, x.OccurredAt })
+                    .HasDatabaseName("IX_NotificationOutbox_Status_NextRetryAt_OccurredAt");
+
+                entity.HasIndex(x => new { x.LockedUntil, x.Status })
+                    .HasDatabaseName("IX_NotificationOutbox_LockedUntil_Status");
+
+                entity.HasOne(x => x.Recipient)
+                    .WithMany()
+                    .HasForeignKey(x => x.RecipientId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             // =====================
             // POST
