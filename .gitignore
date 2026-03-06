@@ -20,12 +20,29 @@ packages/
 _tmpbuild/
 _tmpbuild2/
 
-# Sensitive Files
+# Sensitive files
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.crt
+*.cer
 CloudM.API/appsettings.Development.json
 CloudM.API/appsettings.Local.json
+
+# Local artifacts
 CloudM.Tests/TestResults/
 debug-token.txt
 server_output.txt
-*.txt
-!README.md
-!CloudM.API/CloudM.API.http
+profile_lines.txt
+profile_css_lines.txt
+story_viewer_lines.txt
+CloudM.API/build_output.txt
+CloudM.API/urls.txt
+CloudM.API/videos.txt
+CloudM.API/videos2.txt
+CloudM.Infrastructure/build_errors.txt
+
+# Local dev request files
+*.http

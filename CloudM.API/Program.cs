@@ -159,11 +159,7 @@ namespace CloudM.API
                 builder.Configuration.GetSection("NotificationOptions"));
             builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
             {
-                var redisConnectionString =
-                    builder.Configuration.GetConnectionString("Redis")
-                    ?? builder.Configuration["Redis:ConnectionString"]
-                    ?? "localhost:6379,abortConnect=false";
-
+                var redisConnectionString = BuildRedisConnectionString(builder.Configuration);
                 return ConnectionMultiplexer.Connect(redisConnectionString);
             });
 
@@ -213,9 +209,10 @@ namespace CloudM.API
             // Helpers
             builder.Services.AddScoped<IStoryRingStateHelper, StoryRingStateHelper>();
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
+            var jwtSettings = builder.Configuration.GetSection("Jwt");
+            var jwtKey = RequireConfiguredValue(jwtSettings["Key"], "Jwt:Key");
 
             // JWT
-            var jwtSettings = builder.Configuration.GetSection("Jwt");
             builder.Services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -231,7 +228,7 @@ namespace CloudM.API
                     ValidIssuer = jwtSettings["Issuer"],
                     ValidAudience = jwtSettings["Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(jwtSettings["Key"]!)
+                        Encoding.UTF8.GetBytes(jwtKey)
                     )
                 };
 
@@ -382,6 +379,10 @@ namespace CloudM.API
             }
 
             var sanitized = rawConnectionString.Trim().Trim('"', '\'');
+            if (IsPlaceholderValue(sanitized))
+            {
+                return string.Empty;
+            }
 
             NpgsqlConnectionStringBuilder csb;
             if (sanitized.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
@@ -398,6 +399,15 @@ namespace CloudM.API
             HardenForTransientNetwork(csb);
 
             return csb.ToString();
+        }
+
+        private static string BuildRedisConnectionString(IConfiguration configuration)
+        {
+            var rawConnectionString = FirstNonEmpty(
+                configuration.GetConnectionString("Redis"),
+                configuration["Redis:ConnectionString"]);
+
+            return RequireConfiguredValue(rawConnectionString, "ConnectionStrings:Redis");
         }
 
         private static NpgsqlConnectionStringBuilder BuildFromDatabaseUrl(string databaseUrl)
@@ -598,6 +608,24 @@ namespace CloudM.API
             }
 
             return null;
+        }
+
+        private static string RequireConfiguredValue(string? value, string settingName)
+        {
+            var sanitized = value?.Trim().Trim('"', '\'');
+            if (string.IsNullOrWhiteSpace(sanitized) || IsPlaceholderValue(sanitized))
+            {
+                throw new InvalidOperationException($"Configuration value '{settingName}' is not configured.");
+            }
+
+            return sanitized;
+        }
+
+        private static bool IsPlaceholderValue(string value)
+        {
+            return string.Equals(value, "__SET_IN_LOCAL_OR_ENV__", StringComparison.OrdinalIgnoreCase)
+                   || value.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+                   || value.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -439,10 +439,22 @@ This code is valid for <strong>{_securityOptions.OtpExpiresMinutes} minutes</str
             options.MaxSendsPerDay = options.MaxSendsPerDay <= 0 ? 10 : options.MaxSendsPerDay;
             options.MaxFailedAttempts = options.MaxFailedAttempts <= 0 ? 5 : options.MaxFailedAttempts;
             options.LockMinutes = options.LockMinutes <= 0 ? 15 : options.LockMinutes;
-            options.OtpPepper = string.IsNullOrWhiteSpace(options.OtpPepper)
-                ? "CHANGE_ME_OTP_PEPPER"
-                : options.OtpPepper;
+            options.OtpPepper = RequireOtpPepper(options.OtpPepper);
             return options;
+        }
+
+        private static string RequireOtpPepper(string? otpPepper)
+        {
+            var sanitized = otpPepper?.Trim();
+            if (string.IsNullOrWhiteSpace(sanitized)
+                || string.Equals(sanitized, "__SET_IN_LOCAL_OR_ENV__", StringComparison.OrdinalIgnoreCase)
+                || sanitized.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+                || sanitized.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("EmailVerification:OtpPepper is not configured.");
+            }
+
+            return sanitized;
         }
     }
 }
