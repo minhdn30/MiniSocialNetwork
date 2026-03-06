@@ -270,5 +270,27 @@ namespace CloudM.API.Services
                     TargetAccountId = accountId
                 });
         }
+
+        public async Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId)
+        {
+            await _userHubContext.Clients.User(accountId.ToString())
+                .SendAsync("ReceiveNotificationChanged", new
+                {
+                    Action = "upsert",
+                    NotificationId = notificationId,
+                    TargetAccountId = accountId
+                });
+        }
+
+        public async Task NotifyNotificationRemovedAsync(Guid accountId, Guid notificationId)
+        {
+            await _userHubContext.Clients.User(accountId.ToString())
+                .SendAsync("ReceiveNotificationChanged", new
+                {
+                    Action = "remove",
+                    NotificationId = notificationId,
+                    TargetAccountId = accountId
+                });
+        }
     }
 }

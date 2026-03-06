@@ -85,5 +85,11 @@ namespace CloudM.Application.Services.RealtimeServices
 
         // notify a specific user that a conversation should be removed from their chat list
         Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason);
+
+        // notify a user that notifications panel data changed (upsert)
+        Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId);
+
+        // notify a user that a notification item was removed
+        Task NotifyNotificationRemovedAsync(Guid accountId, Guid notificationId);
     }
 }

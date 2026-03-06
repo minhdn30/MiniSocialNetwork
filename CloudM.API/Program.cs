@@ -35,6 +35,7 @@ using CloudM.Application.Services.PostReactServices;
 using CloudM.Application.Services.PostSaveServices;
 using CloudM.Application.Services.PostServices;
 using CloudM.Application.Services.PostTagServices;
+using CloudM.Application.Services.NotificationServices;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Application.Services.StoryServices;
 using CloudM.Application.Services.StoryHighlightServices;
@@ -61,6 +62,7 @@ using CloudM.Infrastructure.Repositories.PostReacts;
 using CloudM.Infrastructure.Repositories.PostSaves;
 using CloudM.Infrastructure.Repositories.Posts;
 using CloudM.Infrastructure.Repositories.PostTags;
+using CloudM.Infrastructure.Repositories.Notifications;
 using CloudM.Infrastructure.Repositories.Presences;
 using CloudM.Infrastructure.Repositories.Stories;
 using CloudM.Infrastructure.Repositories.StoryHighlights;
@@ -133,6 +135,8 @@ namespace CloudM.API
             builder.Services.AddScoped<IMessageReactRepository, MessageReactRepository>();
             builder.Services.AddScoped<IPinnedMessageRepository, PinnedMessageRepository>();
             builder.Services.AddScoped<IOnlinePresenceRepository, OnlinePresenceRepository>();
+            builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+            builder.Services.AddScoped<INotificationOutboxRepository, NotificationOutboxRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // Services
@@ -146,6 +150,8 @@ namespace CloudM.API
                 builder.Configuration.GetSection("OnlinePresence"));
             builder.Services.Configure<ChatMentionOptions>(
                 builder.Configuration.GetSection("ChatMention"));
+            builder.Services.Configure<NotificationOptions>(
+                builder.Configuration.GetSection("NotificationOptions"));
             builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
             {
                 var redisConnectionString =
@@ -188,12 +194,16 @@ namespace CloudM.API
             builder.Services.AddScoped<IMessageHiddenService, MessageHiddenService>();
             builder.Services.AddScoped<IMessageMediaService, MessageMediaService>();
             builder.Services.AddScoped<IPinnedMessageService, PinnedMessageService>();
+            builder.Services.AddScoped<INotificationService, NotificationService>();
+            builder.Services.AddScoped<INotificationProjector, NotificationProjector>();
+            builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 
             // Realtime Services
             builder.Services.AddScoped<IRealtimeService, RealtimeService>();
             builder.Services.AddScoped<IOnlinePresenceService, OnlinePresenceService>();
             builder.Services.AddHostedService<EmailVerificationCleanupHostedService>();
             builder.Services.AddHostedService<OnlinePresenceCleanupHostedService>();
+            builder.Services.AddHostedService<NotificationOutboxWorkerHostedService>();
 
             // Helpers
             builder.Services.AddScoped<IStoryRingStateHelper, StoryRingStateHelper>();
