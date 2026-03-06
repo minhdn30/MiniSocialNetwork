@@ -12,14 +12,20 @@ packages/
 
 # Logs
 *.log
+*.trx
 
 # Others
 *.db
 *.DS_Store
+_tmpbuild/
+_tmpbuild2/
 
 # Sensitive Files
 CloudM.API/appsettings.Development.json
 CloudM.API/appsettings.Local.json
+CloudM.Tests/TestResults/
+debug-token.txt
+server_output.txt
 *.txt
 !README.md
 !CloudM.API/CloudM.API.http
