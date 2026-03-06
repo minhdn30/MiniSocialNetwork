@@ -91,17 +91,17 @@ namespace CloudM.Application.Services.FollowServices
 
             if (targetFollowPrivacy == FollowPrivacyEnum.Private)
             {
-                var requestExists = await _followRequestRepository.IsFollowRequestExistAsync(followerId, targetId);
-                if (requestExists)
-                    throw new BadRequestException("You already sent a follow request to this user.");
-
                 return await _unitOfWork.ExecuteInTransactionAsync(async () =>
                 {
-                    await _followRequestRepository.AddFollowRequestAsync(new FollowRequest
+                    var insertedRequest = await _followRequestRepository.AddFollowRequestIgnoreExistingAsync(new FollowRequest
                     {
                         RequesterId = followerId,
                         TargetId = targetId
                     });
+                    if (!insertedRequest)
+                    {
+                        throw new BadRequestException("You already sent a follow request to this user.");
+                    }
 
                     await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
                     {
@@ -141,12 +141,12 @@ namespace CloudM.Application.Services.FollowServices
                 });
             }
 
-            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            var mutation = await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
-                var requestExists = await _followRequestRepository.IsFollowRequestExistAsync(followerId, targetId);
-                if (requestExists)
+                var eventAt = DateTime.UtcNow;
+                var removedRequestCount = await _followRequestRepository.RemoveFollowRequestAsync(followerId, targetId);
+                if (removedRequestCount > 0)
                 {
-                    await _followRequestRepository.RemoveFollowRequestAsync(followerId, targetId);
                     await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
                     {
                         RecipientId = targetId,
@@ -159,47 +159,63 @@ namespace CloudM.Application.Services.FollowServices
                         TargetKind = NotificationTargetKindEnum.Account,
                         TargetId = followerId,
                         KeepWhenEmpty = false,
-                        OccurredAt = DateTime.UtcNow
+                        OccurredAt = eventAt
                     });
                 }
 
-                await _followRepository.AddFollowAsync(new Follow { FollowerId = followerId, FollowedId = targetId });
-                await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                var insertedFollow = await _followRepository.AddFollowIgnoreExistingAsync(new Follow
                 {
-                    RecipientId = targetId,
-                    Action = NotificationAggregateActionEnum.Upsert,
-                    Type = NotificationTypeEnum.Follow,
-                    AggregateKey = NotificationAggregateKeys.Follow(followerId),
-                    SourceType = NotificationSourceTypeEnum.FollowRelation,
-                    SourceId = followerId,
-                    ActorId = followerId,
-                    TargetKind = NotificationTargetKindEnum.Account,
-                    TargetId = followerId,
-                    KeepWhenEmpty = false,
-                    OccurredAt = DateTime.UtcNow
+                    FollowerId = followerId,
+                    FollowedId = targetId
                 });
+
+                if (insertedFollow)
+                {
+                    await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                    {
+                        RecipientId = targetId,
+                        Action = NotificationAggregateActionEnum.Upsert,
+                        Type = NotificationTypeEnum.Follow,
+                        AggregateKey = NotificationAggregateKeys.Follow(followerId),
+                        SourceType = NotificationSourceTypeEnum.FollowRelation,
+                        SourceId = followerId,
+                        ActorId = followerId,
+                        TargetKind = NotificationTargetKindEnum.Account,
+                        TargetId = followerId,
+                        KeepWhenEmpty = false,
+                        OccurredAt = eventAt
+                    });
+                }
 
                 await _unitOfWork.CommitAsync();
 
                 var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
                 var myCounts = await _followRepository.GetFollowCountsAsync(followerId);
 
+                return (
+                    ShouldNotifyFollowChanged: insertedFollow,
+                    TargetCounts: targetCounts,
+                    CurrentCounts: myCounts);
+            });
+
+            if (mutation.ShouldNotifyFollowChanged)
+            {
                 await _realtimeService.NotifyFollowChangedAsync(
                     followerId,
                     targetId,
                     "follow",
-                    targetCounts.Followers,
-                    targetCounts.Following,
-                    myCounts.Followers,
-                    myCounts.Following
+                    mutation.TargetCounts.Followers,
+                    mutation.TargetCounts.Following,
+                    mutation.CurrentCounts.Followers,
+                    mutation.CurrentCounts.Following
                 );
+            }
 
-                return BuildFollowCountResponse(
-                    targetCounts,
-                    isFollowing: true,
-                    isFollowRequestPending: false,
-                    targetFollowPrivacy: targetFollowPrivacy);
-            });
+            return BuildFollowCountResponse(
+                mutation.TargetCounts,
+                isFollowing: true,
+                isFollowRequestPending: false,
+                targetFollowPrivacy: targetFollowPrivacy);
         }
 
         public async Task<FollowCountResponse> UnfollowAsync(Guid followerId, Guid targetId)
@@ -208,13 +224,31 @@ namespace CloudM.Application.Services.FollowServices
                 throw new BadRequestException("You cannot unfollow yourself.");
 
             var targetFollowPrivacy = await GetTargetFollowPrivacyAsync(targetId);
-
-            var recordExists = await _followRepository.IsFollowRecordExistAsync(followerId, targetId);
-            if (recordExists)
+            var mutation = await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
-                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                var eventAt = DateTime.UtcNow;
+                var removedFollowCount = await _followRepository.RemoveFollowAsync(followerId, targetId);
+                if (removedFollowCount > 0)
                 {
-                    await _followRepository.RemoveFollowAsync(followerId, targetId);
+                    var removedRequestCount = await _followRequestRepository.RemoveFollowRequestAsync(followerId, targetId);
+                    if (removedRequestCount > 0)
+                    {
+                        await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                        {
+                            RecipientId = targetId,
+                            Action = NotificationAggregateActionEnum.Deactivate,
+                            Type = NotificationTypeEnum.FollowRequest,
+                            AggregateKey = NotificationAggregateKeys.FollowRequest(followerId),
+                            SourceType = NotificationSourceTypeEnum.FollowRequest,
+                            SourceId = followerId,
+                            ActorId = followerId,
+                            TargetKind = NotificationTargetKindEnum.Account,
+                            TargetId = followerId,
+                            KeepWhenEmpty = false,
+                            OccurredAt = eventAt
+                        });
+                    }
+
                     await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
                     {
                         RecipientId = targetId,
@@ -227,7 +261,7 @@ namespace CloudM.Application.Services.FollowServices
                         TargetKind = NotificationTargetKindEnum.Account,
                         TargetId = followerId,
                         KeepWhenEmpty = false,
-                        OccurredAt = DateTime.UtcNow
+                        OccurredAt = eventAt
                     });
 
                     await _unitOfWork.CommitAsync();
@@ -235,68 +269,75 @@ namespace CloudM.Application.Services.FollowServices
                     var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
                     var myCounts = await _followRepository.GetFollowCountsAsync(followerId);
 
-                    await _realtimeService.NotifyFollowChangedAsync(
-                        followerId,
-                        targetId,
-                        "unfollow",
-                        targetCounts.Followers,
-                        targetCounts.Following,
-                        myCounts.Followers,
-                        myCounts.Following
-                    );
+                    return (
+                        Action: "unfollow",
+                        TargetCounts: targetCounts,
+                        CurrentCounts: myCounts);
+                }
 
-                    return BuildFollowCountResponse(
-                        targetCounts,
-                        isFollowing: false,
-                        isFollowRequestPending: false,
-                        targetFollowPrivacy: targetFollowPrivacy);
-                });
-            }
-
-            var requestExists = await _followRequestRepository.IsFollowRequestExistAsync(followerId, targetId);
-            if (!requestExists)
-                throw new BadRequestException("You are not following this user.");
-
-            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
-            {
-                await _followRequestRepository.RemoveFollowRequestAsync(followerId, targetId);
-                await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                var removedRequestOnlyCount = await _followRequestRepository.RemoveFollowRequestAsync(followerId, targetId);
+                if (removedRequestOnlyCount > 0)
                 {
-                    RecipientId = targetId,
-                    Action = NotificationAggregateActionEnum.Deactivate,
-                    Type = NotificationTypeEnum.FollowRequest,
-                    AggregateKey = NotificationAggregateKeys.FollowRequest(followerId),
-                    SourceType = NotificationSourceTypeEnum.FollowRequest,
-                    SourceId = followerId,
-                    ActorId = followerId,
-                    TargetKind = NotificationTargetKindEnum.Account,
-                    TargetId = followerId,
-                    KeepWhenEmpty = false,
-                    OccurredAt = DateTime.UtcNow
-                });
+                    await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                    {
+                        RecipientId = targetId,
+                        Action = NotificationAggregateActionEnum.Deactivate,
+                        Type = NotificationTypeEnum.FollowRequest,
+                        AggregateKey = NotificationAggregateKeys.FollowRequest(followerId),
+                        SourceType = NotificationSourceTypeEnum.FollowRequest,
+                        SourceId = followerId,
+                        ActorId = followerId,
+                        TargetKind = NotificationTargetKindEnum.Account,
+                        TargetId = followerId,
+                        KeepWhenEmpty = false,
+                        OccurredAt = eventAt
+                    });
 
-                await _unitOfWork.CommitAsync();
+                    await _unitOfWork.CommitAsync();
 
-                var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
-                var myCounts = await _followRepository.GetFollowCountsAsync(followerId);
+                    var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
+                    var myCounts = await _followRepository.GetFollowCountsAsync(followerId);
 
+                    return (
+                        Action: "follow_request_removed",
+                        TargetCounts: targetCounts,
+                        CurrentCounts: myCounts);
+                }
+
+                throw new BadRequestException("You are not following this user.");
+            });
+
+            if (string.Equals(mutation.Action, "unfollow", StringComparison.Ordinal))
+            {
+                await _realtimeService.NotifyFollowChangedAsync(
+                    followerId,
+                    targetId,
+                    "unfollow",
+                    mutation.TargetCounts.Followers,
+                    mutation.TargetCounts.Following,
+                    mutation.CurrentCounts.Followers,
+                    mutation.CurrentCounts.Following
+                );
+            }
+            else
+            {
                 await _realtimeService.NotifyFollowChangedAsync(
                     followerId,
                     targetId,
                     "follow_request_removed",
-                    targetCounts.Followers,
-                    targetCounts.Following,
-                    myCounts.Followers,
-                    myCounts.Following,
+                    mutation.TargetCounts.Followers,
+                    mutation.TargetCounts.Following,
+                    mutation.CurrentCounts.Followers,
+                    mutation.CurrentCounts.Following,
                     "follow_request_discarded"
                 );
+            }
 
-                return BuildFollowCountResponse(
-                    targetCounts,
-                    isFollowing: false,
-                    isFollowRequestPending: false,
-                    targetFollowPrivacy: targetFollowPrivacy);
-            });
+            return BuildFollowCountResponse(
+                mutation.TargetCounts,
+                isFollowing: false,
+                isFollowRequestPending: false,
+                targetFollowPrivacy: targetFollowPrivacy);
         }
 
         public Task<bool> IsFollowingAsync(Guid followerId, Guid targetId)
@@ -332,15 +373,23 @@ namespace CloudM.Application.Services.FollowServices
             if (!await _accountRepository.IsAccountIdExist(requesterId))
                 throw new BadRequestException("This user is unavailable or does not exist.");
 
-            var requestExists = await _followRequestRepository.IsFollowRequestExistAsync(requesterId, targetId);
-            if (!requestExists)
-                throw new BadRequestException("Follow request not found.");
-
-            var alreadyFollowing = await _followRepository.IsFollowRecordExistAsync(requesterId, targetId);
-
-            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            var mutation = await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
-                await _followRequestRepository.RemoveFollowRequestAsync(requesterId, targetId);
+                var eventAt = DateTime.UtcNow;
+                var removedRequestCount = await _followRequestRepository.RemoveFollowRequestAsync(requesterId, targetId);
+                if (removedRequestCount == 0)
+                {
+                    var followExists = await _followRepository.IsFollowRecordExistAsync(requesterId, targetId);
+                    if (followExists)
+                    {
+                        return (
+                            ShouldNotifyAccepted: false,
+                            TargetCounts: (Followers: 0, Following: 0),
+                            CurrentCounts: (Followers: 0, Following: 0));
+                    }
+
+                    throw new BadRequestException("Follow request not found.");
+                }
 
                 await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
                 {
@@ -354,64 +403,73 @@ namespace CloudM.Application.Services.FollowServices
                     TargetKind = NotificationTargetKindEnum.Account,
                     TargetId = requesterId,
                     KeepWhenEmpty = false,
-                    OccurredAt = DateTime.UtcNow
+                    OccurredAt = eventAt
                 });
 
-                if (!alreadyFollowing)
+                var insertedFollow = await _followRepository.AddFollowIgnoreExistingAsync(new Follow
                 {
-                    await _followRepository.AddFollowAsync(new Follow
+                    FollowerId = requesterId,
+                    FollowedId = targetId
+                });
+
+                if (insertedFollow)
+                {
+                    await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
                     {
-                        FollowerId = requesterId,
-                        FollowedId = targetId
+                        RecipientId = targetId,
+                        Action = NotificationAggregateActionEnum.Upsert,
+                        Type = NotificationTypeEnum.Follow,
+                        AggregateKey = NotificationAggregateKeys.Follow(requesterId),
+                        SourceType = NotificationSourceTypeEnum.FollowRelation,
+                        SourceId = requesterId,
+                        ActorId = requesterId,
+                        TargetKind = NotificationTargetKindEnum.Account,
+                        TargetId = requesterId,
+                        KeepWhenEmpty = false,
+                        OccurredAt = eventAt
+                    });
+
+                    await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                    {
+                        RecipientId = requesterId,
+                        Action = NotificationAggregateActionEnum.Upsert,
+                        Type = NotificationTypeEnum.FollowRequestAccepted,
+                        AggregateKey = NotificationAggregateKeys.FollowRequestAccepted(targetId),
+                        SourceType = NotificationSourceTypeEnum.FollowRequestAccepted,
+                        SourceId = targetId,
+                        ActorId = targetId,
+                        TargetKind = NotificationTargetKindEnum.Account,
+                        TargetId = targetId,
+                        KeepWhenEmpty = false,
+                        OccurredAt = eventAt
                     });
                 }
-
-                await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
-                {
-                    RecipientId = targetId,
-                    Action = NotificationAggregateActionEnum.Upsert,
-                    Type = NotificationTypeEnum.Follow,
-                    AggregateKey = NotificationAggregateKeys.Follow(requesterId),
-                    SourceType = NotificationSourceTypeEnum.FollowRelation,
-                    SourceId = requesterId,
-                    ActorId = requesterId,
-                    TargetKind = NotificationTargetKindEnum.Account,
-                    TargetId = requesterId,
-                    KeepWhenEmpty = false,
-                    OccurredAt = DateTime.UtcNow
-                });
-
-                await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
-                {
-                    RecipientId = requesterId,
-                    Action = NotificationAggregateActionEnum.Upsert,
-                    Type = NotificationTypeEnum.FollowRequestAccepted,
-                    AggregateKey = NotificationAggregateKeys.FollowRequestAccepted(targetId),
-                    SourceType = NotificationSourceTypeEnum.FollowRequestAccepted,
-                    SourceId = targetId,
-                    ActorId = targetId,
-                    TargetKind = NotificationTargetKindEnum.Account,
-                    TargetId = targetId,
-                    KeepWhenEmpty = false,
-                    OccurredAt = DateTime.UtcNow
-                });
 
                 await _unitOfWork.CommitAsync();
 
                 var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
                 var requesterCounts = await _followRepository.GetFollowCountsAsync(requesterId);
 
-                await _realtimeService.NotifyFollowChangedAsync(
-                    requesterId,
-                    targetId,
-                    "follow",
-                    targetCounts.Followers,
-                    targetCounts.Following,
-                    requesterCounts.Followers,
-                    requesterCounts.Following,
-                    "follow_request_accepted");
-                return true;
+                return (
+                    ShouldNotifyAccepted: insertedFollow,
+                    TargetCounts: targetCounts,
+                    CurrentCounts: requesterCounts);
             });
+
+            if (!mutation.ShouldNotifyAccepted)
+            {
+                return;
+            }
+
+            await _realtimeService.NotifyFollowChangedAsync(
+                requesterId,
+                targetId,
+                "follow",
+                mutation.TargetCounts.Followers,
+                mutation.TargetCounts.Following,
+                mutation.CurrentCounts.Followers,
+                mutation.CurrentCounts.Following,
+                "follow_request_accepted");
         }
 
         public async Task RemoveFollowRequestAsync(Guid targetId, Guid requesterId)
@@ -422,13 +480,20 @@ namespace CloudM.Application.Services.FollowServices
             if (!await _accountRepository.IsAccountIdExist(targetId))
                 throw new ForbiddenException("You must reactivate your account to manage follow requests.");
 
-            var requestExists = await _followRequestRepository.IsFollowRequestExistAsync(requesterId, targetId);
-            if (!requestExists)
-                throw new BadRequestException("Follow request not found.");
-
-            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            var mutation = await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
-                await _followRequestRepository.RemoveFollowRequestAsync(requesterId, targetId);
+                var eventAt = DateTime.UtcNow;
+                var removedRequestCount = await _followRequestRepository.RemoveFollowRequestAsync(requesterId, targetId);
+                if (removedRequestCount == 0)
+                {
+                    var followExists = await _followRepository.IsFollowRecordExistAsync(requesterId, targetId);
+                    if (followExists)
+                    {
+                        throw new BadRequestException("Follow request already processed.");
+                    }
+
+                    throw new BadRequestException("Follow request not found.");
+                }
 
                 await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
                 {
@@ -442,7 +507,7 @@ namespace CloudM.Application.Services.FollowServices
                     TargetKind = NotificationTargetKindEnum.Account,
                     TargetId = requesterId,
                     KeepWhenEmpty = false,
-                    OccurredAt = DateTime.UtcNow
+                    OccurredAt = eventAt
                 });
 
                 await _unitOfWork.CommitAsync();
@@ -450,17 +515,20 @@ namespace CloudM.Application.Services.FollowServices
                 var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
                 var requesterCounts = await _followRepository.GetFollowCountsAsync(requesterId);
 
-                await _realtimeService.NotifyFollowChangedAsync(
-                    requesterId,
-                    targetId,
-                    "follow_request_removed",
-                    targetCounts.Followers,
-                    targetCounts.Following,
-                    requesterCounts.Followers,
-                    requesterCounts.Following,
-                    "follow_request_rejected");
-                return true;
+                return (
+                    TargetCounts: targetCounts,
+                    CurrentCounts: requesterCounts);
             });
+
+            await _realtimeService.NotifyFollowChangedAsync(
+                requesterId,
+                targetId,
+                "follow_request_removed",
+                mutation.TargetCounts.Followers,
+                mutation.TargetCounts.Following,
+                mutation.CurrentCounts.Followers,
+                mutation.CurrentCounts.Following,
+                "follow_request_rejected");
         }
 
         public async Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowersAsync(Guid accountId, Guid? currentId, FollowPagingRequest request)
@@ -576,5 +644,6 @@ namespace CloudM.Application.Services.FollowServices
 
             return FollowRelationStatusEnum.None;
         }
+
     }
 }

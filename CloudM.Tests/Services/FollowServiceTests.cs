@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
 using FluentAssertions;
@@ -137,9 +138,11 @@ namespace CloudM.Tests.Services
             _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(followerId, targetId)).ReturnsAsync(false);
 
             // Setup transaction behavior
-            SetupTransactionResult<FollowCountResponse>();
+            SetupTransactionResult<(bool ShouldNotifyFollowChanged, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
 
-            _mockFollowRepo.Setup(x => x.AddFollowAsync(It.IsAny<Follow>())).Returns(Task.CompletedTask);
+            _mockFollowRepo
+                .Setup(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((10, 5));
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((20, 15));
@@ -173,8 +176,8 @@ namespace CloudM.Tests.Services
                 .Setup(x => x.IsFollowRequestExistAsync(followerId, targetId))
                 .ReturnsAsync(false);
             _mockFollowRequestRepo
-                .Setup(x => x.AddFollowRequestAsync(It.IsAny<FollowRequest>()))
-                .Returns(Task.CompletedTask);
+                .Setup(x => x.AddFollowRequestIgnoreExistingAsync(It.IsAny<FollowRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((11, 5));
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((20, 16));
             _mockRealtimeService.Setup(x => x.NotifyFollowChangedAsync(
@@ -192,7 +195,7 @@ namespace CloudM.Tests.Services
             result.IsFollowRequestPendingByCurrentUser.Should().BeTrue();
             result.RelationStatus.Should().Be(FollowRelationStatusEnum.Requested);
             result.TargetFollowPrivacy.Should().Be(FollowPrivacyEnum.Private);
-            _mockFollowRequestRepo.Verify(x => x.AddFollowRequestAsync(It.IsAny<FollowRequest>()), Times.Once);
+            _mockFollowRequestRepo.Verify(x => x.AddFollowRequestIgnoreExistingAsync(It.IsAny<FollowRequest>(), It.IsAny<CancellationToken>()), Times.Once);
             _mockFollowRepo.Verify(x => x.AddFollowAsync(It.IsAny<Follow>()), Times.Never);
         }
 
@@ -210,8 +213,9 @@ namespace CloudM.Tests.Services
                 .Setup(x => x.GetGetAccountSettingsByAccountIdAsync(targetId))
                 .ReturnsAsync(new AccountSettings { FollowPrivacy = FollowPrivacyEnum.Private });
             _mockFollowRequestRepo
-                .Setup(x => x.IsFollowRequestExistAsync(followerId, targetId))
-                .ReturnsAsync(true);
+                .Setup(x => x.AddFollowRequestIgnoreExistingAsync(It.IsAny<FollowRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            SetupTransactionResult<FollowCountResponse>();
 
             // Act & Assert
             await Assert.ThrowsAsync<BadRequestException>(() =>
@@ -236,14 +240,16 @@ namespace CloudM.Tests.Services
                 .ReturnsAsync(true);
             _mockFollowRequestRepo
                 .Setup(x => x.RemoveFollowRequestAsync(followerId, targetId))
-                .Returns(Task.CompletedTask);
-            _mockFollowRepo.Setup(x => x.AddFollowAsync(It.IsAny<Follow>())).Returns(Task.CompletedTask);
+                .ReturnsAsync(1);
+            _mockFollowRepo
+                .Setup(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((12, 5));
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((21, 16));
             _mockRealtimeService.Setup(x => x.NotifyFollowChangedAsync(
                 followerId, targetId, "follow", 12, 5, 21, 16, null)).Returns(Task.CompletedTask);
 
-            SetupTransactionResult<FollowCountResponse>();
+            SetupTransactionResult<(bool ShouldNotifyFollowChanged, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             // Act
@@ -255,7 +261,53 @@ namespace CloudM.Tests.Services
             result.IsFollowRequestPendingByCurrentUser.Should().BeFalse();
             result.RelationStatus.Should().Be(FollowRelationStatusEnum.Following);
             _mockFollowRequestRepo.Verify(x => x.RemoveFollowRequestAsync(followerId, targetId), Times.Once);
-            _mockFollowRepo.Verify(x => x.AddFollowAsync(It.IsAny<Follow>()), Times.Once);
+            _mockFollowRepo.Verify(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task FollowAsync_WhenAutoAcceptedDuringRetry_ReturnsFollowingWithoutDuplicateRealtime()
+        {
+            // Arrange
+            var followerId = Guid.NewGuid();
+            var targetId = Guid.NewGuid();
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(targetId)).ReturnsAsync(true);
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(followerId)).ReturnsAsync(true);
+            _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(followerId, targetId))
+                .ReturnsAsync(false);
+            _mockAccountSettingRepo
+                .Setup(x => x.GetGetAccountSettingsByAccountIdAsync(targetId))
+                .ReturnsAsync(new AccountSettings { FollowPrivacy = FollowPrivacyEnum.Anyone });
+            _mockFollowRequestRepo
+                .Setup(x => x.RemoveFollowRequestAsync(followerId, targetId))
+                .ReturnsAsync(0);
+            _mockFollowRepo
+                .Setup(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((12, 5));
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((21, 16));
+
+            SetupTransactionResult<(bool ShouldNotifyFollowChanged, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _followService.FollowAsync(followerId, targetId);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.IsFollowedByCurrentUser.Should().BeTrue();
+            result.IsFollowRequestPendingByCurrentUser.Should().BeFalse();
+            result.RelationStatus.Should().Be(FollowRelationStatusEnum.Following);
+            _mockFollowRepo.Verify(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()), Times.Once);
+            _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>()), Times.Never);
         }
 
         #endregion
@@ -281,6 +333,10 @@ namespace CloudM.Tests.Services
             var targetId = Guid.NewGuid();
 
             _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(followerId, targetId)).ReturnsAsync(false);
+            _mockFollowRepo.Setup(x => x.RemoveFollowAsync(followerId, targetId)).ReturnsAsync(0);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(followerId, targetId)).ReturnsAsync(0);
+
+            SetupTransactionResult<(string Action, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
 
             // Act & Assert
             await Assert.ThrowsAsync<BadRequestException>(() =>
@@ -297,9 +353,9 @@ namespace CloudM.Tests.Services
             _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(followerId, targetId)).ReturnsAsync(true);
 
             // Setup transaction behavior
-            SetupTransactionResult<FollowCountResponse>();
+            SetupTransactionResult<(string Action, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
 
-            _mockFollowRepo.Setup(x => x.RemoveFollowAsync(followerId, targetId)).Returns(Task.CompletedTask);
+            _mockFollowRepo.Setup(x => x.RemoveFollowAsync(followerId, targetId)).ReturnsAsync(1);
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((9, 5));
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((20, 14));
@@ -326,15 +382,15 @@ namespace CloudM.Tests.Services
             _mockAccountSettingRepo
                 .Setup(x => x.GetGetAccountSettingsByAccountIdAsync(targetId))
                 .ReturnsAsync(new AccountSettings { FollowPrivacy = FollowPrivacyEnum.Private });
-            _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(followerId, targetId)).ReturnsAsync(false);
+            _mockFollowRepo.Setup(x => x.RemoveFollowAsync(followerId, targetId)).ReturnsAsync(0);
             _mockFollowRequestRepo.Setup(x => x.IsFollowRequestExistAsync(followerId, targetId)).ReturnsAsync(true);
-            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(followerId, targetId)).Returns(Task.CompletedTask);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(followerId, targetId)).ReturnsAsync(1);
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((9, 5));
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((20, 14));
             _mockRealtimeService.Setup(x => x.NotifyFollowChangedAsync(
                 followerId, targetId, "follow_request_removed", 9, 5, 20, 14, "follow_request_discarded")).Returns(Task.CompletedTask);
 
-            SetupTransactionResult<FollowCountResponse>();
+            SetupTransactionResult<(string Action, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             // Act
@@ -346,7 +402,39 @@ namespace CloudM.Tests.Services
             result.IsFollowRequestPendingByCurrentUser.Should().BeFalse();
             result.RelationStatus.Should().Be(FollowRelationStatusEnum.None);
             _mockFollowRequestRepo.Verify(x => x.RemoveFollowRequestAsync(followerId, targetId), Times.Once);
-            _mockFollowRepo.Verify(x => x.RemoveFollowAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+            _mockFollowRepo.Verify(x => x.RemoveFollowAsync(followerId, targetId), Times.Once);
+        }
+
+        [Fact]
+        public async Task UnfollowAsync_WhenRequestStateChangedToFollow_RemovesFollowAndReturnsNotFollowing()
+        {
+            // Arrange
+            var followerId = Guid.NewGuid();
+            var targetId = Guid.NewGuid();
+
+            _mockAccountSettingRepo
+                .Setup(x => x.GetGetAccountSettingsByAccountIdAsync(targetId))
+                .ReturnsAsync(new AccountSettings { FollowPrivacy = FollowPrivacyEnum.Private });
+            _mockFollowRepo.Setup(x => x.RemoveFollowAsync(followerId, targetId)).ReturnsAsync(1);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(followerId, targetId)).ReturnsAsync(0);
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((9, 5));
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((20, 14));
+            _mockRealtimeService.Setup(x => x.NotifyFollowChangedAsync(
+                followerId, targetId, "unfollow", 9, 5, 20, 14, null)).Returns(Task.CompletedTask);
+
+            SetupTransactionResult<(string Action, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _followService.UnfollowAsync(followerId, targetId);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.IsFollowedByCurrentUser.Should().BeFalse();
+            result.IsFollowRequestPendingByCurrentUser.Should().BeFalse();
+            result.RelationStatus.Should().Be(FollowRelationStatusEnum.None);
+            _mockFollowRepo.Verify(x => x.RemoveFollowAsync(followerId, targetId), Times.Once);
+            _mockFollowRequestRepo.Verify(x => x.RemoveFollowRequestAsync(followerId, targetId), Times.Once);
         }
 
         #endregion
@@ -441,14 +529,16 @@ namespace CloudM.Tests.Services
             _mockAccountRepo.Setup(x => x.IsAccountIdExist(requesterId)).ReturnsAsync(true);
             _mockFollowRequestRepo.Setup(x => x.IsFollowRequestExistAsync(requesterId, targetId)).ReturnsAsync(true);
             _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(requesterId, targetId)).ReturnsAsync(false);
-            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(requesterId, targetId)).Returns(Task.CompletedTask);
-            _mockFollowRepo.Setup(x => x.AddFollowAsync(It.IsAny<Follow>())).Returns(Task.CompletedTask);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(requesterId, targetId)).ReturnsAsync(1);
+            _mockFollowRepo
+                .Setup(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((15, 7));
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(requesterId)).ReturnsAsync((22, 11));
             _mockRealtimeService.Setup(x => x.NotifyFollowChangedAsync(
                 requesterId, targetId, "follow", 15, 7, 22, 11, "follow_request_accepted")).Returns(Task.CompletedTask);
 
-            SetupTransactionResult<bool>();
+            SetupTransactionResult<(bool ShouldNotifyAccepted, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             // Act
@@ -456,9 +546,72 @@ namespace CloudM.Tests.Services
 
             // Assert
             _mockFollowRequestRepo.Verify(x => x.RemoveFollowRequestAsync(requesterId, targetId), Times.Once);
-            _mockFollowRepo.Verify(x => x.AddFollowAsync(It.IsAny<Follow>()), Times.Once);
+            _mockFollowRepo.Verify(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()), Times.Once);
             _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
                 requesterId, targetId, "follow", 15, 7, 22, 11, "follow_request_accepted"), Times.Once);
+        }
+
+        [Fact]
+        public async Task AcceptFollowRequestAsync_WhenFollowInsertedConcurrentlyAfterRequestRemoval_DoesNotNotifyAgain()
+        {
+            // Arrange
+            var targetId = Guid.NewGuid();
+            var requesterId = Guid.NewGuid();
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(targetId)).ReturnsAsync(true);
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(requesterId)).ReturnsAsync(true);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(requesterId, targetId)).ReturnsAsync(1);
+            _mockFollowRepo
+                .Setup(x => x.AddFollowIgnoreExistingAsync(It.IsAny<Follow>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((15, 7));
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(requesterId)).ReturnsAsync((22, 11));
+
+            SetupTransactionResult<(bool ShouldNotifyAccepted, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+
+            // Act
+            await _followService.AcceptFollowRequestAsync(targetId, requesterId);
+
+            // Assert
+            _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AcceptFollowRequestAsync_WhenAlreadyProcessed_DoesNotNotifyAgain()
+        {
+            // Arrange
+            var targetId = Guid.NewGuid();
+            var requesterId = Guid.NewGuid();
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(targetId)).ReturnsAsync(true);
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(requesterId)).ReturnsAsync(true);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(requesterId, targetId)).ReturnsAsync(0);
+            _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(requesterId, targetId)).ReturnsAsync(true);
+
+            SetupTransactionResult<(bool ShouldNotifyAccepted, (int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
+
+            // Act
+            await _followService.AcceptFollowRequestAsync(targetId, requesterId);
+
+            // Assert
+            _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>()), Times.Never);
         }
 
         [Fact]
@@ -470,13 +623,13 @@ namespace CloudM.Tests.Services
 
             _mockAccountRepo.Setup(x => x.IsAccountIdExist(targetId)).ReturnsAsync(true);
             _mockFollowRequestRepo.Setup(x => x.IsFollowRequestExistAsync(requesterId, targetId)).ReturnsAsync(true);
-            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(requesterId, targetId)).Returns(Task.CompletedTask);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(requesterId, targetId)).ReturnsAsync(1);
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(targetId)).ReturnsAsync((14, 7));
             _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(requesterId)).ReturnsAsync((21, 11));
             _mockRealtimeService.Setup(x => x.NotifyFollowChangedAsync(
                 requesterId, targetId, "follow_request_removed", 14, 7, 21, 11, "follow_request_rejected")).Returns(Task.CompletedTask);
 
-            SetupTransactionResult<bool>();
+            SetupTransactionResult<((int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
             _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             // Act
@@ -486,6 +639,34 @@ namespace CloudM.Tests.Services
             _mockFollowRequestRepo.Verify(x => x.RemoveFollowRequestAsync(requesterId, targetId), Times.Once);
             _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
                 requesterId, targetId, "follow_request_removed", 14, 7, 21, 11, "follow_request_rejected"), Times.Once);
+        }
+
+        [Fact]
+        public async Task RemoveFollowRequestAsync_WhenAlreadyProcessedAsFollow_ThrowsBadRequestAndDoesNotNotify()
+        {
+            // Arrange
+            var targetId = Guid.NewGuid();
+            var requesterId = Guid.NewGuid();
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(targetId)).ReturnsAsync(true);
+            _mockFollowRequestRepo.Setup(x => x.RemoveFollowRequestAsync(requesterId, targetId)).ReturnsAsync(0);
+            _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(requesterId, targetId)).ReturnsAsync(true);
+
+            SetupTransactionResult<((int Followers, int Following) TargetCounts, (int Followers, int Following) CurrentCounts)>();
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() =>
+                _followService.RemoveFollowRequestAsync(targetId, requesterId));
+
+            _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>()), Times.Never);
         }
 
         #endregion
