@@ -1,0 +1,16 @@
+﻿using CloudM.Domain.Entities;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CloudM.Infrastructure.Repositories.MessageMedias
+{
+    public interface IMessageMediaRepository
+    {
+        Task AddMessageMediasAsync(List<MessageMedia> medias);
+        Task<MessageMedia?> GetByIdWithMessageAsync(Guid messageMediaId);
+        Task<List<MessageMedia>> GetByMessageIdAsync(Guid messageId);
+    }
+}

@@ -1,0 +1,34 @@
+﻿using CloudM.Application.DTOs.CommonDTOs;
+using CloudM.Application.DTOs.ConversationDTOs;
+using CloudM.Infrastructure.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CloudM.Application.Services.ConversationServices
+{
+    public interface IConversationService
+    {
+        Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId);
+        Task<ConversationResponse> CreatePrivateConversationAsync(Guid currentId, Guid otherId);
+        Task<ConversationResponse> CreateGroupConversationAsync(Guid currentId, CreateGroupConversationRequest request);
+        Task UpdateGroupConversationInfoAsync(Guid conversationId, Guid currentId, UpdateGroupConversationRequest request);
+        Task<(List<ConversationListItemResponse> Items, bool HasMore)> GetConversationsByCursorAsync(
+            Guid currentId,
+            bool? isPrivate,
+            string? search,
+            DateTime? cursorLastMessageSentAt,
+            Guid? cursorConversationId,
+            int limit);
+        Task<ConversationMessagesResponse> GetConversationMessagesWithMetaDataAsync(Guid conversationId, Guid currentId, string? cursor, int pageSize);
+        Task<PrivateConversationIncludeMessagesResponse> GetPrivateConversationWithMessagesByOtherIdAsync(Guid currentId, Guid otherId, string? cursor, int pageSize);
+        Task<int> GetUnreadConversationCountAsync(Guid currentId);
+        Task<ConversationMessagesResponse> GetMessageContextAsync(Guid conversationId, Guid currentId, Guid messageId, int pageSize);
+        Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize);
+        Task<PagedResponse<ConversationMemberInfo>> GetGroupConversationMembersAsync(Guid conversationId, Guid currentId, int page, int pageSize, bool adminOnly);
+        Task<PagedResponse<ConversationMediaItemModel>> GetConversationMediaAsync(Guid conversationId, Guid currentId, int page, int pageSize);
+        Task<PagedResponse<ConversationMediaItemModel>> GetConversationFilesAsync(Guid conversationId, Guid currentId, int page, int pageSize);
+    }
+}

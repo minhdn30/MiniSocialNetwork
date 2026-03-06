@@ -1,0 +1,88 @@
+﻿using Microsoft.EntityFrameworkCore;
+using CloudM.Domain.Entities;
+using CloudM.Infrastructure.Data;
+using CloudM.Infrastructure.Models;
+using CloudM.Domain.Enums;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CloudM.Infrastructure.Repositories.PostReacts
+{
+    public class PostReactRepository : IPostReactRepository
+    {
+        private readonly AppDbContext _context;
+        public PostReactRepository(AppDbContext context)
+        {
+            _context = context;
+        }
+        public async Task AddPostReact(PostReact postReact)
+        {
+            await _context.PostReacts.AddAsync(postReact);
+        }
+        public Task RemovePostReact(PostReact postReact)
+        {
+            _context.PostReacts.Remove(postReact);
+            return Task.CompletedTask;
+        }
+        public async Task<int> GetReactCountByPostId(Guid postId)
+        {
+            return await _context.PostReacts.CountAsync(pr => pr.PostId == postId && pr.Account.Status == AccountStatusEnum.Active);
+        }
+        public async Task<PostReact?> GetUserReactOnPostAsync(Guid postId, Guid accountId)
+        {
+            return await _context.PostReacts
+                .FirstOrDefaultAsync(pr => pr.PostId == postId && pr.AccountId == accountId && pr.Account.Status == AccountStatusEnum.Active);
+        }
+        public async Task<bool> IsCurrentUserReactedOnPostAsync(Guid postId, Guid? currentId)
+        {
+            if (currentId == null)
+                return false;
+            return await _context.PostReacts
+                .AnyAsync(pr => pr.PostId == postId && pr.AccountId == currentId && pr.Account.Status == AccountStatusEnum.Active);
+        }
+        public async Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, Guid? currentId, int page, int pageSize)
+        {
+            // First: Calculate flags once using projection
+            var baseQuery = _context.PostReacts
+                .Where(r => r.PostId == postId && (r.Account.Status == AccountStatusEnum.Active || (currentId.HasValue && r.AccountId == currentId.Value)))
+                .Select(r => new
+                {
+                    r.AccountId,
+                    r.Account.Username,
+                    r.Account.FullName,
+                    r.Account.AvatarUrl,
+                    r.ReactType,
+                    r.CreatedAt,
+                    IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == r.AccountId),
+                    IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == r.AccountId && f.FollowedId == currentId.Value)
+                });
+
+            var totalItems = await baseQuery.CountAsync();
+
+            var reacts = await baseQuery
+                .OrderByDescending(x => currentId.HasValue && x.AccountId == currentId.Value)
+                .ThenByDescending(x => x.IsFollowing)
+                .ThenByDescending(x => x.IsFollower)
+                .ThenBy(x => x.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new AccountReactListModel
+                {
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl,
+                    ReactType = x.ReactType,
+                    IsFollowing = x.IsFollowing,
+                    IsFollower = x.IsFollower
+                })
+                .ToListAsync();
+
+            return (reacts, totalItems);
+        }
+
+    }
+}
