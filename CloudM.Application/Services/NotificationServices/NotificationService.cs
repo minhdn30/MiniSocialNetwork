@@ -258,13 +258,20 @@ namespace CloudM.Application.Services.NotificationServices
                 .Select(x => x.LastActorId!.Value)
                 .Distinct()
                 .ToList();
-            var actorStatusMap = lastActorIds.Count == 0
-                ? new Dictionary<Guid, AccountStatusEnum>()
+            var actorIdentityById = lastActorIds.Count == 0
+                ? new Dictionary<Guid, ActorIdentityProjection>()
                 : await _context.Accounts
                     .AsNoTracking()
                     .Where(x => lastActorIds.Contains(x.AccountId))
-                    .Select(x => new { x.AccountId, x.Status })
-                    .ToDictionaryAsync(x => x.AccountId, x => x.Status, cancellationToken);
+                    .Select(x => new ActorIdentityProjection
+                    {
+                        AccountId = x.AccountId,
+                        Status = x.Status,
+                        Username = x.Username,
+                        FullName = x.FullName,
+                        AvatarUrl = x.AvatarUrl
+                    })
+                    .ToDictionaryAsync(x => x.AccountId, cancellationToken);
 
             var actorSnapshotByNotificationId = notifications.ToDictionary(
                 x => x.NotificationId,
@@ -276,8 +283,8 @@ namespace CloudM.Application.Services.NotificationServices
                     (notification.ActorCount > 0 &&
                      actorSnapshotByNotificationId[notification.NotificationId] == null) ||
                     (notification.LastActorId.HasValue &&
-                     (!actorStatusMap.TryGetValue(notification.LastActorId.Value, out var actorStatus) ||
-                      actorStatus != AccountStatusEnum.Active)))
+                     (!actorIdentityById.TryGetValue(notification.LastActorId.Value, out var actorIdentity) ||
+                      actorIdentity.Status != AccountStatusEnum.Active)))
                 .Select(notification => notification.NotificationId)
                 .Distinct()
                 .ToList();
@@ -317,6 +324,19 @@ namespace CloudM.Application.Services.NotificationServices
                         notification.LastActorId = resolved.LastActorId;
                         notification.LastActorSnapshot = resolved.LastActorSnapshotJson;
                     }
+
+                    if (resolved.LastActorId.HasValue &&
+                        resolved.Actor != null)
+                    {
+                        actorIdentityById[resolved.LastActorId.Value] = new ActorIdentityProjection
+                        {
+                            AccountId = resolved.LastActorId.Value,
+                            Status = AccountStatusEnum.Active,
+                            Username = resolved.Actor.Username,
+                            FullName = resolved.Actor.FullName,
+                            AvatarUrl = resolved.Actor.AvatarUrl
+                        };
+                    }
                 }
 
                 var isAvailableByTarget = IsAvailableByTarget(
@@ -342,15 +362,10 @@ namespace CloudM.Application.Services.NotificationServices
                     fixupToActiveIds.Add(notification.NotificationId);
                 }
 
-                var actor = actorSnapshot == null
-                    ? null
-                    : new NotificationActorResponse
-                    {
-                        AccountId = actorSnapshot.AccountId,
-                        Username = actorSnapshot.Username,
-                        FullName = actorSnapshot.FullName,
-                        AvatarUrl = actorSnapshot.AvatarUrl
-                    };
+                var actor = BuildNotificationActor(
+                    notification.LastActorId,
+                    actorSnapshot,
+                    actorIdentityById);
 
                 string? targetPostCode = null;
                 string? thumbnailUrl = null;
@@ -656,6 +671,38 @@ namespace CloudM.Application.Services.NotificationServices
             };
         }
 
+        private static NotificationActorResponse? BuildNotificationActor(
+            Guid? lastActorId,
+            NotificationActorSnapshot? actorSnapshot,
+            IReadOnlyDictionary<Guid, ActorIdentityProjection> actorIdentityById)
+        {
+            if (lastActorId.HasValue &&
+                actorIdentityById.TryGetValue(lastActorId.Value, out var actorIdentity) &&
+                actorIdentity.Status == AccountStatusEnum.Active)
+            {
+                return new NotificationActorResponse
+                {
+                    AccountId = actorIdentity.AccountId,
+                    Username = actorIdentity.Username,
+                    FullName = actorIdentity.FullName,
+                    AvatarUrl = actorIdentity.AvatarUrl
+                };
+            }
+
+            if (actorSnapshot == null)
+            {
+                return null;
+            }
+
+            return new NotificationActorResponse
+            {
+                AccountId = actorSnapshot.AccountId,
+                Username = actorSnapshot.Username,
+                FullName = actorSnapshot.FullName,
+                AvatarUrl = actorSnapshot.AvatarUrl
+            };
+        }
+
         private sealed class PostTargetProjection
         {
             public Guid PostId { get; set; }
@@ -682,6 +729,15 @@ namespace CloudM.Application.Services.NotificationServices
         {
             public Guid AccountId { get; set; }
             public AccountStatusEnum Status { get; set; }
+        }
+
+        private sealed class ActorIdentityProjection
+        {
+            public Guid AccountId { get; set; }
+            public AccountStatusEnum Status { get; set; }
+            public string Username { get; set; } = string.Empty;
+            public string FullName { get; set; } = string.Empty;
+            public string? AvatarUrl { get; set; }
         }
 
         private sealed class LatestActorResolveResult

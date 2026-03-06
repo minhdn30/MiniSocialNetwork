@@ -172,6 +172,93 @@ namespace CloudM.Tests.Services
         }
 
         [Fact]
+        public async Task GetNotificationsAsync_WhenActorProfileChanges_ShouldUseCurrentUsernameAndAvatar()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var owner = CreateAccount("owner");
+            var actor = CreateAccount("actor-old");
+            actor.AvatarUrl = "https://cdn.example.com/avatar-old.jpg";
+
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = owner.AccountId,
+                PostCode = "POSTLIVEACTOR",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddMinutes(-10)
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
+                State = NotificationStateEnum.Active,
+                IsRead = false,
+                CreatedAt = now.AddMinutes(-4),
+                LastEventAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var contribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.PostReact,
+                SourceId = actor.AccountId,
+                ActorId = actor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3)
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, owner, actor);
+            await context.Posts.AddAsync(post);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(contribution);
+            await context.SaveChangesAsync();
+
+            actor.Username = "actor-new";
+            actor.FullName = "actor new full";
+            actor.AvatarUrl = "https://cdn.example.com/avatar-new.jpg";
+            context.Accounts.Update(actor);
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var result = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            var item = Assert.Single(result.Items);
+            Assert.NotNull(item.Actor);
+            Assert.Equal("actor-new", item.Actor!.Username);
+            Assert.Equal("actor new full", item.Actor.FullName);
+            Assert.Equal("https://cdn.example.com/avatar-new.jpg", item.Actor.AvatarUrl);
+            Assert.Contains("actor-new", item.Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task ProjectAsync_DeactivateWithKeepWhenEmptyFalse_ShouldRemoveNotification()
         {
             await using var context = CreateContext();
