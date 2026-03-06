@@ -44,6 +44,8 @@ namespace CloudM.Domain.Entities
         public virtual Role Role { get; set; } = null!;
         public ICollection<Follow> Followers { get; set; } = new List<Follow>(); // Accounts that follow this account
         public ICollection<Follow> Followings { get; set; } = new List<Follow>(); // Accounts that this account follows
+        public ICollection<FollowRequest> FollowRequestsReceived { get; set; } = new List<FollowRequest>(); // Accounts requesting to follow this account
+        public ICollection<FollowRequest> FollowRequestsSent { get; set; } = new List<FollowRequest>(); // Follow requests created by this account
         public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
         public virtual ICollection<Story> Stories { get; set; } = new List<Story>();
         public virtual ICollection<StoryView> StoryViews { get; set; } = new List<StoryView>();
