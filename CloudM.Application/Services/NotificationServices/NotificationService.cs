@@ -156,10 +156,17 @@ namespace CloudM.Application.Services.NotificationServices
                 cancellationToken);
 
             var responseItems = await BuildNotificationItemsAsync(recipientId, items, cancellationToken);
+            var followRequestCount = await _context.FollowRequests
+                .AsNoTracking()
+                .Where(x =>
+                    x.TargetId == recipientId &&
+                    x.Requester.Status == AccountStatusEnum.Active)
+                .CountAsync(cancellationToken);
 
             return new NotificationCursorResponse
             {
                 Items = responseItems,
+                FollowRequestCount = followRequestCount,
                 NextCursor = nextCursorLastEventAt.HasValue && nextCursorNotificationId.HasValue
                     ? new NotificationNextCursorResponse
                     {
@@ -392,6 +399,8 @@ namespace CloudM.Application.Services.NotificationServices
                 var text = shouldBeUnavailable
                     ? "This content is no longer available"
                     : BuildNotificationText(notification.Type, actorDisplay, notification.ActorCount);
+                var targetId = ResolveResponseTargetId(notification, actor);
+                var canOpen = CanOpenNotification(notification, shouldBeUnavailable, actor);
 
                 responseItems.Add(new NotificationItemResponse
                 {
@@ -406,10 +415,10 @@ namespace CloudM.Application.Services.NotificationServices
                     Actor = actor,
                     Text = text,
                     TargetKind = (int)notification.TargetKind,
-                    TargetId = notification.TargetId,
+                    TargetId = targetId,
                     TargetPostCode = targetPostCode,
                     ThumbnailUrl = thumbnailUrl,
-                    CanOpen = !shouldBeUnavailable
+                    CanOpen = canOpen
                 });
             }
 
@@ -669,6 +678,43 @@ namespace CloudM.Application.Services.NotificationServices
                 NotificationTypeEnum.StoryReact => $"{actorLabel} reacted to your story",
                 _ => $"{actorLabel} sent a notification"
             };
+        }
+
+        private static bool CanOpenNotification(
+            Notification notification,
+            bool shouldBeUnavailable,
+            NotificationActorResponse? actor)
+        {
+            if (shouldBeUnavailable)
+            {
+                return false;
+            }
+
+            if (notification.Type == NotificationTypeEnum.Follow &&
+                notification.TargetKind == NotificationTargetKindEnum.Account)
+            {
+                return notification.ActorCount == 1 &&
+                    actor != null &&
+                    actor.AccountId != Guid.Empty;
+            }
+
+            return true;
+        }
+
+        private static Guid? ResolveResponseTargetId(
+            Notification notification,
+            NotificationActorResponse? actor)
+        {
+            if (notification.Type == NotificationTypeEnum.Follow &&
+                notification.TargetKind == NotificationTargetKindEnum.Account &&
+                notification.ActorCount == 1 &&
+                actor != null &&
+                actor.AccountId != Guid.Empty)
+            {
+                return actor.AccountId;
+            }
+
+            return notification.TargetId;
         }
 
         private static NotificationActorResponse? BuildNotificationActor(

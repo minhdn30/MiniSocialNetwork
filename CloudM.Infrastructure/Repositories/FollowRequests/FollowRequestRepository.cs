@@ -64,6 +64,67 @@ ON CONFLICT (""RequesterId"", ""TargetId"") DO NOTHING;",
                 .ExecuteDeleteAsync();
         }
 
+        public async Task<(List<PendingFollowRequestListItem> Items, DateTime? NextCursorCreatedAt, Guid? NextCursorRequesterId)> GetPendingByTargetAsync(
+            Guid targetId,
+            int limit,
+            DateTime? cursorCreatedAt,
+            Guid? cursorRequesterId,
+            CancellationToken cancellationToken = default)
+        {
+            var safeLimit = limit <= 0 ? 20 : Math.Min(limit, 50);
+
+            var query = _context.FollowRequests
+                .AsNoTracking()
+                .Where(x =>
+                    x.TargetId == targetId &&
+                    x.Requester.Status == AccountStatusEnum.Active);
+
+            if (cursorCreatedAt.HasValue && cursorRequesterId.HasValue)
+            {
+                query = query.Where(x =>
+                    x.CreatedAt < cursorCreatedAt.Value ||
+                    (x.CreatedAt == cursorCreatedAt.Value && x.RequesterId.CompareTo(cursorRequesterId.Value) < 0));
+            }
+
+            var candidates = await query
+                .OrderByDescending(x => x.CreatedAt)
+                .ThenByDescending(x => x.RequesterId)
+                .Select(x => new PendingFollowRequestListItem
+                {
+                    RequesterId = x.RequesterId,
+                    Username = x.Requester.Username,
+                    FullName = x.Requester.FullName,
+                    AvatarUrl = x.Requester.AvatarUrl,
+                    CreatedAt = x.CreatedAt
+                })
+                .Take(safeLimit + 1)
+                .ToListAsync(cancellationToken);
+
+            var hasMore = candidates.Count > safeLimit;
+            var items = hasMore ? candidates.Take(safeLimit).ToList() : candidates;
+
+            DateTime? nextCursorCreatedAt = null;
+            Guid? nextCursorRequesterId = null;
+            if (hasMore && items.Count > 0)
+            {
+                var last = items[^1];
+                nextCursorCreatedAt = last.CreatedAt;
+                nextCursorRequesterId = last.RequesterId;
+            }
+
+            return (items, nextCursorCreatedAt, nextCursorRequesterId);
+        }
+
+        public async Task<int> GetPendingCountByTargetAsync(Guid targetId, CancellationToken cancellationToken = default)
+        {
+            return await _context.FollowRequests
+                .AsNoTracking()
+                .Where(x =>
+                    x.TargetId == targetId &&
+                    x.Requester.Status == AccountStatusEnum.Active)
+                .CountAsync(cancellationToken);
+        }
+
         public async Task<List<ClaimedAutoAcceptFollowRequest>> ClaimAutoAcceptBatchAsync(int batchSize, CancellationToken cancellationToken = default)
         {
             var safeBatchSize = Math.Max(1, batchSize);

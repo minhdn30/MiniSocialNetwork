@@ -177,6 +177,20 @@ namespace CloudM.API.Services
                     Following = targetFollowing
                 });
         }
+
+        public async Task NotifyFollowRequestQueueChangedAsync(Guid targetId, string action = "refresh", Guid? requesterId = null)
+        {
+            var occurredAt = DateTime.UtcNow;
+            await _userHubContext.Clients.User(targetId.ToString())
+                .SendAsync("ReceiveFollowRequestQueueChanged", new
+                {
+                    TargetAccountId = targetId,
+                    Action = string.IsNullOrWhiteSpace(action) ? "refresh" : action,
+                    RequesterId = requesterId,
+                    EventId = Guid.NewGuid(),
+                    OccurredAt = occurredAt
+                });
+        }
         
         // account notifications
 

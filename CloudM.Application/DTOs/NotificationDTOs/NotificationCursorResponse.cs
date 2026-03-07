@@ -3,6 +3,7 @@ namespace CloudM.Application.DTOs.NotificationDTOs
     public class NotificationCursorResponse
     {
         public List<NotificationItemResponse> Items { get; set; } = new();
+        public int FollowRequestCount { get; set; }
         public NotificationNextCursorResponse? NextCursor { get; set; }
     }
 

@@ -72,6 +72,28 @@ namespace CloudM.API.Controllers
         }
 
         [Authorize]
+        [HttpGet("requests")]
+        public async Task<IActionResult> GetPendingFollowRequests([FromQuery] FollowRequestCursorRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var safeRequest = request ?? new FollowRequestCursorRequest();
+            if (safeRequest.CursorCreatedAt.HasValue != safeRequest.CursorRequesterId.HasValue)
+            {
+                return BadRequest(new { message = "cursorCreatedAt and cursorRequesterId must be provided together." });
+            }
+
+            if (safeRequest.Limit > 100)
+            {
+                safeRequest.Limit = 100;
+            }
+
+            var result = await _followService.GetPendingRequestsAsync(currentId.Value, safeRequest);
+            return Ok(result);
+        }
+
+        [Authorize]
         [HttpPost("requests/{requesterId}/accept")]
         public async Task<IActionResult> AcceptFollowRequest(Guid requesterId)
         {

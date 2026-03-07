@@ -103,21 +103,6 @@ namespace CloudM.Application.Services.FollowServices
                         throw new BadRequestException("You already sent a follow request to this user.");
                     }
 
-                    await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
-                    {
-                        RecipientId = targetId,
-                        Action = NotificationAggregateActionEnum.Upsert,
-                        Type = NotificationTypeEnum.FollowRequest,
-                        AggregateKey = NotificationAggregateKeys.FollowRequest(followerId),
-                        SourceType = NotificationSourceTypeEnum.FollowRequest,
-                        SourceId = followerId,
-                        ActorId = followerId,
-                        TargetKind = NotificationTargetKindEnum.Account,
-                        TargetId = followerId,
-                        KeepWhenEmpty = false,
-                        OccurredAt = DateTime.UtcNow
-                    });
-
                     await _unitOfWork.CommitAsync();
 
                     var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
@@ -132,6 +117,8 @@ namespace CloudM.Application.Services.FollowServices
                         myCounts.Followers,
                         myCounts.Following,
                         "follow_request_sent");
+
+                    await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "upsert", followerId);
 
                     return BuildFollowCountResponse(
                         targetCounts,
@@ -194,6 +181,7 @@ namespace CloudM.Application.Services.FollowServices
 
                 return (
                     ShouldNotifyFollowChanged: insertedFollow,
+                    RemovedPendingRequest: removedRequestCount > 0,
                     TargetCounts: targetCounts,
                     CurrentCounts: myCounts);
             });
@@ -209,6 +197,11 @@ namespace CloudM.Application.Services.FollowServices
                     mutation.CurrentCounts.Followers,
                     mutation.CurrentCounts.Following
                 );
+            }
+
+            if (mutation.RemovedPendingRequest)
+            {
+                await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "remove", followerId);
             }
 
             return BuildFollowCountResponse(
@@ -264,6 +257,21 @@ namespace CloudM.Application.Services.FollowServices
                         OccurredAt = eventAt
                     });
 
+                    await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                    {
+                        RecipientId = targetId,
+                        Action = NotificationAggregateActionEnum.Deactivate,
+                        Type = NotificationTypeEnum.Follow,
+                        AggregateKey = NotificationAggregateKeys.FollowAutoAcceptSummary(targetId),
+                        SourceType = NotificationSourceTypeEnum.FollowRelation,
+                        SourceId = followerId,
+                        ActorId = followerId,
+                        TargetKind = NotificationTargetKindEnum.Account,
+                        TargetId = followerId,
+                        KeepWhenEmpty = false,
+                        OccurredAt = eventAt
+                    });
+
                     await _unitOfWork.CommitAsync();
 
                     var targetCounts = await _followRepository.GetFollowCountsAsync(targetId);
@@ -271,6 +279,7 @@ namespace CloudM.Application.Services.FollowServices
 
                     return (
                         Action: "unfollow",
+                        RemovedPendingRequest: removedRequestCount > 0,
                         TargetCounts: targetCounts,
                         CurrentCounts: myCounts);
                 }
@@ -300,6 +309,7 @@ namespace CloudM.Application.Services.FollowServices
 
                     return (
                         Action: "follow_request_removed",
+                        RemovedPendingRequest: true,
                         TargetCounts: targetCounts,
                         CurrentCounts: myCounts);
                 }
@@ -333,6 +343,11 @@ namespace CloudM.Application.Services.FollowServices
                 );
             }
 
+            if (mutation.RemovedPendingRequest)
+            {
+                await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "remove", followerId);
+            }
+
             return BuildFollowCountResponse(
                 mutation.TargetCounts,
                 isFollowing: false,
@@ -360,6 +375,52 @@ namespace CloudM.Application.Services.FollowServices
                 isFollowing,
                 isFollowRequestPending,
                 targetFollowPrivacy);
+        }
+
+        public async Task<FollowRequestCursorResponse> GetPendingRequestsAsync(
+            Guid currentId,
+            FollowRequestCursorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!await _accountRepository.IsAccountIdExist(currentId))
+            {
+                throw new ForbiddenException("You must reactivate your account to manage follow requests.");
+            }
+
+            var safeRequest = request ?? new FollowRequestCursorRequest();
+            var limit = safeRequest.Limit <= 0 ? 20 : Math.Min(safeRequest.Limit, 50);
+            var (items, nextCursorCreatedAt, nextCursorRequesterId) =
+                await _followRequestRepository.GetPendingByTargetAsync(
+                    currentId,
+                    limit,
+                    safeRequest.CursorCreatedAt,
+                    safeRequest.CursorRequesterId,
+                    cancellationToken);
+            var totalCount = await _followRequestRepository.GetPendingCountByTargetAsync(
+                currentId,
+                cancellationToken);
+
+            return new FollowRequestCursorResponse
+            {
+                Items = items
+                    .Select(x => new FollowRequestItemResponse
+                    {
+                        RequesterId = x.RequesterId,
+                        Username = x.Username,
+                        FullName = x.FullName,
+                        AvatarUrl = x.AvatarUrl,
+                        CreatedAt = x.CreatedAt
+                    })
+                    .ToList(),
+                TotalCount = totalCount,
+                NextCursor = nextCursorCreatedAt.HasValue && nextCursorRequesterId.HasValue
+                    ? new FollowRequestNextCursorResponse
+                    {
+                        CreatedAt = nextCursorCreatedAt.Value,
+                        RequesterId = nextCursorRequesterId.Value
+                    }
+                    : null
+            };
         }
 
         public async Task AcceptFollowRequestAsync(Guid targetId, Guid requesterId)
@@ -470,6 +531,8 @@ namespace CloudM.Application.Services.FollowServices
                 mutation.CurrentCounts.Followers,
                 mutation.CurrentCounts.Following,
                 "follow_request_accepted");
+
+            await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "remove", requesterId);
         }
 
         public async Task RemoveFollowRequestAsync(Guid targetId, Guid requesterId)
@@ -529,6 +592,8 @@ namespace CloudM.Application.Services.FollowServices
                 mutation.CurrentCounts.Followers,
                 mutation.CurrentCounts.Following,
                 "follow_request_rejected");
+
+            await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "remove", requesterId);
         }
 
         public async Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowersAsync(Guid accountId, Guid? currentId, FollowPagingRequest request)

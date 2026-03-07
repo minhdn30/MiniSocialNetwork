@@ -88,6 +88,23 @@ namespace CloudM.Application.Services.FollowServices
                         await _notificationService.EnqueueAggregateEventAsync(
                             new NotificationAggregateEvent
                             {
+                                RecipientId = item.TargetId,
+                                Action = NotificationAggregateActionEnum.Upsert,
+                                Type = NotificationTypeEnum.Follow,
+                                AggregateKey = NotificationAggregateKeys.FollowAutoAcceptSummary(item.TargetId),
+                                SourceType = NotificationSourceTypeEnum.FollowRelation,
+                                SourceId = item.RequesterId,
+                                ActorId = item.RequesterId,
+                                TargetKind = NotificationTargetKindEnum.Account,
+                                TargetId = item.RequesterId,
+                                KeepWhenEmpty = false,
+                                OccurredAt = eventAt
+                            },
+                            cancellationToken);
+
+                        await _notificationService.EnqueueAggregateEventAsync(
+                            new NotificationAggregateEvent
+                            {
                                 RecipientId = item.RequesterId,
                                 Action = NotificationAggregateActionEnum.Upsert,
                                 Type = NotificationTypeEnum.FollowRequestAccepted,
@@ -139,6 +156,11 @@ namespace CloudM.Application.Services.FollowServices
                     requesterSync.Following);
             }
 
+            foreach (var targetId in batchState.QueueTargetIds)
+            {
+                await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "refresh");
+            }
+
             return batchState.ClaimedCount;
         }
 
@@ -149,6 +171,7 @@ namespace CloudM.Application.Services.FollowServices
             public int ClaimedCount { get; init; }
             public List<TargetFollowSyncItem> TargetSyncs { get; init; } = new();
             public List<RequesterFollowSyncItem> RequesterSyncs { get; init; } = new();
+            public List<Guid> QueueTargetIds { get; init; } = new();
 
             public static FollowAutoAcceptBatchState Create(
                 List<ClaimedAutoAcceptFollowRequest> claimedItems,
@@ -188,7 +211,11 @@ namespace CloudM.Application.Services.FollowServices
                 {
                     ClaimedCount = claimedItems.Count,
                     TargetSyncs = targetSyncs,
-                    RequesterSyncs = requesterSyncs
+                    RequesterSyncs = requesterSyncs,
+                    QueueTargetIds = claimedItems
+                        .Select(x => x.TargetId)
+                        .Distinct()
+                        .ToList()
                 };
             }
         }

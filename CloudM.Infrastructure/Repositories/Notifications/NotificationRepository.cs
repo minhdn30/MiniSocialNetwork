@@ -101,7 +101,9 @@ namespace CloudM.Infrastructure.Repositories.Notifications
             if (limit > 50) limit = 50;
 
             var query = _context.Notifications
-                .Where(x => x.RecipientId == recipientId);
+                .Where(x =>
+                    x.RecipientId == recipientId &&
+                    x.Type != NotificationTypeEnum.FollowRequest);
 
             if (unreadOnly)
             {
@@ -140,7 +142,12 @@ namespace CloudM.Infrastructure.Repositories.Notifications
         {
             return await _context.Notifications
                 .AsNoTracking()
-                .CountAsync(x => x.RecipientId == recipientId && !x.IsRead, cancellationToken);
+                .CountAsync(
+                    x =>
+                        x.RecipientId == recipientId &&
+                        !x.IsRead &&
+                        x.Type != NotificationTypeEnum.FollowRequest,
+                    cancellationToken);
         }
 
         public async Task<List<Guid>> GetRecipientsByTargetAsync(

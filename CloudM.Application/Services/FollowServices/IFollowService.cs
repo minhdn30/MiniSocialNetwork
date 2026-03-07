@@ -17,6 +17,7 @@ namespace CloudM.Application.Services.FollowServices
         Task<FollowCountResponse> GetRelationStatusAsync(Guid currentId, Guid targetId);
         Task AcceptFollowRequestAsync(Guid targetId, Guid requesterId);
         Task RemoveFollowRequestAsync(Guid targetId, Guid requesterId);
+        Task<FollowRequestCursorResponse> GetPendingRequestsAsync(Guid currentId, FollowRequestCursorRequest request, CancellationToken cancellationToken = default);
         Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowersAsync(Guid userId, Guid? currentId, FollowPagingRequest request);
         Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowingAsync(Guid userId, Guid? currentId, FollowPagingRequest request);
         Task<FollowCountResponse> GetStatsAsync(Guid userId);
