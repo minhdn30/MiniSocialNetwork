@@ -123,6 +123,9 @@ namespace CloudM.API.Controllers
             if (request.FollowingPrivacy.HasValue && !IsValidEnumValue(request.FollowingPrivacy.Value))
                 return BadRequest(new { message = "Invalid AccountPrivacyEnum value for FollowingPrivacy." });
 
+            if (request.FollowPrivacy.HasValue && !IsValidEnumValue(request.FollowPrivacy.Value))
+                return BadRequest(new { message = "Invalid FollowPrivacyEnum value for FollowPrivacy." });
+
             if (request.StoryHighlightPrivacy.HasValue && !IsValidEnumValue(request.StoryHighlightPrivacy.Value))
                 return BadRequest(new { message = "Invalid AccountPrivacyEnum value for StoryHighlightPrivacy." });
 

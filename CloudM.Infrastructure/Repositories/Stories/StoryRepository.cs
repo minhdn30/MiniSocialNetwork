@@ -239,6 +239,50 @@ namespace CloudM.Infrastructure.Repositories.Stories
                 .FirstOrDefaultAsync();
         }
 
+        public async Task<int?> ResolveArchivedPageByOwnerStoryIdAsync(
+            Guid ownerId,
+            Guid storyId,
+            DateTime nowUtc,
+            int pageSize)
+        {
+            if (ownerId == Guid.Empty || storyId == Guid.Empty)
+            {
+                return null;
+            }
+
+            if (pageSize <= 0)
+            {
+                pageSize = 20;
+            }
+
+            var baseQuery = _context.Stories
+                .AsNoTracking()
+                .Where(s =>
+                    s.AccountId == ownerId &&
+                    !s.IsDeleted &&
+                    s.ExpiresAt <= nowUtc);
+
+            var exists = await baseQuery.AnyAsync(s => s.StoryId == storyId);
+            if (!exists)
+            {
+                return null;
+            }
+
+            var orderedStoryIds = await baseQuery
+                .OrderByDescending(s => s.CreatedAt)
+                .ThenByDescending(s => s.StoryId)
+                .Select(s => s.StoryId)
+                .ToListAsync();
+
+            var index = orderedStoryIds.FindIndex(id => id == storyId);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            return (index / pageSize) + 1;
+        }
+
         public Task UpdateStoryAsync(Story story)
         {
             _context.Stories.Update(story);

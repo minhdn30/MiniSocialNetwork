@@ -24,6 +24,7 @@ namespace CloudM.Infrastructure.Models
         public int FollowerCount { get; set; }
         public int FollowingCount { get; set; }
         public bool IsFollowedByCurrentUser { get; set; }
+        public bool IsFollowRequestPendingByCurrentUser { get; set; }
         public bool IsCurrentUser { get; set; }
         public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
 
@@ -33,6 +34,7 @@ namespace CloudM.Infrastructure.Models
         public PostPrivacyEnum DefaultPostPrivacy { get; set; }
         public AccountPrivacyEnum FollowerPrivacy { get; set; }
         public AccountPrivacyEnum FollowingPrivacy { get; set; }
+        public FollowPrivacyEnum FollowPrivacy { get; set; }
         public AccountPrivacyEnum StoryHighlightPrivacy { get; set; }
         public GroupChatInvitePermissionEnum GroupChatInvitePermission { get; set; }
         public OnlineStatusVisibilityEnum OnlineStatusVisibility { get; set; }

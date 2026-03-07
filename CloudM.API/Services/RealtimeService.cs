@@ -102,10 +102,26 @@ namespace CloudM.API.Services
 
         // follow notifications
 
-        public async Task NotifyFollowChangedAsync(Guid currentId, Guid targetId, string action, int targetFollowers, int targetFollowing, int myFollowers, int myFollowing)
+        public async Task NotifyFollowChangedAsync(
+            Guid currentId,
+            Guid targetId,
+            string action,
+            int targetFollowers,
+            int targetFollowing,
+            int myFollowers,
+            int myFollowing,
+            string? currentUserAction = null)
         {
+            var isSensitiveTargetAction =
+                action == "follow_request" ||
+                action == "follow_request_removed";
+
             // notify target user (their follower count changed)
-            await _userHubContext.Clients.Group($"Account-{targetId}")
+            var targetClient = isSensitiveTargetAction
+                ? _userHubContext.Clients.User(targetId.ToString())
+                : _userHubContext.Clients.Group($"Account-{targetId}");
+
+            await targetClient
                 .SendAsync("ReceiveFollowNotification", new
                 {
                     CurrentId = currentId,
@@ -116,15 +132,63 @@ namespace CloudM.API.Services
                 });
 
             // notify current user (their following count changed)
-            var myAction = action == "follow" ? "follow_sent" : "unfollow_sent";
+            var myAction = !string.IsNullOrWhiteSpace(currentUserAction)
+                ? currentUserAction
+                : action == "follow"
+                    ? "follow_sent"
+                    : action == "unfollow"
+                        ? "unfollow_sent"
+                        : action;
             await _userHubContext.Clients.Group($"Account-{currentId}")
                 .SendAsync("ReceiveFollowNotification", new
                 {
                     CurrentId = currentId,
                     TargetId = currentId,
+                    RelatedTargetId = targetId,
                     Action = myAction,
                     Followers = myFollowers,
                     Following = myFollowing
+                });
+        }
+
+        public async Task NotifyCurrentUserFollowChangedAsync(Guid currentId, Guid relatedTargetId, string action, int myFollowers, int myFollowing)
+        {
+            await _userHubContext.Clients.Group($"Account-{currentId}")
+                .SendAsync("ReceiveFollowNotification", new
+                {
+                    CurrentId = currentId,
+                    TargetId = currentId,
+                    RelatedTargetId = relatedTargetId,
+                    Action = action,
+                    Followers = myFollowers,
+                    Following = myFollowing
+                });
+        }
+
+        public async Task NotifyFollowStatsChangedAsync(Guid targetId, int targetFollowers, int targetFollowing, string action = "follow_stats_updated")
+        {
+            await _userHubContext.Clients.Group($"Account-{targetId}")
+                .SendAsync("ReceiveFollowNotification", new
+                {
+                    CurrentId = targetId,
+                    TargetId = targetId,
+                    Action = action,
+                    Followers = targetFollowers,
+                    Following = targetFollowing
+                });
+        }
+
+        public async Task NotifyFollowRequestQueueChangedAsync(Guid targetId, string action = "refresh", Guid? requesterId = null)
+        {
+            var occurredAt = DateTime.UtcNow;
+            await _userHubContext.Clients.User(targetId.ToString())
+                .SendAsync("ReceiveFollowRequestQueueChanged", new
+                {
+                    TargetAccountId = targetId,
+                    Action = string.IsNullOrWhiteSpace(action) ? "refresh" : action,
+                    RequesterId = requesterId,
+                    EventId = Guid.NewGuid(),
+                    OccurredAt = occurredAt
                 });
         }
         

@@ -101,7 +101,9 @@ namespace CloudM.Infrastructure.Repositories.Notifications
             if (limit > 50) limit = 50;
 
             var query = _context.Notifications
-                .Where(x => x.RecipientId == recipientId);
+                .Where(x =>
+                    x.RecipientId == recipientId &&
+                    x.Type != NotificationTypeEnum.FollowRequest);
 
             if (unreadOnly)
             {
@@ -140,7 +142,12 @@ namespace CloudM.Infrastructure.Repositories.Notifications
         {
             return await _context.Notifications
                 .AsNoTracking()
-                .CountAsync(x => x.RecipientId == recipientId && !x.IsRead, cancellationToken);
+                .CountAsync(
+                    x =>
+                        x.RecipientId == recipientId &&
+                        !x.IsRead &&
+                        x.Type != NotificationTypeEnum.FollowRequest,
+                    cancellationToken);
         }
 
         public async Task<List<Guid>> GetRecipientsByTargetAsync(
@@ -179,6 +186,30 @@ namespace CloudM.Infrastructure.Repositories.Notifications
                 .Select(x => x.RecipientId)
                 .Distinct()
                 .ToListAsync(cancellationToken);
+        }
+
+        public async Task DeleteByRecipientAndAggregateKeysAsync(
+            Guid recipientId,
+            NotificationTypeEnum type,
+            IEnumerable<string> aggregateKeys,
+            CancellationToken cancellationToken = default)
+        {
+            var safeAggregateKeys = (aggregateKeys ?? Enumerable.Empty<string>())
+                .Select(x => (x ?? string.Empty).Trim())
+                .Where(x => x.Length > 0)
+                .Distinct()
+                .ToList();
+            if (recipientId == Guid.Empty || safeAggregateKeys.Count == 0)
+            {
+                return;
+            }
+
+            await _context.Notifications
+                .Where(x =>
+                    x.RecipientId == recipientId &&
+                    x.Type == type &&
+                    safeAggregateKeys.Contains(x.AggregateKey))
+                .ExecuteDeleteAsync(cancellationToken);
         }
 
         public Task SaveChangesAsync(CancellationToken cancellationToken = default)

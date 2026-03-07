@@ -156,10 +156,17 @@ namespace CloudM.Application.Services.NotificationServices
                 cancellationToken);
 
             var responseItems = await BuildNotificationItemsAsync(recipientId, items, cancellationToken);
+            var followRequestCount = await _context.FollowRequests
+                .AsNoTracking()
+                .Where(x =>
+                    x.TargetId == recipientId &&
+                    x.Requester.Status == AccountStatusEnum.Active)
+                .CountAsync(cancellationToken);
 
             return new NotificationCursorResponse
             {
                 Items = responseItems,
+                FollowRequestCount = followRequestCount,
                 NextCursor = nextCursorLastEventAt.HasValue && nextCursorNotificationId.HasValue
                     ? new NotificationNextCursorResponse
                     {
@@ -258,13 +265,20 @@ namespace CloudM.Application.Services.NotificationServices
                 .Select(x => x.LastActorId!.Value)
                 .Distinct()
                 .ToList();
-            var actorStatusMap = lastActorIds.Count == 0
-                ? new Dictionary<Guid, AccountStatusEnum>()
+            var actorIdentityById = lastActorIds.Count == 0
+                ? new Dictionary<Guid, ActorIdentityProjection>()
                 : await _context.Accounts
                     .AsNoTracking()
                     .Where(x => lastActorIds.Contains(x.AccountId))
-                    .Select(x => new { x.AccountId, x.Status })
-                    .ToDictionaryAsync(x => x.AccountId, x => x.Status, cancellationToken);
+                    .Select(x => new ActorIdentityProjection
+                    {
+                        AccountId = x.AccountId,
+                        Status = x.Status,
+                        Username = x.Username,
+                        FullName = x.FullName,
+                        AvatarUrl = x.AvatarUrl
+                    })
+                    .ToDictionaryAsync(x => x.AccountId, cancellationToken);
 
             var actorSnapshotByNotificationId = notifications.ToDictionary(
                 x => x.NotificationId,
@@ -276,8 +290,8 @@ namespace CloudM.Application.Services.NotificationServices
                     (notification.ActorCount > 0 &&
                      actorSnapshotByNotificationId[notification.NotificationId] == null) ||
                     (notification.LastActorId.HasValue &&
-                     (!actorStatusMap.TryGetValue(notification.LastActorId.Value, out var actorStatus) ||
-                      actorStatus != AccountStatusEnum.Active)))
+                     (!actorIdentityById.TryGetValue(notification.LastActorId.Value, out var actorIdentity) ||
+                      actorIdentity.Status != AccountStatusEnum.Active)))
                 .Select(notification => notification.NotificationId)
                 .Distinct()
                 .ToList();
@@ -317,6 +331,19 @@ namespace CloudM.Application.Services.NotificationServices
                         notification.LastActorId = resolved.LastActorId;
                         notification.LastActorSnapshot = resolved.LastActorSnapshotJson;
                     }
+
+                    if (resolved.LastActorId.HasValue &&
+                        resolved.Actor != null)
+                    {
+                        actorIdentityById[resolved.LastActorId.Value] = new ActorIdentityProjection
+                        {
+                            AccountId = resolved.LastActorId.Value,
+                            Status = AccountStatusEnum.Active,
+                            Username = resolved.Actor.Username,
+                            FullName = resolved.Actor.FullName,
+                            AvatarUrl = resolved.Actor.AvatarUrl
+                        };
+                    }
                 }
 
                 var isAvailableByTarget = IsAvailableByTarget(
@@ -342,15 +369,10 @@ namespace CloudM.Application.Services.NotificationServices
                     fixupToActiveIds.Add(notification.NotificationId);
                 }
 
-                var actor = actorSnapshot == null
-                    ? null
-                    : new NotificationActorResponse
-                    {
-                        AccountId = actorSnapshot.AccountId,
-                        Username = actorSnapshot.Username,
-                        FullName = actorSnapshot.FullName,
-                        AvatarUrl = actorSnapshot.AvatarUrl
-                    };
+                var actor = BuildNotificationActor(
+                    notification.LastActorId,
+                    actorSnapshot,
+                    actorIdentityById);
 
                 string? targetPostCode = null;
                 string? thumbnailUrl = null;
@@ -377,6 +399,8 @@ namespace CloudM.Application.Services.NotificationServices
                 var text = shouldBeUnavailable
                     ? "This content is no longer available"
                     : BuildNotificationText(notification.Type, actorDisplay, notification.ActorCount);
+                var targetId = ResolveResponseTargetId(notification, actor);
+                var canOpen = CanOpenNotification(notification, shouldBeUnavailable, actor);
 
                 responseItems.Add(new NotificationItemResponse
                 {
@@ -391,10 +415,10 @@ namespace CloudM.Application.Services.NotificationServices
                     Actor = actor,
                     Text = text,
                     TargetKind = (int)notification.TargetKind,
-                    TargetId = notification.TargetId,
+                    TargetId = targetId,
                     TargetPostCode = targetPostCode,
                     ThumbnailUrl = thumbnailUrl,
-                    CanOpen = !shouldBeUnavailable
+                    CanOpen = canOpen
                 });
             }
 
@@ -607,7 +631,6 @@ namespace CloudM.Application.Services.NotificationServices
                 }
 
                 if (storyTarget.IsDeleted ||
-                    storyTarget.ExpiresAt <= nowUtc ||
                     storyTarget.OwnerStatus != AccountStatusEnum.Active)
                 {
                     return false;
@@ -616,6 +639,11 @@ namespace CloudM.Application.Services.NotificationServices
                 if (storyTarget.OwnerId == recipientId)
                 {
                     return true;
+                }
+
+                if (storyTarget.ExpiresAt <= nowUtc)
+                {
+                    return false;
                 }
 
                 if (storyTarget.Privacy == StoryPrivacyEnum.Public)
@@ -643,6 +671,8 @@ namespace CloudM.Application.Services.NotificationServices
             return type switch
             {
                 NotificationTypeEnum.Follow => $"{actorLabel} followed you",
+                NotificationTypeEnum.FollowRequest => $"{actorLabel} wants to follow you",
+                NotificationTypeEnum.FollowRequestAccepted => $"{actorLabel} accepted your follow request",
                 NotificationTypeEnum.PostComment => $"{actorLabel} commented on your post",
                 NotificationTypeEnum.CommentReply => $"{actorLabel} replied to your comment",
                 NotificationTypeEnum.PostTag => $"{actorLabel} tagged you in a post",
@@ -651,6 +681,75 @@ namespace CloudM.Application.Services.NotificationServices
                 NotificationTypeEnum.PostReact => $"{actorLabel} reacted to your post",
                 NotificationTypeEnum.StoryReact => $"{actorLabel} reacted to your story",
                 _ => $"{actorLabel} sent a notification"
+            };
+        }
+
+        private static bool CanOpenNotification(
+            Notification notification,
+            bool shouldBeUnavailable,
+            NotificationActorResponse? actor)
+        {
+            if (shouldBeUnavailable)
+            {
+                return false;
+            }
+
+            if (notification.Type == NotificationTypeEnum.Follow &&
+                notification.TargetKind == NotificationTargetKindEnum.Account)
+            {
+                return notification.ActorCount == 1 &&
+                    actor != null &&
+                    actor.AccountId != Guid.Empty;
+            }
+
+            return true;
+        }
+
+        private static Guid? ResolveResponseTargetId(
+            Notification notification,
+            NotificationActorResponse? actor)
+        {
+            if (notification.Type == NotificationTypeEnum.Follow &&
+                notification.TargetKind == NotificationTargetKindEnum.Account &&
+                notification.ActorCount == 1 &&
+                actor != null &&
+                actor.AccountId != Guid.Empty)
+            {
+                return actor.AccountId;
+            }
+
+            return notification.TargetId;
+        }
+
+        private static NotificationActorResponse? BuildNotificationActor(
+            Guid? lastActorId,
+            NotificationActorSnapshot? actorSnapshot,
+            IReadOnlyDictionary<Guid, ActorIdentityProjection> actorIdentityById)
+        {
+            if (lastActorId.HasValue &&
+                actorIdentityById.TryGetValue(lastActorId.Value, out var actorIdentity) &&
+                actorIdentity.Status == AccountStatusEnum.Active)
+            {
+                return new NotificationActorResponse
+                {
+                    AccountId = actorIdentity.AccountId,
+                    Username = actorIdentity.Username,
+                    FullName = actorIdentity.FullName,
+                    AvatarUrl = actorIdentity.AvatarUrl
+                };
+            }
+
+            if (actorSnapshot == null)
+            {
+                return null;
+            }
+
+            return new NotificationActorResponse
+            {
+                AccountId = actorSnapshot.AccountId,
+                Username = actorSnapshot.Username,
+                FullName = actorSnapshot.FullName,
+                AvatarUrl = actorSnapshot.AvatarUrl
             };
         }
 
@@ -680,6 +779,15 @@ namespace CloudM.Application.Services.NotificationServices
         {
             public Guid AccountId { get; set; }
             public AccountStatusEnum Status { get; set; }
+        }
+
+        private sealed class ActorIdentityProjection
+        {
+            public Guid AccountId { get; set; }
+            public AccountStatusEnum Status { get; set; }
+            public string Username { get; set; } = string.Empty;
+            public string FullName { get; set; } = string.Empty;
+            public string? AvatarUrl { get; set; }
         }
 
         private sealed class LatestActorResolveResult

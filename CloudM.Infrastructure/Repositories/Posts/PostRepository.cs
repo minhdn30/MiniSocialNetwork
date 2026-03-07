@@ -50,6 +50,10 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 f.FollowerId == currentId &&
                 _context.Posts.Any(p => p.PostId == postId && p.AccountId == f.FollowedId)
             );
+            var isFollowRequestPending = await _context.FollowRequests.AnyAsync(fr =>
+                fr.RequesterId == currentId &&
+                _context.Posts.Any(p => p.PostId == postId && p.AccountId == fr.TargetId)
+            );
 
             var post = await _context.Posts
                 .AsNoTracking()
@@ -102,7 +106,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsCurrentUserTagged = p.Tags.Any(t => t.TaggedAccountId == currentId),
-                    IsFollowedByCurrentUser = isFollower
+                    IsFollowedByCurrentUser = isFollower,
+                    IsFollowRequestPendingByCurrentUser = !isFollower && isFollowRequestPending
                 })
                 .FirstOrDefaultAsync();
 
@@ -124,6 +129,10 @@ namespace CloudM.Infrastructure.Repositories.Posts
             var isFollower = await _context.Follows.AnyAsync(f =>
                 f.FollowerId == currentId &&
                 f.FollowedId == postRecord.AccountId
+            );
+            var isFollowRequestPending = await _context.FollowRequests.AnyAsync(fr =>
+                fr.RequesterId == currentId &&
+                fr.TargetId == postRecord.AccountId
             );
 
             var post = await _context.Posts
@@ -177,7 +186,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsCurrentUserTagged = p.Tags.Any(t => t.TaggedAccountId == currentId),
-                    IsFollowedByCurrentUser = isFollower
+                    IsFollowedByCurrentUser = isFollower,
+                    IsFollowRequestPendingByCurrentUser = !isFollower && isFollowRequestPending
                 })
                 .FirstOrDefaultAsync();
 
@@ -491,6 +501,15 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     .ToListAsync())
                 .ToHashSet();
 
+            var followRequestIdSet = (await _context.FollowRequests
+                    .AsNoTracking()
+                    .Where(fr =>
+                        fr.RequesterId == currentId &&
+                        taggedAccountIds.Contains(fr.TargetId))
+                    .Select(fr => fr.TargetId)
+                    .ToListAsync())
+                .ToHashSet();
+
             var followerIdSet = (await _context.Follows
                     .AsNoTracking()
                     .Where(f =>
@@ -503,6 +522,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
             var orderedAccounts = taggedAccounts
                 .OrderByDescending(x => x.AccountId == currentId)
                 .ThenByDescending(x => followingIdSet.Contains(x.AccountId))
+                .ThenByDescending(x => followRequestIdSet.Contains(x.AccountId))
                 .ThenByDescending(x => followerIdSet.Contains(x.AccountId))
                 .ThenBy(x => x.CreatedAt)
                 .Select(x => new PostTaggedAccountModel
@@ -512,6 +532,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     FullName = x.FullName,
                     AvatarUrl = x.AvatarUrl,
                     IsFollowing = followingIdSet.Contains(x.AccountId),
+                    IsFollowRequested = followRequestIdSet.Contains(x.AccountId),
                     IsFollower = followerIdSet.Contains(x.AccountId)
                 })
                 .ToList();
@@ -562,6 +583,10 @@ namespace CloudM.Infrastructure.Repositories.Posts
                        Status = p.Account.Status,
                        IsFollowedByCurrentUser = p.AccountId == currentId || _context.Follows.Any(f =>
                            f.FollowerId == currentId && f.FollowedId == p.AccountId)
+                       ,
+                       IsFollowRequestPendingByCurrentUser = p.AccountId != currentId && !_context.Follows.Any(f =>
+                           f.FollowerId == currentId && f.FollowedId == p.AccountId) && _context.FollowRequests.Any(fr =>
+                           fr.RequesterId == currentId && fr.TargetId == p.AccountId)
                    },
                    Medias = p.Medias.OrderBy(m => m.CreatedAt)
                    .Select(m => new MediaPostPersonalListModel
@@ -639,7 +664,9 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
-                    IsFollowedAuthor = followedIdsQuery.Contains(p.AccountId)
+                    IsFollowedAuthor = followedIdsQuery.Contains(p.AccountId),
+                    IsFollowRequestPendingAuthor = _context.FollowRequests.Any(fr =>
+                        fr.RequesterId == currentId && fr.TargetId == p.AccountId)
                 })
                 .ToListAsync();
 
@@ -725,6 +752,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         x.IsSavedByCurrentUser,
                         x.IsOwner,
                         x.IsFollowedAuthor,
+                        x.IsFollowRequestPendingAuthor,
                         Score = score
                     };
                 })
@@ -792,6 +820,17 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     .ToListAsync())
                 .ToHashSet();
 
+            var followRequestIdSet = taggedAccountIds.Count == 0
+                ? new HashSet<Guid>()
+                : (await _context.FollowRequests
+                    .AsNoTracking()
+                    .Where(fr =>
+                        fr.RequesterId == currentId &&
+                        taggedAccountIds.Contains(fr.TargetId))
+                    .Select(fr => fr.TargetId)
+                    .ToListAsync())
+                .ToHashSet();
+
             var followerIdSet = taggedAccountIds.Count == 0
                 ? new HashSet<Guid>()
                 : (await _context.Follows
@@ -814,6 +853,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         Preview = g
                             .OrderByDescending(x => x.TaggedAccountId == currentId)
                             .ThenByDescending(x => followingIdSet.Contains(x.TaggedAccountId))
+                            .ThenByDescending(x => followRequestIdSet.Contains(x.TaggedAccountId))
                             .ThenByDescending(x => followerIdSet.Contains(x.TaggedAccountId))
                             .ThenBy(x => x.CreatedAt)
                             .Select(x => new PostTaggedAccountModel
@@ -823,6 +863,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                                 FullName = x.FullName,
                                 AvatarUrl = x.AvatarUrl,
                                 IsFollowing = followingIdSet.Contains(x.TaggedAccountId),
+                                IsFollowRequested = followRequestIdSet.Contains(x.TaggedAccountId),
                                 IsFollower = followerIdSet.Contains(x.TaggedAccountId)
                             })
                             .Take(2)
@@ -855,7 +896,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                             FullName = x.AuthorFullName,
                             AvatarUrl = x.AuthorAvatarUrl,
                             Status = x.AuthorStatus,
-                            IsFollowedByCurrentUser = x.IsOwner || x.IsFollowedAuthor
+                            IsFollowedByCurrentUser = x.IsOwner || x.IsFollowedAuthor,
+                            IsFollowRequestPendingByCurrentUser = !x.IsOwner && !x.IsFollowedAuthor && x.IsFollowRequestPendingAuthor
                         },
                         Medias = postMedias,
                         TaggedAccountsPreview = postTagInfo?.Preview

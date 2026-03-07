@@ -15,6 +15,7 @@ namespace CloudM.Infrastructure.Models
         public string? AvatarUrl { get; set; }
         public AccountStatusEnum Status { get; set; }
         public bool IsFollowedByCurrentUser { get; set; } = false;
+        public bool IsFollowRequestPendingByCurrentUser { get; set; } = false;
         public StoryRingStateEnum StoryRingState { get; set; } = StoryRingStateEnum.None;
     }
 }

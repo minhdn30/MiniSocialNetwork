@@ -13,7 +13,8 @@ namespace CloudM.Infrastructure.Repositories.Follows
         Task<bool> IsFollowingAsync(Guid followerId, Guid followedId);
         Task<bool> IsFollowRecordExistAsync(Guid followerId, Guid followedId);
         Task AddFollowAsync(Follow follow);
-        Task RemoveFollowAsync(Guid followerId, Guid followedId);
+        Task<bool> AddFollowIgnoreExistingAsync(Follow follow, CancellationToken cancellationToken = default);
+        Task<int> RemoveFollowAsync(Guid followerId, Guid followedId);
         Task<List<Guid>> GetFollowingIdsAsync(Guid followerId);
         Task<List<Guid>> GetFollowerIdsAsync(Guid followedId);
         Task<HashSet<Guid>> GetFollowerIdsInTargetsAsync(Guid followedId, IEnumerable<Guid> targetIds);
@@ -23,6 +24,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
         Task<int> CountFollowersAsync(Guid accountId);
         Task<int> CountFollowingAsync(Guid accountId);
         Task<(int Followers, int Following)> GetFollowCountsAsync(Guid targetId);
-
+        Task<Dictionary<Guid, (int Followers, int Following)>> GetFollowCountsByAccountIdsAsync(IEnumerable<Guid> accountIds, CancellationToken cancellationToken = default);
+        Task<List<InsertedFollowRelation>> AddFollowsIgnoreExistingAsync(IEnumerable<Follow> follows, CancellationToken cancellationToken = default);
     }
 }

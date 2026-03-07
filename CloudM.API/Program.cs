@@ -52,6 +52,7 @@ using CloudM.Infrastructure.Repositories.Conversations;
 using CloudM.Infrastructure.Repositories.EmailVerifications;
 using CloudM.Infrastructure.Repositories.ExternalLogins;
 using CloudM.Infrastructure.Repositories.Follows;
+using CloudM.Infrastructure.Repositories.FollowRequests;
 using CloudM.Infrastructure.Repositories.MessageMedias;
 using CloudM.Infrastructure.Repositories.Messages;
 using CloudM.Infrastructure.Repositories.MessageHiddens;
@@ -120,6 +121,7 @@ namespace CloudM.API
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
             builder.Services.AddScoped<IExternalLoginRepository, ExternalLoginRepository>();
             builder.Services.AddScoped<IFollowRepository, FollowRepository>();
+            builder.Services.AddScoped<IFollowRequestRepository, FollowRequestRepository>();
             builder.Services.AddScoped<ICommentRepository, CommentRepository>();
             builder.Services.AddScoped<IPostRepository, PostRepository>();
             builder.Services.AddScoped<IPostTagRepository, PostTagRepository>();
@@ -155,6 +157,8 @@ namespace CloudM.API
                 builder.Configuration.GetSection("ChatMention"));
             builder.Services.Configure<NotificationOptions>(
                 builder.Configuration.GetSection("NotificationOptions"));
+            builder.Services.Configure<FollowAutoAcceptOptions>(
+                builder.Configuration.GetSection("FollowAutoAccept"));
             builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
             {
                 var redisConnectionString = BuildRedisConnectionString(builder.Configuration);
@@ -169,13 +173,14 @@ namespace CloudM.API
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
             builder.Services.AddSingleton<ICloudinaryDeleteBackgroundQueue, CloudinaryDeleteBackgroundQueue>();
             builder.Services.AddHostedService<CloudinaryDeleteWorkerHostedService>();
-            builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+            builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 
             builder.Services.AddTransient<IEmailService, EmailService>();
             builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
             builder.Services.AddScoped<IEmailVerificationRateLimitService, RedisEmailVerificationRateLimitService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IFollowService, FollowService>();
+            builder.Services.AddScoped<IFollowAutoAcceptService, FollowAutoAcceptService>();
             builder.Services.AddScoped<IPostService, PostService>();
             builder.Services.AddScoped<IPostTagService, PostTagService>();
             builder.Services.AddScoped<IPostSaveService, PostSaveService>();
@@ -203,6 +208,7 @@ namespace CloudM.API
             builder.Services.AddHostedService<EmailVerificationCleanupHostedService>();
             builder.Services.AddHostedService<OnlinePresenceCleanupHostedService>();
             builder.Services.AddHostedService<NotificationOutboxWorkerHostedService>();
+            builder.Services.AddHostedService<FollowAutoAcceptWorkerHostedService>();
 
             // Helpers
             builder.Services.AddScoped<IStoryRingStateHelper, StoryRingStateHelper>();

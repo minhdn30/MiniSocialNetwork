@@ -149,6 +149,7 @@ namespace CloudM.Application.Services.PostServices
                     FullName = x.FullName,
                     AvatarUrl = x.AvatarUrl,
                     IsFollowing = x.IsFollowing,
+                    IsFollowRequested = x.IsFollowRequested,
                     IsFollower = x.IsFollower
                 })
                 .ToList();
@@ -825,6 +826,7 @@ namespace CloudM.Application.Services.PostServices
                     FullName = x.FullName,
                     AvatarUrl = x.AvatarUrl,
                     IsFollowing = false,
+                    IsFollowRequested = false,
                     IsFollower = false
                 })
                 .ToList();

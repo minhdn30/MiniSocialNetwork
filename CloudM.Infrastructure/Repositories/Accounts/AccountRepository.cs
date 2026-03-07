@@ -169,6 +169,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     IsCurrentUser = currentId.HasValue && a.AccountId == currentId.Value,
                     IsFollowedByCurrentUser =
                         currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
+                    IsFollowRequestPendingByCurrentUser =
+                        currentId.HasValue && _context.FollowRequests.Any(fr =>
+                            fr.RequesterId == currentId.Value && fr.TargetId == a.AccountId),
 
                     RecentMedias = a.Posts
                         .Where(p =>
@@ -204,6 +207,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 FollowingCount = data.FollowingCount,
                 IsCurrentUser = data.IsCurrentUser,
                 IsFollowedByCurrentUser = data.IsFollowedByCurrentUser || data.IsCurrentUser,
+                IsFollowRequestPendingByCurrentUser = !data.IsCurrentUser && !data.IsFollowedByCurrentUser && data.IsFollowRequestPendingByCurrentUser,
                 RecentPosts = data.RecentMedias
             };
         }
@@ -231,6 +235,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
                     FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
                     IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
+                    IsFollowRequestPendingByCurrentUser =
+                        currentId.HasValue && _context.FollowRequests.Any(fr =>
+                            fr.RequesterId == currentId.Value && fr.TargetId == a.AccountId),
                     Settings = a.Settings
                 })
                 .FirstOrDefaultAsync();
@@ -257,6 +264,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 FollowingCount = data.FollowingCount,
                 IsCurrentUser = currentId.HasValue && data.AccountId == currentId.Value,
                 IsFollowedByCurrentUser = data.IsFollowedByCurrentUser,
+                IsFollowRequestPendingByCurrentUser = data.IsFollowRequestPendingByCurrentUser,
 
                 // virtual defaults
                 PhonePrivacy = s?.PhonePrivacy ?? AccountPrivacyEnum.Private,
@@ -264,6 +272,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 DefaultPostPrivacy = s?.DefaultPostPrivacy ?? PostPrivacyEnum.Public,
                 FollowerPrivacy = s?.FollowerPrivacy ?? AccountPrivacyEnum.Public,
                 FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public,
+                FollowPrivacy = s?.FollowPrivacy ?? FollowPrivacyEnum.Anyone,
                 StoryHighlightPrivacy = s?.StoryHighlightPrivacy ?? AccountPrivacyEnum.Public,
                 GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
                 OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,
@@ -295,6 +304,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
                     FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
                     IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
+                    IsFollowRequestPendingByCurrentUser =
+                        currentId.HasValue && _context.FollowRequests.Any(fr =>
+                            fr.RequesterId == currentId.Value && fr.TargetId == a.AccountId),
                     Settings = a.Settings
                 })
                 .FirstOrDefaultAsync();
@@ -321,6 +333,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 FollowingCount = data.FollowingCount,
                 IsCurrentUser = currentId.HasValue && data.AccountId == currentId.Value,
                 IsFollowedByCurrentUser = data.IsFollowedByCurrentUser,
+                IsFollowRequestPendingByCurrentUser = data.IsFollowRequestPendingByCurrentUser,
 
                 // virtual defaults
                 PhonePrivacy = s?.PhonePrivacy ?? AccountPrivacyEnum.Private,
@@ -328,6 +341,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 DefaultPostPrivacy = s?.DefaultPostPrivacy ?? PostPrivacyEnum.Public,
                 FollowerPrivacy = s?.FollowerPrivacy ?? AccountPrivacyEnum.Public,
                 FollowingPrivacy = s?.FollowingPrivacy ?? AccountPrivacyEnum.Public,
+                FollowPrivacy = s?.FollowPrivacy ?? FollowPrivacyEnum.Anyone,
                 StoryHighlightPrivacy = s?.StoryHighlightPrivacy ?? AccountPrivacyEnum.Public,
                 GroupChatInvitePermission = s?.GroupChatInvitePermission ?? GroupChatInvitePermissionEnum.Anyone,
                 OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,

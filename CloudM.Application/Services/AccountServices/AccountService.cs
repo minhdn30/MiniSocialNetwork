@@ -328,7 +328,12 @@ namespace CloudM.Application.Services.AccountServices
                 {
                     Followers = profileModel.FollowerCount,
                     Following = profileModel.FollowingCount,
-                    IsFollowedByCurrentUser = profileModel.IsFollowedByCurrentUser
+                    IsFollowedByCurrentUser = profileModel.IsFollowedByCurrentUser,
+                    IsFollowRequestPendingByCurrentUser = profileModel.IsFollowRequestPendingByCurrentUser,
+                    RelationStatus = ResolveFollowRelationStatus(
+                        profileModel.IsFollowedByCurrentUser,
+                        profileModel.IsFollowRequestPendingByCurrentUser),
+                    TargetFollowPrivacy = profileModel.FollowPrivacy
                 },
                 TotalPosts = profileModel.PostCount,
                 IsCurrentUser = profileModel.IsCurrentUser
@@ -342,6 +347,7 @@ namespace CloudM.Application.Services.AccountServices
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
                 FollowingPrivacy = profileModel.FollowingPrivacy,
+                FollowPrivacy = profileModel.FollowPrivacy,
                 StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
                 OnlineStatusVisibility = profileModel.OnlineStatusVisibility,
@@ -406,7 +412,12 @@ namespace CloudM.Application.Services.AccountServices
                 {
                     Followers = profileModel.FollowerCount,
                     Following = profileModel.FollowingCount,
-                    IsFollowedByCurrentUser = profileModel.IsFollowedByCurrentUser
+                    IsFollowedByCurrentUser = profileModel.IsFollowedByCurrentUser,
+                    IsFollowRequestPendingByCurrentUser = profileModel.IsFollowRequestPendingByCurrentUser,
+                    RelationStatus = ResolveFollowRelationStatus(
+                        profileModel.IsFollowedByCurrentUser,
+                        profileModel.IsFollowRequestPendingByCurrentUser),
+                    TargetFollowPrivacy = profileModel.FollowPrivacy
                 },
                 TotalPosts = profileModel.PostCount,
                 IsCurrentUser = profileModel.IsCurrentUser
@@ -420,6 +431,7 @@ namespace CloudM.Application.Services.AccountServices
                 DefaultPostPrivacy = profileModel.DefaultPostPrivacy,
                 FollowerPrivacy = profileModel.FollowerPrivacy,
                 FollowingPrivacy = profileModel.FollowingPrivacy,
+                FollowPrivacy = profileModel.FollowPrivacy,
                 StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
                 OnlineStatusVisibility = profileModel.OnlineStatusVisibility,
@@ -457,6 +469,21 @@ namespace CloudM.Application.Services.AccountServices
         {
             return privacy == AccountPrivacyEnum.Public || 
                    (privacy == AccountPrivacyEnum.FollowOnly && isFollowed);
+        }
+
+        private static FollowRelationStatusEnum ResolveFollowRelationStatus(bool isFollowing, bool isFollowRequestPending)
+        {
+            if (isFollowing)
+            {
+                return FollowRelationStatusEnum.Following;
+            }
+
+            if (isFollowRequestPending)
+            {
+                return FollowRelationStatusEnum.Requested;
+            }
+
+            return FollowRelationStatusEnum.None;
         }
 
         private string MaskEmail(string email)

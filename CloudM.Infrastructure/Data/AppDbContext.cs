@@ -19,6 +19,7 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<ExternalLogin> ExternalLogins { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
         public virtual DbSet<Follow> Follows { get; set; }
+        public virtual DbSet<FollowRequest> FollowRequests { get; set; }
         public virtual DbSet<Post> Posts { get; set; }
         public virtual DbSet<PostMedia> PostMedias { get; set; }
         public virtual DbSet<PostReact> PostReacts { get; set; }
@@ -151,6 +152,29 @@ namespace CloudM.Infrastructure.Data
                 .HasOne(f => f.Followed)
                 .WithMany(a => a.Followers)
                 .HasForeignKey(f => f.FollowedId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<FollowRequest>()
+                .HasKey(fr => new { fr.RequesterId, fr.TargetId });
+
+            // index for quickly loading incoming follow requests by created time
+            modelBuilder.Entity<FollowRequest>()
+                .HasIndex(fr => new { fr.TargetId, fr.CreatedAt });
+
+            // index for quick sender-side checks and cleanup
+            modelBuilder.Entity<FollowRequest>()
+                .HasIndex(fr => new { fr.RequesterId, fr.CreatedAt });
+
+            modelBuilder.Entity<FollowRequest>()
+                .HasOne(fr => fr.Requester)
+                .WithMany(a => a.FollowRequestsSent)
+                .HasForeignKey(fr => fr.RequesterId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<FollowRequest>()
+                .HasOne(fr => fr.Target)
+                .WithMany(a => a.FollowRequestsReceived)
+                .HasForeignKey(fr => fr.TargetId)
                 .OnDelete(DeleteBehavior.NoAction);
 
             // =====================

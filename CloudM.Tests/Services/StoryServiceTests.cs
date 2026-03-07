@@ -85,6 +85,45 @@ namespace CloudM.Tests.Services
         }
 
         [Fact]
+        public async Task ResolveStoryAsync_WhenOwnedStoryIsArchived_ReturnsArchiveModeAndPage()
+        {
+            var currentId = Guid.NewGuid();
+            var storyId = Guid.NewGuid();
+            var archivePageSize = 12;
+            var archivedStory = new Story
+            {
+                StoryId = storyId,
+                AccountId = currentId,
+                ContentType = StoryContentTypeEnum.Image,
+                ExpiresAt = DateTime.UtcNow.AddHours(-1),
+                IsDeleted = false
+            };
+
+            _storyRepositoryMock
+                .Setup(x => x.ResolveAuthorIdByStoryIdAsync(currentId, storyId, It.IsAny<DateTime>()))
+                .ReturnsAsync((Guid?)null);
+            _storyRepositoryMock
+                .Setup(x => x.GetStoryByIdAsync(storyId))
+                .ReturnsAsync(archivedStory);
+            _storyRepositoryMock
+                .Setup(x => x.ResolveArchivedPageByOwnerStoryIdAsync(
+                    currentId,
+                    storyId,
+                    It.IsAny<DateTime>(),
+                    archivePageSize))
+                .ReturnsAsync(2);
+
+            var result = await _storyService.ResolveStoryAsync(currentId, storyId, archivePageSize);
+
+            result.Should().NotBeNull();
+            result!.StoryId.Should().Be(storyId);
+            result.AuthorId.Should().Be(currentId);
+            result.StoryMode.Should().Be("archive");
+            result.ArchivePage.Should().Be(2);
+            result.ArchivePageSize.Should().Be(archivePageSize);
+        }
+
+        [Fact]
         public async Task CreateStoryAsync_WhenAccountNotFound_ThrowsBadRequestException()
         {
             // Arrange

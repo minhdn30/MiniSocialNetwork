@@ -56,9 +56,97 @@ namespace CloudM.API.Controllers
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
             if (targetId == Guid.Empty) return BadRequest(new { message = "Target account is required." });
 
-            var result = await _followService.IsFollowingAsync(currentId.Value, targetId);
+            var result = await _followService.GetRelationStatusAsync(currentId.Value, targetId);
 
-            return Ok(new { isFollowing = result });
+            return Ok(new
+            {
+                followers = result.Followers,
+                following = result.Following,
+                isFollowedByCurrentUser = result.IsFollowedByCurrentUser,
+                isFollowing = result.IsFollowedByCurrentUser,
+                isFollowRequestPendingByCurrentUser = result.IsFollowRequestPendingByCurrentUser,
+                isFollowRequestPending = result.IsFollowRequestPendingByCurrentUser,
+                relationStatus = result.RelationStatus,
+                targetFollowPrivacy = result.TargetFollowPrivacy
+            });
+        }
+
+        [Authorize]
+        [HttpGet("requests")]
+        public async Task<IActionResult> GetPendingFollowRequests([FromQuery] FollowRequestCursorRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var safeRequest = request ?? new FollowRequestCursorRequest();
+            if (safeRequest.CursorCreatedAt.HasValue != safeRequest.CursorRequesterId.HasValue)
+            {
+                return BadRequest(new { message = "cursorCreatedAt and cursorRequesterId must be provided together." });
+            }
+
+            if (safeRequest.Limit > 100)
+            {
+                safeRequest.Limit = 100;
+            }
+
+            var result = await _followService.GetPendingRequestsAsync(currentId.Value, safeRequest);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("requests/sent")]
+        public async Task<IActionResult> GetSentFollowRequests([FromQuery] FollowPagingRequest request)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var safeRequest = request ?? new FollowPagingRequest();
+            if (safeRequest.PageSize > 50)
+            {
+                safeRequest.PageSize = 50;
+            }
+
+            var result = await _followService.GetSentPendingRequestsAsync(currentId.Value, safeRequest);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("requests/{requesterId}/accept")]
+        public async Task<IActionResult> AcceptFollowRequest(Guid requesterId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (requesterId == Guid.Empty) return BadRequest(new { message = "Requester account is required." });
+            if (requesterId == currentId.Value) return BadRequest(new { message = "Invalid follow request." });
+
+            await _followService.AcceptFollowRequestAsync(currentId.Value, requesterId);
+            return Ok(new { message = "Follow request accepted." });
+        }
+
+        [Authorize]
+        [HttpDelete("requests/{requesterId}")]
+        public async Task<IActionResult> RemoveFollowRequest(Guid requesterId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (requesterId == Guid.Empty) return BadRequest(new { message = "Requester account is required." });
+            if (requesterId == currentId.Value) return BadRequest(new { message = "Invalid follow request." });
+
+            await _followService.RemoveFollowRequestAsync(currentId.Value, requesterId);
+            return Ok(new { message = "Follow request removed." });
+        }
+
+        [Authorize]
+        [HttpDelete("followers/{followerId}")]
+        public async Task<IActionResult> RemoveFollower(Guid followerId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (followerId == Guid.Empty) return BadRequest(new { message = "Follower account is required." });
+            if (followerId == currentId.Value) return BadRequest(new { message = "Invalid follower removal." });
+
+            await _followService.RemoveFollowerAsync(currentId.Value, followerId);
+            return Ok(new { message = "Follower removed." });
         }
 
         [Authorize]

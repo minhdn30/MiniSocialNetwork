@@ -30,8 +30,6 @@ namespace CloudM.Infrastructure.Services.Cloudinary
             _cloudinary = new CloudinaryDotNet.Cloudinary(account);
             _deleteQueue = deleteQueue;
             _folderName = config["Cloudinary:FolderName"] ?? "CloudM";
-            
-            Console.WriteLine($"[DEBUG] Loaded Cloudinary Account - CloudName: '{account.Cloud}', ApiKey: '{account.ApiKey}'. FolderName: '{_folderName}'");
         }
         public async Task<string?> UploadImageAsync(IFormFile file)
         {

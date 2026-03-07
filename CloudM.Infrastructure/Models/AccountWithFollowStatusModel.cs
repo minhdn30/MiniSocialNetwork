@@ -9,6 +9,7 @@ namespace CloudM.Infrastructure.Models
     public class AccountWithFollowStatusModel : AccountBasicInfoModel
     {
         public bool IsFollowing { get; set; } // CurrentUser follows this account
+        public bool IsFollowRequested { get; set; } // CurrentUser has pending follow request to this account
         public bool IsFollower { get; set; }  // This account follows CurrentUser
     }
 }

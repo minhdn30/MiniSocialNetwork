@@ -2,7 +2,7 @@ namespace CloudM.Application.Services.NotificationServices
 {
     public class NotificationOptions
     {
-        public bool EnableWorker { get; set; } = false;
+        public bool EnableWorker { get; set; } = true;
         public int OutboxPollIntervalMs { get; set; } = 1000;
         public int OutboxBatchSize { get; set; } = 50;
         public int OutboxLockSeconds { get; set; } = 30;

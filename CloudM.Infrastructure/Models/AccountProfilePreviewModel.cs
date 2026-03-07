@@ -14,6 +14,7 @@ namespace CloudM.Infrastructure.Models
         public int FollowerCount { get; set; }
         public int FollowingCount { get; set; }
         public bool IsFollowedByCurrentUser { get; set; } = false;
+        public bool IsFollowRequestPendingByCurrentUser { get; set; } = false;
         public bool IsCurrentUser { get; set; } = false;
         public List<PostMediaProfilePreviewModel>? RecentPosts { get; set; }
     }

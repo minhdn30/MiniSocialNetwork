@@ -41,6 +41,11 @@ namespace CloudM.Infrastructure.Repositories.Notifications
             NotificationTypeEnum type,
             string aggregateKey,
             CancellationToken cancellationToken = default);
+        Task DeleteByRecipientAndAggregateKeysAsync(
+            Guid recipientId,
+            NotificationTypeEnum type,
+            IEnumerable<string> aggregateKeys,
+            CancellationToken cancellationToken = default);
         Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

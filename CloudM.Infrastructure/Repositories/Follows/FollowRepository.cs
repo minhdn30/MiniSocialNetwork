@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace CloudM.Infrastructure.Repositories.Follows
 {
@@ -36,9 +38,38 @@ namespace CloudM.Infrastructure.Repositories.Follows
             return Task.CompletedTask;
         }
 
-        public async Task RemoveFollowAsync(Guid followerId, Guid followedId)
+        public async Task<bool> AddFollowIgnoreExistingAsync(Follow follow, CancellationToken cancellationToken = default)
         {
-            await _context.Follows
+            if (follow == null ||
+                follow.FollowerId == Guid.Empty ||
+                follow.FollowedId == Guid.Empty ||
+                follow.FollowerId == follow.FollowedId)
+            {
+                return false;
+            }
+
+            var followerIdParam = new NpgsqlParameter<Guid>("p_follower_id", follow.FollowerId);
+            var followedIdParam = new NpgsqlParameter<Guid>("p_followed_id", follow.FollowedId);
+            var createdAtParam = new NpgsqlParameter<DateTime>("p_created_at", NpgsqlDbType.TimestampTz)
+            {
+                TypedValue = DateTime.SpecifyKind(
+                    follow.CreatedAt == default ? DateTime.UtcNow : follow.CreatedAt,
+                    DateTimeKind.Utc)
+            };
+
+            var affected = await _context.Database.ExecuteSqlRawAsync(@"
+INSERT INTO ""Follows"" (""FollowerId"", ""FollowedId"", ""CreatedAt"")
+VALUES (@p_follower_id, @p_followed_id, @p_created_at)
+ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
+                new object[] { followerIdParam, followedIdParam, createdAtParam },
+                cancellationToken);
+
+            return affected > 0;
+        }
+
+        public async Task<int> RemoveFollowAsync(Guid followerId, Guid followedId)
+        {
+            return await _context.Follows
                 .Where(f => f.FollowerId == followerId && f.FollowedId == followedId)
                 .ExecuteDeleteAsync();
         }
@@ -114,6 +145,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     f.Follower.AvatarUrl,
                     f.CreatedAt,
                     IsFollowing = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == currentId.Value && fol.FollowedId == f.FollowerId),
+                    IsFollowRequested = currentId.HasValue && _context.FollowRequests.Any(fr => fr.RequesterId == currentId.Value && fr.TargetId == f.FollowerId),
                     IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowerId && fol.FollowedId == currentId.Value)
                 });
 
@@ -150,6 +182,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     AvatarUrl = x.AvatarUrl,
                     FullName = x.FullName,
                     IsFollowing = x.IsFollowing,
+                    IsFollowRequested = x.IsFollowRequested,
                     IsFollower = x.IsFollower
                 })
                 .ToListAsync();
@@ -170,6 +203,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     f.Followed.AvatarUrl,
                     f.CreatedAt,
                     IsFollowing = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == currentId.Value && fol.FollowedId == f.FollowedId),
+                    IsFollowRequested = currentId.HasValue && _context.FollowRequests.Any(fr => fr.RequesterId == currentId.Value && fr.TargetId == f.FollowedId),
                     IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowedId && fol.FollowedId == currentId.Value)
                 });
 
@@ -206,6 +240,7 @@ namespace CloudM.Infrastructure.Repositories.Follows
                     AvatarUrl = x.AvatarUrl,
                     FullName = x.FullName,
                     IsFollowing = x.IsFollowing,
+                    IsFollowRequested = x.IsFollowRequested,
                     IsFollower = x.IsFollower
                 })
                 .ToListAsync();
@@ -235,6 +270,82 @@ namespace CloudM.Infrastructure.Repositories.Follows
                 .CountAsync(f => f.FollowerId == targetId && f.Followed.Status == AccountStatusEnum.Active);
 
             return (followers, following);
+        }
+
+        public async Task<Dictionary<Guid, (int Followers, int Following)>> GetFollowCountsByAccountIdsAsync(IEnumerable<Guid> accountIds, CancellationToken cancellationToken = default)
+        {
+            var safeAccountIds = (accountIds ?? Enumerable.Empty<Guid>())
+                .Where(x => x != Guid.Empty)
+                .Distinct()
+                .ToList();
+            if (safeAccountIds.Count == 0)
+            {
+                return new Dictionary<Guid, (int Followers, int Following)>();
+            }
+
+            var followerCounts = await _context.Follows
+                .Where(f => safeAccountIds.Contains(f.FollowedId) && f.Follower.Status == AccountStatusEnum.Active)
+                .GroupBy(f => f.FollowedId)
+                .Select(g => new
+                {
+                    AccountId = g.Key,
+                    Count = g.Count()
+                })
+                .ToDictionaryAsync(x => x.AccountId, x => x.Count, cancellationToken);
+
+            var followingCounts = await _context.Follows
+                .Where(f => safeAccountIds.Contains(f.FollowerId) && f.Followed.Status == AccountStatusEnum.Active)
+                .GroupBy(f => f.FollowerId)
+                .Select(g => new
+                {
+                    AccountId = g.Key,
+                    Count = g.Count()
+                })
+                .ToDictionaryAsync(x => x.AccountId, x => x.Count, cancellationToken);
+
+            return safeAccountIds.ToDictionary(
+                accountId => accountId,
+                accountId => (
+                    Followers: followerCounts.GetValueOrDefault(accountId, 0),
+                    Following: followingCounts.GetValueOrDefault(accountId, 0)));
+        }
+
+        public async Task<List<InsertedFollowRelation>> AddFollowsIgnoreExistingAsync(IEnumerable<Follow> follows, CancellationToken cancellationToken = default)
+        {
+            var safeFollows = (follows ?? Enumerable.Empty<Follow>())
+                .Where(x => x.FollowerId != Guid.Empty && x.FollowedId != Guid.Empty && x.FollowerId != x.FollowedId)
+                .GroupBy(x => new { x.FollowerId, x.FollowedId })
+                .Select(x => x.OrderBy(item => item.CreatedAt).First())
+                .ToList();
+            if (safeFollows.Count == 0)
+            {
+                return new List<InsertedFollowRelation>();
+            }
+
+            var followerIdsParam = new NpgsqlParameter<Guid[]>("p_follower_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid)
+            {
+                TypedValue = safeFollows.Select(x => x.FollowerId).ToArray()
+            };
+            var followedIdsParam = new NpgsqlParameter<Guid[]>("p_followed_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid)
+            {
+                TypedValue = safeFollows.Select(x => x.FollowedId).ToArray()
+            };
+            var createdAtParam = new NpgsqlParameter<DateTime[]>("p_created_ats", NpgsqlDbType.Array | NpgsqlDbType.TimestampTz)
+            {
+                TypedValue = safeFollows
+                    .Select(x => DateTime.SpecifyKind(x.CreatedAt, DateTimeKind.Utc))
+                    .ToArray()
+            };
+
+            return await _context.Database
+                .SqlQueryRaw<InsertedFollowRelation>(@"
+INSERT INTO ""Follows"" (""FollowerId"", ""FollowedId"", ""CreatedAt"")
+SELECT source.""FollowerId"", source.""FollowedId"", source.""CreatedAt""
+FROM unnest(@p_follower_ids, @p_followed_ids, @p_created_ats) AS source(""FollowerId"", ""FollowedId"", ""CreatedAt"")
+ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING
+RETURNING ""FollowerId"", ""FollowedId"";",
+                    new object[] { followerIdsParam, followedIdsParam, createdAtParam })
+                .ToListAsync(cancellationToken);
         }
 
 

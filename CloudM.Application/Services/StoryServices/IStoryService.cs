@@ -11,6 +11,6 @@ namespace CloudM.Application.Services.StoryServices
         Task<PagedResponse<StoryArchiveItemResponse>> GetArchivedStoriesAsync(Guid currentId, int page, int pageSize);
         Task<PagedResponse<StoryAuthorItemResponse>> GetViewableAuthorsAsync(Guid currentId, int page, int pageSize);
         Task<StoryAuthorActiveResponse> GetActiveStoriesByAuthorAsync(Guid currentId, Guid authorId);
-        Task<StoryResolveResponse?> ResolveStoryAsync(Guid currentId, Guid storyId);
+        Task<StoryResolveResponse?> ResolveStoryAsync(Guid currentId, Guid storyId, int archivePageSize);
     }
 }

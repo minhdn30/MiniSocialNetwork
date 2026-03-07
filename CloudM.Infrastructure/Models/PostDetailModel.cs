@@ -28,5 +28,6 @@ namespace CloudM.Infrastructure.Models
         public int TotalReacts { get; set; } = 0;
         public int TotalComments { get; set; } = 0;
         public bool IsFollowedByCurrentUser { get; set; }
+        public bool IsFollowRequestPendingByCurrentUser { get; set; }
     }
 }

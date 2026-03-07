@@ -60,6 +60,7 @@ namespace CloudM.Infrastructure.Repositories.CommentReacts
                     r.ReactType,
                     r.CreatedAt,
                     IsFollowing = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == currentId.Value && f.FollowedId == r.AccountId),
+                    IsFollowRequested = currentId.HasValue && _context.FollowRequests.Any(fr => fr.RequesterId == currentId.Value && fr.TargetId == r.AccountId),
                     IsFollower = currentId.HasValue && _context.Follows.Any(f => f.FollowerId == r.AccountId && f.FollowedId == currentId.Value)
                 });
 
@@ -80,6 +81,7 @@ namespace CloudM.Infrastructure.Repositories.CommentReacts
                     AvatarUrl = x.AvatarUrl,
                     ReactType = x.ReactType,
                     IsFollowing = x.IsFollowing,
+                    IsFollowRequested = x.IsFollowRequested,
                     IsFollower = x.IsFollower
                 })
                 .ToListAsync();

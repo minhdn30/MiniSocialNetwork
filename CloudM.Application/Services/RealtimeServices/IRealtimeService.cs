@@ -46,7 +46,18 @@ namespace CloudM.Application.Services.RealtimeServices
         // follow notifications
 
         // notify when follow status changes (follow/unfollow)
-        Task NotifyFollowChangedAsync(Guid currentId, Guid targetId, string action, int targetFollowers, int targetFollowing, int myFollowers, int myFollowing);
+        Task NotifyFollowChangedAsync(
+            Guid currentId,
+            Guid targetId,
+            string action,
+            int targetFollowers,
+            int targetFollowing,
+            int myFollowers,
+            int myFollowing,
+            string? currentUserAction = null);
+        Task NotifyCurrentUserFollowChangedAsync(Guid currentId, Guid relatedTargetId, string action, int myFollowers, int myFollowing);
+        Task NotifyFollowStatsChangedAsync(Guid targetId, int targetFollowers, int targetFollowing, string action = "follow_stats_updated");
+        Task NotifyFollowRequestQueueChangedAsync(Guid targetId, string action = "refresh", Guid? requesterId = null);
 
         // account notifications
 
