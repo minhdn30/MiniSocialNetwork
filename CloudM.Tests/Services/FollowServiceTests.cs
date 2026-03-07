@@ -671,6 +671,63 @@ namespace CloudM.Tests.Services
 
         #endregion
 
+        #region RemoveFollowerAsync Tests
+
+        [Fact]
+        public async Task RemoveFollowerAsync_WhenFollowExists_RemovesFollowerAndNotifies()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var followerId = Guid.NewGuid();
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(currentId)).ReturnsAsync(true);
+            _mockFollowRepo.Setup(x => x.RemoveFollowAsync(followerId, currentId)).ReturnsAsync(1);
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(currentId)).ReturnsAsync((8, 5));
+            _mockFollowRepo.Setup(x => x.GetFollowCountsAsync(followerId)).ReturnsAsync((14, 10));
+            _mockRealtimeService.Setup(x => x.NotifyFollowChangedAsync(
+                followerId, currentId, "remove_follower", 8, 5, 14, 10, null)).Returns(Task.CompletedTask);
+
+            SetupTransactionResult<(bool Removed, (int Followers, int Following) CurrentCounts, (int Followers, int Following) FollowerCounts)>();
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+
+            // Act
+            await _followService.RemoveFollowerAsync(currentId, followerId);
+
+            // Assert
+            _mockFollowRepo.Verify(x => x.RemoveFollowAsync(followerId, currentId), Times.Once);
+            _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
+                followerId, currentId, "remove_follower", 8, 5, 14, 10, null), Times.Once);
+        }
+
+        [Fact]
+        public async Task RemoveFollowerAsync_WhenAlreadyRemoved_DoesNotNotify()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var followerId = Guid.NewGuid();
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(currentId)).ReturnsAsync(true);
+            _mockFollowRepo.Setup(x => x.RemoveFollowAsync(followerId, currentId)).ReturnsAsync(0);
+
+            SetupTransactionResult<(bool Removed, (int Followers, int Following) CurrentCounts, (int Followers, int Following) FollowerCounts)>();
+
+            // Act
+            await _followService.RemoveFollowerAsync(currentId, followerId);
+
+            // Assert
+            _mockRealtimeService.Verify(x => x.NotifyFollowChangedAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>()), Times.Never);
+        }
+
+        #endregion
+
         #region GetSentPendingRequestsAsync Tests
 
         [Fact]

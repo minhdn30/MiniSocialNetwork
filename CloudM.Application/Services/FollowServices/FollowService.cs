@@ -622,6 +622,52 @@ namespace CloudM.Application.Services.FollowServices
             await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "remove", requesterId);
         }
 
+        public async Task RemoveFollowerAsync(Guid currentId, Guid followerId)
+        {
+            if (currentId == followerId)
+                throw new BadRequestException("Invalid follower removal.");
+
+            if (!await _accountRepository.IsAccountIdExist(currentId))
+                throw new ForbiddenException("You must reactivate your account to manage followers.");
+
+            var mutation = await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                var removedFollowCount = await _followRepository.RemoveFollowAsync(followerId, currentId);
+                if (removedFollowCount == 0)
+                {
+                    return (
+                        Removed: false,
+                        CurrentCounts: (Followers: 0, Following: 0),
+                        FollowerCounts: (Followers: 0, Following: 0));
+                }
+
+                await _unitOfWork.CommitAsync();
+
+                var currentCounts = await _followRepository.GetFollowCountsAsync(currentId);
+                var followerCounts = await _followRepository.GetFollowCountsAsync(followerId);
+
+                return (
+                    Removed: true,
+                    CurrentCounts: currentCounts,
+                    FollowerCounts: followerCounts);
+            });
+
+            if (!mutation.Removed)
+            {
+                return;
+            }
+
+            await _realtimeService.NotifyFollowChangedAsync(
+                followerId,
+                currentId,
+                "remove_follower",
+                mutation.CurrentCounts.Followers,
+                mutation.CurrentCounts.Following,
+                mutation.FollowerCounts.Followers,
+                mutation.FollowerCounts.Following,
+                null);
+        }
+
         public async Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowersAsync(Guid accountId, Guid? currentId, FollowPagingRequest request)
         {
             if (!await _accountRepository.IsAccountIdExist(accountId))

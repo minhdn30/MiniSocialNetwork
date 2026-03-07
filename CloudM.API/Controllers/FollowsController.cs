@@ -137,6 +137,19 @@ namespace CloudM.API.Controllers
         }
 
         [Authorize]
+        [HttpDelete("followers/{followerId}")]
+        public async Task<IActionResult> RemoveFollower(Guid followerId)
+        {
+            var currentId = User.GetAccountId();
+            if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            if (followerId == Guid.Empty) return BadRequest(new { message = "Follower account is required." });
+            if (followerId == currentId.Value) return BadRequest(new { message = "Invalid follower removal." });
+
+            await _followService.RemoveFollowerAsync(currentId.Value, followerId);
+            return Ok(new { message = "Follower removed." });
+        }
+
+        [Authorize]
         [HttpGet("followers")]
         public async Task<IActionResult> GetFollowers([FromQuery] Guid accountId, [FromQuery] FollowPagingRequest request)
         {
