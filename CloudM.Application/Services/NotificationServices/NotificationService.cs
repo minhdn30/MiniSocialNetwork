@@ -631,7 +631,6 @@ namespace CloudM.Application.Services.NotificationServices
                 }
 
                 if (storyTarget.IsDeleted ||
-                    storyTarget.ExpiresAt <= nowUtc ||
                     storyTarget.OwnerStatus != AccountStatusEnum.Active)
                 {
                     return false;
@@ -640,6 +639,11 @@ namespace CloudM.Application.Services.NotificationServices
                 if (storyTarget.OwnerId == recipientId)
                 {
                     return true;
+                }
+
+                if (storyTarget.ExpiresAt <= nowUtc)
+                {
+                    return false;
                 }
 
                 if (storyTarget.Privacy == StoryPrivacyEnum.Public)

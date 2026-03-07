@@ -91,6 +91,84 @@ namespace CloudM.Tests.Services
         }
 
         [Fact]
+        public async Task GetNotificationsAsync_ExpiredOwnedStoryTarget_ShouldRemainAvailableForOwnerArchive()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var owner = CreateAccount("story-owner");
+            var actor = CreateAccount("actor");
+            var story = new Story
+            {
+                StoryId = Guid.NewGuid(),
+                AccountId = owner.AccountId,
+                ContentType = StoryContentTypeEnum.Image,
+                MediaUrl = "https://cdn/story-archive.jpg",
+                Privacy = StoryPrivacyEnum.Public,
+                CreatedAt = now.AddDays(-2),
+                ExpiresAt = now.AddHours(-1),
+                IsDeleted = false
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = owner.AccountId,
+                Type = NotificationTypeEnum.StoryReact,
+                AggregateKey = NotificationAggregateKeys.StoryReact(story.StoryId),
+                State = NotificationStateEnum.Active,
+                IsRead = false,
+                CreatedAt = now.AddMinutes(-4),
+                LastEventAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Story,
+                TargetId = story.StoryId
+            };
+
+            var contribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.StoryReact,
+                SourceId = actor.AccountId,
+                ActorId = actor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3)
+            };
+
+            await context.Accounts.AddRangeAsync(owner, actor);
+            await context.Stories.AddAsync(story);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(contribution);
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var result = await service.GetNotificationsAsync(
+                owner.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            var item = Assert.Single(result.Items);
+            Assert.Equal((int)NotificationStateEnum.Active, item.State);
+            Assert.True(item.CanOpen);
+            Assert.Equal(story.StoryId, item.TargetId);
+        }
+
+        [Fact]
         public async Task GetNotificationsAsync_WhenLastActorBecomesInactive_ShouldTurnUnavailable()
         {
             await using var context = CreateContext();

@@ -160,7 +160,7 @@ namespace CloudM.API.Controllers
 
         [Authorize]
         [HttpGet("{storyId}/resolve")]
-        public async Task<ActionResult<StoryResolveResponse>> ResolveStory([FromRoute] Guid storyId)
+        public async Task<ActionResult<StoryResolveResponse>> ResolveStory([FromRoute] Guid storyId, [FromQuery] int? pageSize = null)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
@@ -173,7 +173,7 @@ namespace CloudM.API.Controllers
                 return BadRequest(new { message = "StoryId is required." });
             }
 
-            var result = await _storyService.ResolveStoryAsync(currentId.Value, storyId);
+            var result = await _storyService.ResolveStoryAsync(currentId.Value, storyId, pageSize ?? 12);
             if (result == null)
             {
                 return NotFound(new { message = "Story not found or expired." });

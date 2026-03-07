@@ -21,6 +21,7 @@ namespace CloudM.Application.Services.StoryServices
         private const int MaxAuthorsPageSize = 50;
         private const int DefaultArchivePageSize = 20;
         private const int MaxArchivePageSize = 60;
+        private const int DefaultArchiveResolvePageSize = 12;
         private const int DefaultTopViewersCount = 3;
 
         private readonly IStoryRepository _storyRepository;
@@ -251,11 +252,20 @@ namespace CloudM.Application.Services.StoryServices
             };
         }
 
-        public async Task<StoryResolveResponse?> ResolveStoryAsync(Guid currentId, Guid storyId)
+        public async Task<StoryResolveResponse?> ResolveStoryAsync(Guid currentId, Guid storyId, int archivePageSize)
         {
             if (storyId == Guid.Empty)
             {
                 throw new BadRequestException("StoryId is required.");
+            }
+
+            if (archivePageSize <= 0)
+            {
+                archivePageSize = DefaultArchiveResolvePageSize;
+            }
+            if (archivePageSize > MaxArchivePageSize)
+            {
+                archivePageSize = MaxArchivePageSize;
             }
 
             var authorId = await _storyRepository.ResolveAuthorIdByStoryIdAsync(
@@ -263,7 +273,32 @@ namespace CloudM.Application.Services.StoryServices
                 storyId,
                 DateTime.UtcNow);
 
-            if (!authorId.HasValue)
+            if (authorId.HasValue)
+            {
+                return new StoryResolveResponse
+                {
+                    StoryId = storyId,
+                    AuthorId = authorId.Value,
+                    StoryMode = "active"
+                };
+            }
+
+            var story = await _storyRepository.GetStoryByIdAsync(storyId);
+            if (story == null ||
+                story.IsDeleted ||
+                story.AccountId != currentId ||
+                story.ExpiresAt > DateTime.UtcNow)
+            {
+                return null;
+            }
+
+            var archivePage = await _storyRepository.ResolveArchivedPageByOwnerStoryIdAsync(
+                currentId,
+                storyId,
+                DateTime.UtcNow,
+                archivePageSize);
+
+            if (!archivePage.HasValue)
             {
                 return null;
             }
@@ -271,7 +306,10 @@ namespace CloudM.Application.Services.StoryServices
             return new StoryResolveResponse
             {
                 StoryId = storyId,
-                AuthorId = authorId.Value
+                AuthorId = currentId,
+                StoryMode = "archive",
+                ArchivePage = archivePage.Value,
+                ArchivePageSize = archivePageSize
             };
         }
 

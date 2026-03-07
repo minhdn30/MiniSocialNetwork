@@ -31,6 +31,11 @@ namespace CloudM.Infrastructure.Repositories.Stories
             Guid currentId,
             Guid storyId,
             DateTime nowUtc);
+        Task<int?> ResolveArchivedPageByOwnerStoryIdAsync(
+            Guid ownerId,
+            Guid storyId,
+            DateTime nowUtc,
+            int pageSize);
         Task UpdateStoryAsync(Story story);
         Task<bool> HasRecentStoryAsync(Guid accountId, StoryContentTypeEnum contentType, TimeSpan window);
         Task<bool> ExistsAndActiveAsync(Guid storyId);

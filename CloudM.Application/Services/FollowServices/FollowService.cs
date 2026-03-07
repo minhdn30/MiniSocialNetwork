@@ -641,6 +641,37 @@ namespace CloudM.Application.Services.FollowServices
                         FollowerCounts: (Followers: 0, Following: 0));
                 }
 
+                var eventAt = DateTime.UtcNow;
+                await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                {
+                    RecipientId = currentId,
+                    Action = NotificationAggregateActionEnum.Deactivate,
+                    Type = NotificationTypeEnum.Follow,
+                    AggregateKey = NotificationAggregateKeys.Follow(followerId),
+                    SourceType = NotificationSourceTypeEnum.FollowRelation,
+                    SourceId = followerId,
+                    ActorId = followerId,
+                    TargetKind = NotificationTargetKindEnum.Account,
+                    TargetId = followerId,
+                    KeepWhenEmpty = false,
+                    OccurredAt = eventAt
+                });
+
+                await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+                {
+                    RecipientId = currentId,
+                    Action = NotificationAggregateActionEnum.Deactivate,
+                    Type = NotificationTypeEnum.Follow,
+                    AggregateKey = NotificationAggregateKeys.FollowAutoAcceptSummary(currentId),
+                    SourceType = NotificationSourceTypeEnum.FollowRelation,
+                    SourceId = followerId,
+                    ActorId = followerId,
+                    TargetKind = NotificationTargetKindEnum.Account,
+                    TargetId = followerId,
+                    KeepWhenEmpty = false,
+                    OccurredAt = eventAt
+                });
+
                 await _unitOfWork.CommitAsync();
 
                 var currentCounts = await _followRepository.GetFollowCountsAsync(currentId);
