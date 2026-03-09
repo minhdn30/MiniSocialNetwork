@@ -4,11 +4,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace CloudM.Application.DTOs.AccountSettingDTOs
 {
     public class AccountSettingsUpdateRequest
     {
+        private string? _language;
+
         public AccountPrivacyEnum? PhonePrivacy { get; set; }
         public AccountPrivacyEnum? AddressPrivacy { get; set; }
         public PostPrivacyEnum? DefaultPostPrivacy { get; set; }
@@ -19,5 +22,17 @@ namespace CloudM.Application.DTOs.AccountSettingDTOs
         public GroupChatInvitePermissionEnum? GroupChatInvitePermission { get; set; }
         public OnlineStatusVisibilityEnum? OnlineStatusVisibility { get; set; }
         public TagPermissionEnum? TagPermission { get; set; }
+        public string? Language
+        {
+            get => _language;
+            set
+            {
+                HasLanguage = true;
+                _language = value;
+            }
+        }
+
+        [JsonIgnore]
+        public bool HasLanguage { get; private set; }
     }
 }

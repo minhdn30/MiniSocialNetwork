@@ -27,6 +27,8 @@ namespace CloudM.Domain.Entities
         public GroupChatInvitePermissionEnum GroupChatInvitePermission { get; set; } = GroupChatInvitePermissionEnum.Anyone;
         public OnlineStatusVisibilityEnum OnlineStatusVisibility { get; set; } = OnlineStatusVisibilityEnum.ContactsOnly;
         public TagPermissionEnum TagPermission { get; set; } = TagPermissionEnum.Anyone;
+        [MaxLength(10)]
+        public string? Language { get; set; }
 
         public virtual Account Account { get; set; } = null!;
     }

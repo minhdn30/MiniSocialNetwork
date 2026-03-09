@@ -1,5 +1,6 @@
 using AutoMapper;
 using CloudM.Application.DTOs.AccountSettingDTOs;
+using CloudM.Application.Helpers;
 using CloudM.Application.Services.PresenceServices;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
@@ -47,6 +48,7 @@ namespace CloudM.Application.Services.AccountSettingServices
             }
             var response = _mapper.Map<AccountSettingsResponse>(settings);
             response.TagPermission = NormalizeTagPermission(response.TagPermission);
+            response.Language = LanguagePreferenceHelper.Normalize(settings.Language);
             return response;
         }
 
@@ -58,20 +60,19 @@ namespace CloudM.Application.Services.AccountSettingServices
             {
                 // Create if not exists when updating
                 settings = new AccountSettings { AccountId = accountId };
-                _mapper.Map(request, settings);
-                settings.TagPermission = NormalizeTagPermission(settings.TagPermission);
+                ApplyPartialUpdate(settings, request);
                 await _accountSettingRepository.AddAccountSettingsAsync(settings);
             }
             else
             {
-                _mapper.Map(request, settings);
-                settings.TagPermission = NormalizeTagPermission(settings.TagPermission);
+                ApplyPartialUpdate(settings, request);
                 await _accountSettingRepository.UpdateAccountSettingsAsync(settings);
             }
 
             await _unitOfWork.CommitAsync();
             var response = _mapper.Map<AccountSettingsResponse>(settings);
             response.TagPermission = NormalizeTagPermission(response.TagPermission);
+            response.Language = LanguagePreferenceHelper.Normalize(settings.Language);
 
             // Trigger real-time notification
             _ = _realtimeService.NotifyAccountSettingsUpdatedAsync(accountId, response);
@@ -92,6 +93,68 @@ namespace CloudM.Application.Services.AccountSettingServices
             return value == TagPermissionEnum.NoOne
                 ? TagPermissionEnum.NoOne
                 : TagPermissionEnum.Anyone;
+        }
+
+        private static void ApplyPartialUpdate(AccountSettings settings, AccountSettingsUpdateRequest request)
+        {
+            if (request.PhonePrivacy.HasValue)
+            {
+                settings.PhonePrivacy = request.PhonePrivacy.Value;
+            }
+
+            if (request.AddressPrivacy.HasValue)
+            {
+                settings.AddressPrivacy = request.AddressPrivacy.Value;
+            }
+
+            if (request.DefaultPostPrivacy.HasValue)
+            {
+                settings.DefaultPostPrivacy = request.DefaultPostPrivacy.Value;
+            }
+
+            if (request.FollowerPrivacy.HasValue)
+            {
+                settings.FollowerPrivacy = request.FollowerPrivacy.Value;
+            }
+
+            if (request.FollowingPrivacy.HasValue)
+            {
+                settings.FollowingPrivacy = request.FollowingPrivacy.Value;
+            }
+
+            if (request.FollowPrivacy.HasValue)
+            {
+                settings.FollowPrivacy = request.FollowPrivacy.Value;
+            }
+
+            if (request.StoryHighlightPrivacy.HasValue)
+            {
+                settings.StoryHighlightPrivacy = request.StoryHighlightPrivacy.Value;
+            }
+
+            if (request.GroupChatInvitePermission.HasValue)
+            {
+                settings.GroupChatInvitePermission = request.GroupChatInvitePermission.Value;
+            }
+
+            if (request.OnlineStatusVisibility.HasValue)
+            {
+                settings.OnlineStatusVisibility = request.OnlineStatusVisibility.Value;
+            }
+
+            if (request.TagPermission.HasValue)
+            {
+                settings.TagPermission = NormalizeTagPermission(request.TagPermission.Value);
+            }
+            else
+            {
+                settings.TagPermission = NormalizeTagPermission(settings.TagPermission);
+            }
+
+            if (request.HasLanguage)
+            {
+                settings.Language = LanguagePreferenceHelper.Normalize(request.Language);
+            }
         }
     }
 }

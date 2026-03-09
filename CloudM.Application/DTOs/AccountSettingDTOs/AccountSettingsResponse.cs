@@ -20,5 +20,6 @@ namespace CloudM.Application.DTOs.AccountSettingDTOs
         public GroupChatInvitePermissionEnum GroupChatInvitePermission { get; set; }
         public OnlineStatusVisibilityEnum OnlineStatusVisibility { get; set; }
         public TagPermissionEnum TagPermission { get; set; }
+        public string Language { get; set; } = "en";
     }
 }
