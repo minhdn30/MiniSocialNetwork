@@ -77,14 +77,13 @@ namespace CloudM.API.Middleware
                             context.Response.StatusCode = StatusCodes.Status400BadRequest;
                             await context.Response.WriteAsync(JsonSerializer.Serialize(new
                             {
-                                message = "Invalid data for database constraints.",
-                                details = pgEx.MessageText
+                                message = "Invalid data for database constraints."
                             }));
                             break;
                         }
 
                         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-                        await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Internal server error.", details = ex.Message }));
+                        await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Internal server error." }));
                         break;
                 }
             }

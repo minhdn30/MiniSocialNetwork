@@ -533,7 +533,7 @@ namespace CloudM.API.Controllers
 
             var refreshToken = Request.Cookies["refreshToken"];
             if (string.IsNullOrEmpty(refreshToken))
-                return Unauthorized("No refresh token");
+                return Unauthorized(new { message = "Invalid or expired refresh token." });
 
             var result = await _authService.RefreshTokenAsync(refreshToken);
             if (result == null)

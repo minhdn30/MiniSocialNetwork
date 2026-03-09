@@ -644,7 +644,7 @@ namespace CloudM.Application.Services.ConversationServices
         private string? FormatLastMessagePreview(MessageBasicModel? msg)
         {
             if (msg == null) return null;
-            if (msg.IsRecalled) return "Message recalled";
+            if (msg.IsRecalled) return "Message was recalled";
 
             if (msg.MessageType == MessageTypeEnum.System)
                 return msg.Content;
