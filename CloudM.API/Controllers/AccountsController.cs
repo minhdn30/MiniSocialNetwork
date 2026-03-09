@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using CloudM.Application.DTOs.AccountDTOs;
 using CloudM.Application.DTOs.AccountSettingDTOs;
 using CloudM.Application.Helpers.ClaimHelpers;
+using CloudM.Application.Helpers;
 using CloudM.Application.Services.AccountServices;
 using CloudM.Application.Services.AccountSettingServices;
 using CloudM.Domain.Enums;
@@ -137,6 +138,11 @@ namespace CloudM.API.Controllers
 
             if (request.TagPermission.HasValue && !IsValidEnumValue(request.TagPermission.Value))
                 return BadRequest(new { message = "Invalid TagPermissionEnum value." });
+
+            if (request.HasLanguage &&
+                request.Language != null &&
+                !LanguagePreferenceHelper.IsSupported(request.Language))
+                return BadRequest(new { message = "Invalid language value." });
 
             var result = await _accountSettingService.UpdateSettingsAsync(accountId.Value, request);
             return Ok(result);
