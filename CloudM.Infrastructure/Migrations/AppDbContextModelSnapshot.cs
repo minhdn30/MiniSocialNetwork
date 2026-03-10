@@ -612,9 +612,6 @@ namespace CloudM.Infrastructure.Migrations
                     b.Property<int>("EventCount")
                         .HasColumnType("integer");
 
-                    b.Property<bool>("IsRead")
-                        .HasColumnType("boolean");
-
                     b.Property<Guid?>("LastActorId")
                         .HasColumnType("uuid");
 
@@ -655,9 +652,6 @@ namespace CloudM.Infrastructure.Migrations
                     b.HasIndex("RecipientId", "Type", "AggregateKey")
                         .IsUnique()
                         .HasDatabaseName("IX_Notifications_Recipient_Type_Aggregate_Unique");
-
-                    b.HasIndex("RecipientId", "IsRead", "LastEventAt", "NotificationId")
-                        .HasDatabaseName("IX_Notifications_Recipient_IsRead_LastEventAt_NotificationId");
 
                     b.ToTable("Notifications");
                 });
@@ -754,6 +748,28 @@ namespace CloudM.Infrastructure.Migrations
                         .HasDatabaseName("IX_NotificationOutbox_Status_NextRetryAt_OccurredAt");
 
                     b.ToTable("NotificationOutboxes");
+                });
+
+            modelBuilder.Entity("CloudM.Domain.Entities.NotificationReadState", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastFollowRequestsSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastNotificationsSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("AccountId");
+
+                    b.ToTable("NotificationReadStates");
                 });
 
             modelBuilder.Entity("CloudM.Domain.Entities.PinnedMessage", b =>
@@ -1368,6 +1384,17 @@ namespace CloudM.Infrastructure.Migrations
                     b.Navigation("Recipient");
                 });
 
+            modelBuilder.Entity("CloudM.Domain.Entities.NotificationReadState", b =>
+                {
+                    b.HasOne("CloudM.Domain.Entities.Account", "Account")
+                        .WithOne("NotificationReadState")
+                        .HasForeignKey("CloudM.Domain.Entities.NotificationReadState", "AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
             modelBuilder.Entity("CloudM.Domain.Entities.PinnedMessage", b =>
                 {
                     b.HasOne("CloudM.Domain.Entities.Conversation", "Conversation")
@@ -1555,6 +1582,8 @@ namespace CloudM.Infrastructure.Migrations
                     b.Navigation("Followings");
 
                     b.Navigation("Messages");
+
+                    b.Navigation("NotificationReadState");
 
                     b.Navigation("OwnedConversations");
 

@@ -26,12 +26,16 @@ namespace CloudM.Infrastructure.Repositories.Notifications
         Task<List<NotificationContribution>> GetActiveContributionsAsync(Guid notificationId, CancellationToken cancellationToken = default);
         Task<(List<Notification> Items, DateTime? NextCursorLastEventAt, Guid? NextCursorNotificationId)> GetByCursorAsync(
             Guid recipientId,
+            DateTime? lastNotificationsSeenAt,
             bool unreadOnly,
             int limit,
             DateTime? cursorLastEventAt,
             Guid? cursorNotificationId,
             CancellationToken cancellationToken = default);
-        Task<int> GetUnreadCountAsync(Guid recipientId, CancellationToken cancellationToken = default);
+        Task<int> GetUnreadCountAsync(
+            Guid recipientId,
+            DateTime? lastNotificationsSeenAt,
+            CancellationToken cancellationToken = default);
         Task<List<Guid>> GetRecipientsByTargetAsync(
             NotificationTypeEnum type,
             NotificationTargetKindEnum targetKind,

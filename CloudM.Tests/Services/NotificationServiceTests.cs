@@ -38,8 +38,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.StoryReact,
                 AggregateKey = NotificationAggregateKeys.StoryReact(story.StoryId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-4),
                 LastEventAt = now.AddMinutes(-3),
                 UpdatedAt = now.AddMinutes(-3),
@@ -116,8 +115,7 @@ namespace CloudM.Tests.Services
                 RecipientId = owner.AccountId,
                 Type = NotificationTypeEnum.StoryReact,
                 AggregateKey = NotificationAggregateKeys.StoryReact(story.StoryId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-4),
                 LastEventAt = now.AddMinutes(-3),
                 UpdatedAt = now.AddMinutes(-3),
@@ -193,8 +191,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostReact,
                 AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-4),
                 LastEventAt = now.AddMinutes(-3),
                 UpdatedAt = now.AddMinutes(-3),
@@ -276,8 +273,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostReact,
                 AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-4),
                 LastEventAt = now.AddMinutes(-3),
                 UpdatedAt = now.AddMinutes(-3),
@@ -364,8 +360,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.FollowRequest,
                 AggregateKey = NotificationAggregateKeys.FollowRequest(actor.AccountId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-5),
                 LastEventAt = now.AddMinutes(-4),
                 UpdatedAt = now.AddMinutes(-4),
@@ -389,8 +384,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostReact,
                 AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-3),
                 LastEventAt = now.AddMinutes(-2),
                 UpdatedAt = now.AddMinutes(-2),
@@ -440,7 +434,7 @@ namespace CloudM.Tests.Services
         }
 
         [Fact]
-        public async Task GetNotificationsAsync_ShouldReturnActiveFollowRequestCountWithoutMixingItIntoUnread()
+        public async Task GetNotificationsAsync_ShouldReturnPendingFollowRequestCountAndIncludeUnreadFollowRequestsInBadgeCount()
         {
             await using var context = CreateContext();
             var now = DateTime.UtcNow;
@@ -468,8 +462,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostReact,
                 AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-3),
                 LastEventAt = now.AddMinutes(-2),
                 UpdatedAt = now.AddMinutes(-2),
@@ -539,7 +532,594 @@ namespace CloudM.Tests.Services
 
             Assert.Single(listResult.Items);
             Assert.Equal(1, listResult.FollowRequestCount);
-            Assert.Equal(1, unreadCount);
+            Assert.Equal(2, unreadCount);
+        }
+
+        [Fact]
+        public async Task GetUnreadSummaryAsync_ShouldSplitNotificationAndFollowRequestCountsBySeenWatermark()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            var owner = CreateAccount("owner");
+            var requesterA = CreateAccount("requester-a");
+            var requesterB = CreateAccount("requester-b");
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = owner.AccountId,
+                PostCode = "POSTREADSTATE01",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddMinutes(-20)
+            };
+
+            var olderNotification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = $"{NotificationAggregateKeys.PostReact(post.PostId)}-older",
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-7),
+                LastEventAt = now.AddMinutes(-6),
+                UpdatedAt = now.AddMinutes(-6),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var newerNotification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostComment,
+                AggregateKey = $"{NotificationAggregateKeys.PostComment(post.PostId)}-newer",
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-3),
+                LastEventAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, actor, owner, requesterA, requesterB);
+            await context.Posts.AddAsync(post);
+            await context.Notifications.AddRangeAsync(olderNotification, newerNotification);
+            await context.FollowRequests.AddRangeAsync(
+                new FollowRequest
+                {
+                    RequesterId = requesterA.AccountId,
+                    TargetId = recipient.AccountId,
+                    CreatedAt = now.AddMinutes(-5)
+                },
+                new FollowRequest
+                {
+                    RequesterId = requesterB.AccountId,
+                    TargetId = recipient.AccountId,
+                    CreatedAt = now.AddMinutes(-1)
+                });
+            await context.NotificationReadStates.AddAsync(new NotificationReadState
+            {
+                AccountId = recipient.AccountId,
+                LastNotificationsSeenAt = now.AddMinutes(-4),
+                LastFollowRequestsSeenAt = now.AddMinutes(-3),
+                CreatedAt = now.AddMinutes(-4),
+                UpdatedAt = now.AddMinutes(-4)
+            });
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var summary = await service.GetUnreadSummaryAsync(recipient.AccountId);
+            var listResult = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            Assert.Equal(2, summary.PendingFollowRequestCount);
+            Assert.Equal(recipient.AccountId, summary.AccountId);
+            Assert.Equal(1, summary.NotificationUnreadCount);
+            Assert.Equal(1, summary.FollowRequestUnreadCount);
+            Assert.Equal(2, summary.Count);
+            Assert.Equal(now.AddMinutes(-4), summary.LastNotificationsSeenAt);
+            Assert.Equal(now.AddMinutes(-3), summary.LastFollowRequestsSeenAt);
+            Assert.Equal(recipient.AccountId, listResult.AccountId);
+            Assert.Equal(summary.Count, listResult.Count);
+            Assert.Equal(summary.NotificationUnreadCount, listResult.NotificationUnreadCount);
+            Assert.Equal(summary.FollowRequestUnreadCount, listResult.FollowRequestUnreadCount);
+            Assert.Equal(summary.PendingFollowRequestCount, listResult.PendingFollowRequestCount);
+            Assert.Equal(summary.LastNotificationsSeenAt, listResult.LastNotificationsSeenAt);
+            Assert.Equal(summary.LastFollowRequestsSeenAt, listResult.LastFollowRequestsSeenAt);
+            Assert.Equal(2, listResult.FollowRequestCount);
+        }
+
+        [Fact]
+        public async Task GetNotificationsAsync_UnreadFilter_ShouldUseLastNotificationsSeenAt()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            var owner = CreateAccount("owner");
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = owner.AccountId,
+                PostCode = "POSTREADSTATE02",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddMinutes(-10)
+            };
+
+            var olderNotification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = $"{NotificationAggregateKeys.PostReact(post.PostId)}-older-filter",
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-6),
+                LastEventAt = now.AddMinutes(-5),
+                UpdatedAt = now.AddMinutes(-5),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var newerNotification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostComment,
+                AggregateKey = $"{NotificationAggregateKeys.PostComment(post.PostId)}-newer-filter",
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-2),
+                LastEventAt = now.AddMinutes(-1),
+                UpdatedAt = now.AddMinutes(-1),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, actor, owner);
+            await context.Posts.AddAsync(post);
+            await context.Notifications.AddRangeAsync(olderNotification, newerNotification);
+            await context.NotificationReadStates.AddAsync(new NotificationReadState
+            {
+                AccountId = recipient.AccountId,
+                LastNotificationsSeenAt = now.AddMinutes(-3),
+                CreatedAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3)
+            });
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var result = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "unread" });
+
+            var item = Assert.Single(result.Items);
+            Assert.Equal(newerNotification.NotificationId, item.NotificationId);
+        }
+
+        [Fact]
+        public async Task GetUnreadCountAsync_ShouldIgnoreCorrectionTimestampWhenActiveContributionIsOlderThanSeen()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            var owner = CreateAccount("owner");
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = owner.AccountId,
+                PostCode = "POSTCORRECTION01",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddMinutes(-20)
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostComment,
+                AggregateKey = $"{NotificationAggregateKeys.PostComment(post.PostId)}-correction-count",
+                State = NotificationStateEnum.Unavailable,
+                CreatedAt = now.AddMinutes(-10),
+                LastEventAt = now.AddMinutes(-1),
+                UpdatedAt = now.AddMinutes(-1),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var contribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.Comment,
+                SourceId = Guid.NewGuid(),
+                ActorId = actor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-8),
+                UpdatedAt = now.AddMinutes(-8)
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, actor, owner);
+            await context.Posts.AddAsync(post);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(contribution);
+            await context.NotificationReadStates.AddAsync(new NotificationReadState
+            {
+                AccountId = recipient.AccountId,
+                LastNotificationsSeenAt = now.AddMinutes(-3),
+                CreatedAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3)
+            });
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var unreadCount = await service.GetUnreadCountAsync(recipient.AccountId);
+            var unreadList = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "unread" });
+
+            Assert.Equal(0, unreadCount);
+            Assert.Empty(unreadList.Items);
+        }
+
+        [Fact]
+        public async Task GetNotificationsAsync_ShouldUseActiveContributionTimestampForSeenState()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            var owner = CreateAccount("owner");
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = owner.AccountId,
+                PostCode = "POSTSEENSTATE01",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddMinutes(-20)
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-10),
+                LastEventAt = now.AddMinutes(-1),
+                UpdatedAt = now.AddMinutes(-1),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var contribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.PostReact,
+                SourceId = Guid.NewGuid(),
+                ActorId = actor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-8),
+                UpdatedAt = now.AddMinutes(-8)
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, actor, owner);
+            await context.Posts.AddAsync(post);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(contribution);
+            await context.NotificationReadStates.AddAsync(new NotificationReadState
+            {
+                AccountId = recipient.AccountId,
+                LastNotificationsSeenAt = now.AddMinutes(-3),
+                CreatedAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3)
+            });
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var result = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            var item = Assert.Single(result.Items);
+            Assert.True(item.IsSeenByCurrentState);
+            Assert.True(item.TracksUnreadState);
+            Assert.Equal(now.AddMinutes(-8), item.SeenStateTimestamp);
+            Assert.Equal(now.AddMinutes(-1), item.LastEventAt);
+        }
+
+        [Fact]
+        public async Task GetNotificationsAsync_WhenNotificationHasOnlyInactiveContributions_ShouldNotTrackUnreadState()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            var owner = CreateAccount("owner");
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = owner.AccountId,
+                PostCode = "POSTKEEPUNREAD01",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddMinutes(-20)
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
+                State = NotificationStateEnum.Unavailable,
+                CreatedAt = now.AddMinutes(-10),
+                LastEventAt = now.AddMinutes(-1),
+                UpdatedAt = now.AddMinutes(-1),
+                ActorCount = 0,
+                EventCount = 0,
+                LastActorId = null,
+                LastActorSnapshot = null,
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var contribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.PostReact,
+                SourceId = Guid.NewGuid(),
+                ActorId = actor.AccountId,
+                IsActive = false,
+                CreatedAt = now.AddMinutes(-8),
+                UpdatedAt = now.AddMinutes(-1)
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, actor, owner);
+            await context.Posts.AddAsync(post);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(contribution);
+            await context.NotificationReadStates.AddAsync(new NotificationReadState
+            {
+                AccountId = recipient.AccountId,
+                LastNotificationsSeenAt = now.AddMinutes(-3),
+                CreatedAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3)
+            });
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var unreadCount = await service.GetUnreadCountAsync(recipient.AccountId);
+            var unreadList = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "unread" });
+            var allList = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            Assert.Equal(0, unreadCount);
+            Assert.Empty(unreadList.Items);
+
+            var item = Assert.Single(allList.Items);
+            Assert.True(item.IsSeenByCurrentState);
+            Assert.False(item.TracksUnreadState);
+            Assert.Equal(now.AddMinutes(-1), item.SeenStateTimestamp);
+            Assert.Equal(now.AddMinutes(-1), item.LastEventAt);
+        }
+
+        [Fact]
+        public async Task UpdateReadStateAsync_ShouldAdvanceMonotonically()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            await context.Accounts.AddAsync(recipient);
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var initialSummary = await service.UpdateReadStateAsync(
+                recipient.AccountId,
+                new NotificationReadStateRequest
+                {
+                    NotificationsSeenAt = now.AddMinutes(-4),
+                    FollowRequestsSeenAt = now.AddMinutes(-2)
+                });
+
+            var replaySummary = await service.UpdateReadStateAsync(
+                recipient.AccountId,
+                new NotificationReadStateRequest
+                {
+                    NotificationsSeenAt = now.AddMinutes(-6),
+                    FollowRequestsSeenAt = now.AddMinutes(-5)
+                });
+
+            var advancedSummary = await service.UpdateReadStateAsync(
+                recipient.AccountId,
+                new NotificationReadStateRequest
+                {
+                    NotificationsSeenAt = now.AddMinutes(-1)
+                });
+
+            var persistedState = await context.NotificationReadStates
+                .AsNoTracking()
+                .SingleAsync(x => x.AccountId == recipient.AccountId);
+
+            Assert.Equal(now.AddMinutes(-4), initialSummary.LastNotificationsSeenAt);
+            Assert.Equal(now.AddMinutes(-2), initialSummary.LastFollowRequestsSeenAt);
+            Assert.Equal(now.AddMinutes(-4), replaySummary.LastNotificationsSeenAt);
+            Assert.Equal(now.AddMinutes(-2), replaySummary.LastFollowRequestsSeenAt);
+            Assert.Equal(now.AddMinutes(-1), advancedSummary.LastNotificationsSeenAt);
+            Assert.Equal(now.AddMinutes(-2), advancedSummary.LastFollowRequestsSeenAt);
+            Assert.Equal(now.AddMinutes(-1), persistedState.LastNotificationsSeenAt);
+            Assert.Equal(now.AddMinutes(-2), persistedState.LastFollowRequestsSeenAt);
+        }
+
+        [Fact]
+        public async Task UpdateReadStateAsync_ShouldIgnoreFutureTimestamps()
+        {
+            await using var context = CreateContext();
+            var recipient = CreateAccount("recipient");
+            await context.Accounts.AddAsync(recipient);
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var summary = await service.UpdateReadStateAsync(
+                recipient.AccountId,
+                new NotificationReadStateRequest
+                {
+                    NotificationsSeenAt = DateTime.UtcNow.AddDays(3),
+                    FollowRequestsSeenAt = DateTime.UtcNow.AddDays(3)
+                });
+
+            Assert.Equal(recipient.AccountId, summary.AccountId);
+            Assert.Null(summary.LastNotificationsSeenAt);
+            Assert.Null(summary.LastFollowRequestsSeenAt);
+            Assert.Empty(await context.NotificationReadStates.AsNoTracking().ToListAsync());
+        }
+
+        [Fact]
+        public async Task ProjectAsync_ShouldAttachOutboxMetadataToProjectionResult()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            await context.Accounts.AddRangeAsync(recipient, actor);
+            await context.SaveChangesAsync();
+
+            var projector = new NotificationProjector(new NotificationRepository(context), context);
+            var postId = Guid.NewGuid();
+            var outbox = new NotificationOutbox
+            {
+                OutboxId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                EventType = NotificationOutboxEventTypes.AggregateChanged,
+                PayloadJson = JsonSerializer.Serialize(new NotificationAggregateChangedPayload
+                {
+                    Action = NotificationAggregateActionEnum.Upsert,
+                    Type = NotificationTypeEnum.PostReact,
+                    AggregateKey = NotificationAggregateKeys.PostReact(postId),
+                    SourceType = NotificationSourceTypeEnum.PostReact,
+                    SourceId = Guid.NewGuid(),
+                    ActorId = actor.AccountId,
+                    TargetKind = NotificationTargetKindEnum.Post,
+                    TargetId = postId,
+                    KeepWhenEmpty = false,
+                    OccurredAt = now.AddMinutes(-2)
+                }),
+                OccurredAt = now.AddMinutes(-2)
+            };
+
+            var result = await projector.ProjectAsync(outbox);
+
+            Assert.Equal(NotificationProjectionActionEnum.Upsert, result.Action);
+            Assert.Equal(outbox.OutboxId, result.EventId);
+            Assert.Equal(outbox.OccurredAt, result.OccurredAt);
+            Assert.True(result.AffectsUnread);
+            Assert.NotNull(result.NotificationId);
         }
 
         [Fact]
@@ -558,8 +1138,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostReact,
                 AggregateKey = NotificationAggregateKeys.PostReact(Guid.NewGuid()),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-10),
                 LastEventAt = now.AddMinutes(-2),
                 UpdatedAt = now.AddMinutes(-2),
@@ -643,8 +1222,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostTag,
                 AggregateKey = NotificationAggregateKeys.PostTag(postId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-10),
                 LastEventAt = now.AddMinutes(-2),
                 UpdatedAt = now.AddMinutes(-2),
@@ -707,11 +1285,274 @@ namespace CloudM.Tests.Services
             var projectionResult = await projector.ProjectAsync(outbox);
 
             Assert.Equal(NotificationProjectionActionEnum.Upsert, projectionResult.Action);
+            Assert.False(projectionResult.AffectsUnread);
             var reloaded = await context.Notifications
                 .AsNoTracking()
                 .SingleAsync(x => x.NotificationId == notification.NotificationId);
             Assert.Equal(NotificationStateEnum.Unavailable, reloaded.State);
             Assert.Equal(0, reloaded.ActorCount);
+        }
+
+        [Fact]
+        public async Task ProjectAsync_DeactivateWithRemainingActiveContribution_ShouldRecomputeLastEventAt()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+            var postId = Guid.NewGuid();
+
+            var recipient = CreateAccount("recipient");
+            var actorA = CreateAccount("actor-a");
+            var actorB = CreateAccount("actor-b");
+            await context.Accounts.AddRangeAsync(recipient, actorA, actorB);
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostTag,
+                AggregateKey = NotificationAggregateKeys.PostTag(postId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-10),
+                LastEventAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2),
+                ActorCount = 2,
+                EventCount = 2,
+                LastActorId = actorB.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actorB.AccountId,
+                    Username = actorB.Username,
+                    FullName = actorB.FullName,
+                    AvatarUrl = actorB.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId
+            };
+
+            var contributionA = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.PostTag,
+                SourceId = postId,
+                ActorId = actorA.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-6),
+                UpdatedAt = now.AddMinutes(-6)
+            };
+
+            var contributionB = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.PostTag,
+                SourceId = Guid.NewGuid(),
+                ActorId = actorB.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2)
+            };
+
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddRangeAsync(contributionA, contributionB);
+            await context.SaveChangesAsync();
+
+            var payload = new NotificationAggregateChangedPayload
+            {
+                Action = NotificationAggregateActionEnum.Deactivate,
+                Type = NotificationTypeEnum.PostTag,
+                AggregateKey = notification.AggregateKey,
+                SourceType = NotificationSourceTypeEnum.PostTag,
+                SourceId = contributionB.SourceId,
+                ActorId = actorB.AccountId,
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId,
+                KeepWhenEmpty = true,
+                OccurredAt = now
+            };
+
+            var outbox = new NotificationOutbox
+            {
+                OutboxId = Guid.NewGuid(),
+                EventType = NotificationOutboxEventTypes.AggregateChanged,
+                RecipientId = recipient.AccountId,
+                PayloadJson = JsonSerializer.Serialize(payload),
+                OccurredAt = now,
+                Status = NotificationOutboxStatusEnum.Pending,
+                NextRetryAt = now
+            };
+
+            var projector = new NotificationProjector(new NotificationRepository(context), context);
+            var projectionResult = await projector.ProjectAsync(outbox);
+
+            Assert.Equal(NotificationProjectionActionEnum.Upsert, projectionResult.Action);
+            Assert.False(projectionResult.AffectsUnread);
+            var reloaded = await context.Notifications
+                .AsNoTracking()
+                .SingleAsync(x => x.NotificationId == notification.NotificationId);
+            Assert.Equal(now.AddMinutes(-6), reloaded.LastEventAt);
+            Assert.Equal(actorA.AccountId, reloaded.LastActorId);
+            Assert.Equal(1, reloaded.ActorCount);
+            Assert.Equal(1, reloaded.EventCount);
+        }
+
+        [Fact]
+        public async Task ProjectAsync_TargetUnavailable_ShouldPreserveLastEventAt()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+            var postId = Guid.NewGuid();
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            await context.Accounts.AddRangeAsync(recipient, actor);
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = NotificationAggregateKeys.PostReact(postId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-10),
+                LastEventAt = now.AddMinutes(-4),
+                UpdatedAt = now.AddMinutes(-4),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId
+            };
+
+            await context.Notifications.AddAsync(notification);
+            await context.SaveChangesAsync();
+
+            var payload = new NotificationTargetUnavailablePayload
+            {
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = notification.AggregateKey,
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId,
+                OccurredAt = now
+            };
+
+            var outbox = new NotificationOutbox
+            {
+                OutboxId = Guid.NewGuid(),
+                EventType = NotificationOutboxEventTypes.TargetUnavailable,
+                RecipientId = recipient.AccountId,
+                PayloadJson = JsonSerializer.Serialize(payload),
+                OccurredAt = now,
+                Status = NotificationOutboxStatusEnum.Pending,
+                NextRetryAt = now
+            };
+
+            var projector = new NotificationProjector(new NotificationRepository(context), context);
+            var projectionResult = await projector.ProjectAsync(outbox);
+
+            Assert.Equal(NotificationProjectionActionEnum.Upsert, projectionResult.Action);
+            Assert.False(projectionResult.AffectsUnread);
+            var reloaded = await context.Notifications
+                .AsNoTracking()
+                .SingleAsync(x => x.NotificationId == notification.NotificationId);
+            Assert.Equal(now.AddMinutes(-4), reloaded.LastEventAt);
+            Assert.Equal(NotificationStateEnum.Unavailable, reloaded.State);
+        }
+
+        [Fact]
+        public async Task ProjectAsync_OutOfOrderUpsert_ShouldNotAffectUnread()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+            var postId = Guid.NewGuid();
+
+            var recipient = CreateAccount("recipient");
+            var actorA = CreateAccount("actor-a");
+            var actorB = CreateAccount("actor-b");
+            await context.Accounts.AddRangeAsync(recipient, actorA, actorB);
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = NotificationAggregateKeys.PostReact(postId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-10),
+                LastEventAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actorA.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actorA.AccountId,
+                    Username = actorA.Username,
+                    FullName = actorA.FullName,
+                    AvatarUrl = actorA.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId
+            };
+
+            var existingContribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.PostReact,
+                SourceId = Guid.NewGuid(),
+                ActorId = actorA.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2)
+            };
+
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(existingContribution);
+            await context.SaveChangesAsync();
+
+            var payload = new NotificationAggregateChangedPayload
+            {
+                Action = NotificationAggregateActionEnum.Upsert,
+                Type = NotificationTypeEnum.PostReact,
+                AggregateKey = notification.AggregateKey,
+                SourceType = NotificationSourceTypeEnum.PostReact,
+                SourceId = Guid.NewGuid(),
+                ActorId = actorB.AccountId,
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId,
+                KeepWhenEmpty = false,
+                OccurredAt = now.AddMinutes(-6)
+            };
+
+            var outbox = new NotificationOutbox
+            {
+                OutboxId = Guid.NewGuid(),
+                EventType = NotificationOutboxEventTypes.AggregateChanged,
+                RecipientId = recipient.AccountId,
+                PayloadJson = JsonSerializer.Serialize(payload),
+                OccurredAt = payload.OccurredAt,
+                Status = NotificationOutboxStatusEnum.Pending,
+                NextRetryAt = payload.OccurredAt
+            };
+
+            var projector = new NotificationProjector(new NotificationRepository(context), context);
+            var projectionResult = await projector.ProjectAsync(outbox);
+
+            Assert.Equal(NotificationProjectionActionEnum.Upsert, projectionResult.Action);
+            Assert.False(projectionResult.AffectsUnread);
+
+            var reloaded = await context.Notifications
+                .AsNoTracking()
+                .SingleAsync(x => x.NotificationId == notification.NotificationId);
+            Assert.Equal(now.AddMinutes(-2), reloaded.LastEventAt);
         }
 
         [Fact]
@@ -731,8 +1572,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostReact,
                 AggregateKey = NotificationAggregateKeys.PostReact(postId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-10),
                 LastEventAt = now.AddMinutes(-2),
                 UpdatedAt = now.AddMinutes(-2),
@@ -796,8 +1636,7 @@ namespace CloudM.Tests.Services
                     RecipientId = recipientA.AccountId,
                     Type = NotificationTypeEnum.PostReact,
                     AggregateKey = NotificationAggregateKeys.PostReact(postId),
-                    State = NotificationStateEnum.Active,
-                    IsRead = false,
+                    State = NotificationStateEnum.Active,
                     CreatedAt = now.AddMinutes(-5),
                     LastEventAt = now.AddMinutes(-3),
                     UpdatedAt = now.AddMinutes(-3),
@@ -820,8 +1659,7 @@ namespace CloudM.Tests.Services
                     RecipientId = recipientB.AccountId,
                     Type = NotificationTypeEnum.PostReact,
                     AggregateKey = NotificationAggregateKeys.PostReact(postId),
-                    State = NotificationStateEnum.Active,
-                    IsRead = false,
+                    State = NotificationStateEnum.Active,
                     CreatedAt = now.AddMinutes(-4),
                     LastEventAt = now.AddMinutes(-2),
                     UpdatedAt = now.AddMinutes(-2),
@@ -899,8 +1737,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.PostReact,
                 AggregateKey = NotificationAggregateKeys.PostReact(post.PostId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-10),
                 LastEventAt = now.AddMinutes(-2),
                 UpdatedAt = now.AddMinutes(-2),
@@ -965,8 +1802,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.Follow,
                 AggregateKey = NotificationAggregateKeys.FollowAutoAcceptSummary(recipient.AccountId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-10),
                 LastEventAt = now.AddMinutes(-1),
                 UpdatedAt = now.AddMinutes(-1),
@@ -1044,8 +1880,7 @@ namespace CloudM.Tests.Services
                 RecipientId = recipient.AccountId,
                 Type = NotificationTypeEnum.Follow,
                 AggregateKey = NotificationAggregateKeys.FollowAutoAcceptSummary(recipient.AccountId),
-                State = NotificationStateEnum.Active,
-                IsRead = false,
+                State = NotificationStateEnum.Active,
                 CreatedAt = now.AddMinutes(-10),
                 LastEventAt = now.AddMinutes(-2),
                 UpdatedAt = now.AddMinutes(-2),

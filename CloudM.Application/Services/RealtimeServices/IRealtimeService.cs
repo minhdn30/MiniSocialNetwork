@@ -98,9 +98,9 @@ namespace CloudM.Application.Services.RealtimeServices
         Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason);
 
         // notify a user that notifications panel data changed (upsert)
-        Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId);
+        Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId, Guid eventId, DateTime occurredAt, bool affectsUnread);
 
         // notify a user that a notification item was removed
-        Task NotifyNotificationRemovedAsync(Guid accountId, Guid notificationId);
+        Task NotifyNotificationRemovedAsync(Guid accountId, Guid notificationId, Guid eventId, DateTime occurredAt);
     }
 }

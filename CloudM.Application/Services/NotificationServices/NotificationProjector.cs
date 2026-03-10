@@ -27,10 +27,11 @@ namespace CloudM.Application.Services.NotificationServices
                 var payload = DeserializePayload<NotificationAggregateChangedPayload>(outbox.PayloadJson);
                 if (payload == null)
                 {
-                    return None(outbox.RecipientId);
+                    return AttachDispatchMetadata(None(outbox.RecipientId), outbox);
                 }
 
-                return await ProjectAggregateChangedAsync(outbox.RecipientId, payload, cancellationToken);
+                var result = await ProjectAggregateChangedAsync(outbox.RecipientId, payload, cancellationToken);
+                return AttachDispatchMetadata(result, outbox);
             }
 
             if (string.Equals(outbox.EventType, NotificationOutboxEventTypes.TargetUnavailable, StringComparison.OrdinalIgnoreCase))
@@ -38,10 +39,11 @@ namespace CloudM.Application.Services.NotificationServices
                 var payload = DeserializePayload<NotificationTargetUnavailablePayload>(outbox.PayloadJson);
                 if (payload == null)
                 {
-                    return None(outbox.RecipientId);
+                    return AttachDispatchMetadata(None(outbox.RecipientId), outbox);
                 }
 
-                return await ProjectTargetUnavailableAsync(outbox.RecipientId, payload, cancellationToken);
+                var result = await ProjectTargetUnavailableAsync(outbox.RecipientId, payload, cancellationToken);
+                return AttachDispatchMetadata(result, outbox);
             }
 
             if (string.Equals(outbox.EventType, NotificationOutboxEventTypes.TargetUnavailableBroadcast, StringComparison.OrdinalIgnoreCase))
@@ -49,13 +51,14 @@ namespace CloudM.Application.Services.NotificationServices
                 var payload = DeserializePayload<NotificationTargetUnavailablePayload>(outbox.PayloadJson);
                 if (payload == null)
                 {
-                    return None(outbox.RecipientId);
+                    return AttachDispatchMetadata(None(outbox.RecipientId), outbox);
                 }
 
-                return await ProjectTargetUnavailableBroadcastAsync(payload, cancellationToken);
+                var result = await ProjectTargetUnavailableBroadcastAsync(payload, cancellationToken);
+                return AttachDispatchMetadata(result, outbox);
             }
 
-            return None(outbox.RecipientId);
+            return AttachDispatchMetadata(None(outbox.RecipientId), outbox);
         }
 
         private async Task<NotificationProjectionResult> ProjectAggregateChangedAsync(
@@ -75,6 +78,7 @@ namespace CloudM.Application.Services.NotificationServices
                 payload.AggregateKey,
                 includeContributions: true,
                 cancellationToken: cancellationToken);
+            var previousSeenStateTimestamp = ResolveProjectionSeenStateTimestamp(notification);
 
             if (payload.Action == NotificationAggregateActionEnum.Upsert && (!payload.ActorId.HasValue || payload.ActorId.Value == Guid.Empty))
             {
@@ -99,8 +103,7 @@ namespace CloudM.Application.Services.NotificationServices
                     CreatedAt = payload.OccurredAt,
                     LastEventAt = payload.OccurredAt,
                     UpdatedAt = DateTime.UtcNow,
-                    State = NotificationStateEnum.Active,
-                    IsRead = false
+                    State = NotificationStateEnum.Active
                 };
 
                 await _notificationRepository.AddAsync(notification, cancellationToken);
@@ -109,9 +112,12 @@ namespace CloudM.Application.Services.NotificationServices
             {
                 notification.TargetKind = payload.TargetKind;
                 notification.TargetId = payload.TargetId;
-                notification.LastEventAt = notification.LastEventAt < payload.OccurredAt
-                    ? payload.OccurredAt
-                    : notification.LastEventAt;
+                if (payload.Action == NotificationAggregateActionEnum.Upsert)
+                {
+                    notification.LastEventAt = notification.LastEventAt < payload.OccurredAt
+                        ? payload.OccurredAt
+                        : notification.LastEventAt;
+                }
                 notification.UpdatedAt = DateTime.UtcNow;
             }
 
@@ -143,7 +149,6 @@ namespace CloudM.Application.Services.NotificationServices
                     contribution.UpdatedAt = payload.OccurredAt;
                 }
 
-                notification.IsRead = false;
             }
             else
             {
@@ -184,7 +189,7 @@ namespace CloudM.Application.Services.NotificationServices
                     recomputedNotification.LastActorSnapshot = null;
                     recomputedNotification.UpdatedAt = DateTime.UtcNow;
                     await _notificationRepository.SaveChangesAsync(cancellationToken);
-                    return Upsert(recipientId, recomputedNotification.NotificationId);
+                    return Upsert(recipientId, recomputedNotification.NotificationId, false);
                 }
 
                 var removedId = recomputedNotification.NotificationId;
@@ -204,9 +209,15 @@ namespace CloudM.Application.Services.NotificationServices
                 recomputedNotification.EventCount = activeContributions.Count;
                 recomputedNotification.LastActorId = null;
                 recomputedNotification.LastActorSnapshot = null;
+                recomputedNotification.LastEventAt = activeContributions[0].UpdatedAt;
                 recomputedNotification.UpdatedAt = DateTime.UtcNow;
                 await _notificationRepository.SaveChangesAsync(cancellationToken);
-                return Upsert(recipientId, recomputedNotification.NotificationId);
+                var nextSeenStateTimestamp = ResolveProjectionSeenStateTimestamp(recomputedNotification, activeContributions);
+                var affectsUnread = ShouldAffectUnread(
+                    payload.Action,
+                    previousSeenStateTimestamp,
+                    nextSeenStateTimestamp);
+                return Upsert(recipientId, recomputedNotification.NotificationId, affectsUnread);
             }
 
             var latestContribution = activeActorContributions[0];
@@ -223,6 +234,7 @@ namespace CloudM.Application.Services.NotificationServices
                 FullName = latestContribution.Actor.FullName,
                 AvatarUrl = latestContribution.Actor.AvatarUrl
             });
+            recomputedNotification.LastEventAt = latestContribution.UpdatedAt;
             recomputedNotification.State = await IsTargetAvailableAsync(
                     recomputedNotification.RecipientId,
                     recomputedNotification.TargetKind,
@@ -233,7 +245,12 @@ namespace CloudM.Application.Services.NotificationServices
             recomputedNotification.UpdatedAt = DateTime.UtcNow;
 
             await _notificationRepository.SaveChangesAsync(cancellationToken);
-            return Upsert(recipientId, recomputedNotification.NotificationId);
+            var recomputedSeenStateTimestamp = ResolveProjectionSeenStateTimestamp(recomputedNotification, activeContributions);
+            var upsertAffectsUnread = ShouldAffectUnread(
+                payload.Action,
+                previousSeenStateTimestamp,
+                recomputedSeenStateTimestamp);
+            return Upsert(recipientId, recomputedNotification.NotificationId, upsertAffectsUnread);
         }
 
         private async Task<NotificationProjectionResult> ProjectTargetUnavailableAsync(
@@ -267,14 +284,11 @@ namespace CloudM.Application.Services.NotificationServices
             foreach (var notification in notifications)
             {
                 notification.State = NotificationStateEnum.Unavailable;
-                notification.LastEventAt = notification.LastEventAt < payload.OccurredAt
-                    ? payload.OccurredAt
-                    : notification.LastEventAt;
                 notification.UpdatedAt = DateTime.UtcNow;
             }
 
             await _notificationRepository.SaveChangesAsync(cancellationToken);
-            return Upsert(recipientId, null);
+            return Upsert(recipientId, null, false);
         }
 
         private async Task<NotificationProjectionResult> ProjectTargetUnavailableBroadcastAsync(
@@ -471,13 +485,49 @@ namespace CloudM.Application.Services.NotificationServices
             };
         }
 
-        private static NotificationProjectionResult Upsert(Guid recipientId, Guid? notificationId)
+        private static DateTime? ResolveProjectionSeenStateTimestamp(
+            Notification? notification,
+            IEnumerable<NotificationContribution>? activeContributions = null)
+        {
+            if (notification == null)
+            {
+                return null;
+            }
+
+            var resolvedActiveContributions = activeContributions?.ToList()
+                ?? notification.Contributions
+                    .Where(x => x.IsActive)
+                    .OrderByDescending(x => x.UpdatedAt)
+                    .ToList();
+            if (resolvedActiveContributions.Count > 0)
+            {
+                return resolvedActiveContributions[0].UpdatedAt;
+            }
+
+            return notification.Contributions.Count == 0
+                ? notification.LastEventAt
+                : null;
+        }
+
+        private static bool ShouldAffectUnread(
+            NotificationAggregateActionEnum action,
+            DateTime? previousSeenStateTimestamp,
+            DateTime? nextSeenStateTimestamp)
+        {
+            return action == NotificationAggregateActionEnum.Upsert &&
+                   nextSeenStateTimestamp.HasValue &&
+                   (!previousSeenStateTimestamp.HasValue ||
+                    nextSeenStateTimestamp.Value > previousSeenStateTimestamp.Value);
+        }
+
+        private static NotificationProjectionResult Upsert(Guid recipientId, Guid? notificationId, bool affectsUnread = false)
         {
             return new NotificationProjectionResult
             {
                 Action = NotificationProjectionActionEnum.Upsert,
                 RecipientId = recipientId,
-                NotificationId = notificationId
+                NotificationId = notificationId,
+                AffectsUnread = affectsUnread
             };
         }
 
@@ -489,6 +539,13 @@ namespace CloudM.Application.Services.NotificationServices
                 RecipientId = recipientId,
                 NotificationId = notificationId
             };
+        }
+
+        private static NotificationProjectionResult AttachDispatchMetadata(NotificationProjectionResult result, NotificationOutbox outbox)
+        {
+            result.EventId = outbox.OutboxId;
+            result.OccurredAt = outbox.OccurredAt;
+            return result;
         }
     }
 }

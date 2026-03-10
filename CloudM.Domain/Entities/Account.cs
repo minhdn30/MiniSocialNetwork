@@ -66,6 +66,7 @@ namespace CloudM.Domain.Entities
         public virtual ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();
         public virtual ICollection<Conversation> OwnedConversations { get; set; } = new List<Conversation>();
         public virtual AccountSettings Settings { get; set; } = null!;
+        public virtual NotificationReadState? NotificationReadState { get; set; }
 
     }
 }

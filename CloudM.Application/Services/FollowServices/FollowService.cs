@@ -396,12 +396,14 @@ namespace CloudM.Application.Services.FollowServices
                     safeRequest.CursorCreatedAt,
                     safeRequest.CursorRequesterId,
                     cancellationToken);
-            var totalCount = await _followRequestRepository.GetPendingCountByTargetAsync(
+            var unreadSummary = await _notificationService.GetUnreadSummaryAsync(
                 currentId,
                 cancellationToken);
+            var totalCount = unreadSummary.PendingFollowRequestCount;
 
             return new FollowRequestCursorResponse
             {
+                AccountId = currentId,
                 Items = items
                     .Select(x => new FollowRequestItemResponse
                     {
@@ -412,7 +414,13 @@ namespace CloudM.Application.Services.FollowServices
                         CreatedAt = x.CreatedAt
                     })
                     .ToList(),
+                Count = unreadSummary.Count,
+                NotificationUnreadCount = unreadSummary.NotificationUnreadCount,
+                FollowRequestUnreadCount = unreadSummary.FollowRequestUnreadCount,
+                PendingFollowRequestCount = unreadSummary.PendingFollowRequestCount,
                 TotalCount = totalCount,
+                LastNotificationsSeenAt = unreadSummary.LastNotificationsSeenAt,
+                LastFollowRequestsSeenAt = unreadSummary.LastFollowRequestsSeenAt,
                 NextCursor = nextCursorCreatedAt.HasValue && nextCursorRequesterId.HasValue
                     ? new FollowRequestNextCursorResponse
                     {

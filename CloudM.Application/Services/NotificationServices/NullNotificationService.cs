@@ -40,9 +40,24 @@ namespace CloudM.Application.Services.NotificationServices
             return Task.FromResult(new NotificationCursorResponse());
         }
 
+        public Task<NotificationUnreadSummaryResponse> GetUnreadSummaryAsync(
+            Guid recipientId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new NotificationUnreadSummaryResponse());
+        }
+
         public Task<int> GetUnreadCountAsync(Guid recipientId, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(0);
+        }
+
+        public Task<NotificationUnreadSummaryResponse> UpdateReadStateAsync(
+            Guid recipientId,
+            NotificationReadStateRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new NotificationUnreadSummaryResponse());
         }
     }
 }

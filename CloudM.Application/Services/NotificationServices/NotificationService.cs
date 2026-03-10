@@ -146,27 +146,40 @@ namespace CloudM.Application.Services.NotificationServices
             var filter = (safeRequest.Filter ?? "all").Trim().ToLowerInvariant();
             var unreadOnly = filter == "unread";
             var limit = safeRequest.Limit <= 0 ? 20 : Math.Min(safeRequest.Limit, 50);
+            var readState = await GetReadStateSnapshotAsync(recipientId, cancellationToken);
 
             var (items, nextCursorLastEventAt, nextCursorNotificationId) = await _notificationRepository.GetByCursorAsync(
                 recipientId,
+                readState.LastNotificationsSeenAt,
                 unreadOnly,
                 limit,
                 safeRequest.CursorLastEventAt,
                 safeRequest.CursorNotificationId,
                 cancellationToken);
 
-            var responseItems = await BuildNotificationItemsAsync(recipientId, items, cancellationToken);
-            var followRequestCount = await _context.FollowRequests
-                .AsNoTracking()
-                .Where(x =>
-                    x.TargetId == recipientId &&
-                    x.Requester.Status == AccountStatusEnum.Active)
-                .CountAsync(cancellationToken);
+            var responseItems = await BuildNotificationItemsAsync(
+                recipientId,
+                items,
+                readState.LastNotificationsSeenAt,
+                cancellationToken);
+            var followRequestCount = await GetPendingFollowRequestCountAsync(recipientId, cancellationToken);
+            var unreadSummary = await BuildUnreadSummaryAsync(
+                recipientId,
+                readState,
+                followRequestCount,
+                cancellationToken);
 
             return new NotificationCursorResponse
             {
+                AccountId = recipientId,
                 Items = responseItems,
+                Count = unreadSummary.Count,
+                NotificationUnreadCount = unreadSummary.NotificationUnreadCount,
+                FollowRequestUnreadCount = unreadSummary.FollowRequestUnreadCount,
+                PendingFollowRequestCount = unreadSummary.PendingFollowRequestCount,
                 FollowRequestCount = followRequestCount,
+                LastNotificationsSeenAt = readState.LastNotificationsSeenAt,
+                LastFollowRequestsSeenAt = readState.LastFollowRequestsSeenAt,
                 NextCursor = nextCursorLastEventAt.HasValue && nextCursorNotificationId.HasValue
                     ? new NotificationNextCursorResponse
                     {
@@ -177,14 +190,228 @@ namespace CloudM.Application.Services.NotificationServices
             };
         }
 
+        public Task<NotificationUnreadSummaryResponse> GetUnreadSummaryAsync(
+            Guid recipientId,
+            CancellationToken cancellationToken = default)
+        {
+            return BuildUnreadSummaryAsync(recipientId, cancellationToken);
+        }
+
         public Task<int> GetUnreadCountAsync(Guid recipientId, CancellationToken cancellationToken = default)
         {
-            return _notificationRepository.GetUnreadCountAsync(recipientId, cancellationToken);
+            return GetUnreadCountCoreAsync(recipientId, cancellationToken);
+        }
+
+        public async Task<NotificationUnreadSummaryResponse> UpdateReadStateAsync(
+            Guid recipientId,
+            NotificationReadStateRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var safeRequest = request ?? new NotificationReadStateRequest();
+            var nowUtc = DateTime.UtcNow;
+            var notificationsSeenAt = NormalizeSeenTimestamp(safeRequest.NotificationsSeenAt, nowUtc);
+            var followRequestsSeenAt = NormalizeSeenTimestamp(safeRequest.FollowRequestsSeenAt, nowUtc);
+
+            if (notificationsSeenAt.HasValue || followRequestsSeenAt.HasValue)
+            {
+                await UpsertReadStateAsync(
+                    recipientId,
+                    notificationsSeenAt,
+                    followRequestsSeenAt,
+                    cancellationToken);
+            }
+
+            return await BuildUnreadSummaryAsync(recipientId, cancellationToken);
+        }
+
+        private async Task<int> GetUnreadCountCoreAsync(Guid recipientId, CancellationToken cancellationToken)
+        {
+            var summary = await BuildUnreadSummaryAsync(recipientId, cancellationToken);
+            return summary.Count;
+        }
+
+        private async Task<NotificationUnreadSummaryResponse> BuildUnreadSummaryAsync(
+            Guid recipientId,
+            CancellationToken cancellationToken)
+        {
+            return await BuildUnreadSummaryAsync(recipientId, null, null, cancellationToken);
+        }
+
+        private async Task<NotificationUnreadSummaryResponse> BuildUnreadSummaryAsync(
+            Guid recipientId,
+            NotificationReadStateSnapshot? readState,
+            int? pendingFollowRequestCount,
+            CancellationToken cancellationToken)
+        {
+            var effectiveReadState = readState ?? await GetReadStateSnapshotAsync(recipientId, cancellationToken);
+            var notificationUnreadCount = await _notificationRepository.GetUnreadCountAsync(
+                recipientId,
+                effectiveReadState.LastNotificationsSeenAt,
+                cancellationToken);
+            var followRequestUnreadCount = await GetUnreadFollowRequestCountAsync(
+                recipientId,
+                effectiveReadState.LastFollowRequestsSeenAt,
+                cancellationToken);
+            var effectivePendingFollowRequestCount = pendingFollowRequestCount ??
+                await GetPendingFollowRequestCountAsync(recipientId, cancellationToken);
+
+            return new NotificationUnreadSummaryResponse
+            {
+                AccountId = recipientId,
+                Count = notificationUnreadCount + followRequestUnreadCount,
+                NotificationUnreadCount = notificationUnreadCount,
+                FollowRequestUnreadCount = followRequestUnreadCount,
+                PendingFollowRequestCount = effectivePendingFollowRequestCount,
+                LastNotificationsSeenAt = effectiveReadState.LastNotificationsSeenAt,
+                LastFollowRequestsSeenAt = effectiveReadState.LastFollowRequestsSeenAt
+            };
+        }
+
+        private async Task<NotificationReadStateSnapshot> GetReadStateSnapshotAsync(
+            Guid recipientId,
+            CancellationToken cancellationToken)
+        {
+            var state = await _context.NotificationReadStates
+                .AsNoTracking()
+                .Where(x => x.AccountId == recipientId)
+                .Select(x => new NotificationReadStateSnapshot
+                {
+                    LastNotificationsSeenAt = x.LastNotificationsSeenAt,
+                    LastFollowRequestsSeenAt = x.LastFollowRequestsSeenAt
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+
+            return state ?? new NotificationReadStateSnapshot();
+        }
+
+        private async Task<int> GetUnreadFollowRequestCountAsync(
+            Guid recipientId,
+            DateTime? lastFollowRequestsSeenAt,
+            CancellationToken cancellationToken)
+        {
+            var query = _context.FollowRequests
+                .AsNoTracking()
+                .Where(x =>
+                    x.TargetId == recipientId &&
+                    x.Requester.Status == AccountStatusEnum.Active);
+
+            if (lastFollowRequestsSeenAt.HasValue)
+            {
+                query = query.Where(x => x.CreatedAt > lastFollowRequestsSeenAt.Value);
+            }
+
+            return await query.CountAsync(cancellationToken);
+        }
+
+        private Task<int> GetPendingFollowRequestCountAsync(
+            Guid recipientId,
+            CancellationToken cancellationToken)
+        {
+            return _context.FollowRequests
+                .AsNoTracking()
+                .Where(x =>
+                    x.TargetId == recipientId &&
+                    x.Requester.Status == AccountStatusEnum.Active)
+                .CountAsync(cancellationToken);
+        }
+
+        private async Task UpsertReadStateAsync(
+            Guid recipientId,
+            DateTime? notificationsSeenAt,
+            DateTime? followRequestsSeenAt,
+            CancellationToken cancellationToken)
+        {
+            if (_context.Database.IsRelational())
+            {
+                var nowUtc = DateTime.UtcNow;
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO ""NotificationReadStates"" (
+    ""AccountId"",
+    ""LastNotificationsSeenAt"",
+    ""LastFollowRequestsSeenAt"",
+    ""CreatedAt"",
+    ""UpdatedAt"")
+VALUES (
+    {recipientId},
+    {notificationsSeenAt},
+    {followRequestsSeenAt},
+    {nowUtc},
+    {nowUtc})
+ON CONFLICT (""AccountId"") DO UPDATE
+SET
+    ""LastNotificationsSeenAt"" = CASE
+        WHEN EXCLUDED.""LastNotificationsSeenAt"" IS NULL THEN ""NotificationReadStates"".""LastNotificationsSeenAt""
+        WHEN ""NotificationReadStates"".""LastNotificationsSeenAt"" IS NULL OR ""NotificationReadStates"".""LastNotificationsSeenAt"" < EXCLUDED.""LastNotificationsSeenAt"" THEN EXCLUDED.""LastNotificationsSeenAt""
+        ELSE ""NotificationReadStates"".""LastNotificationsSeenAt""
+    END,
+    ""LastFollowRequestsSeenAt"" = CASE
+        WHEN EXCLUDED.""LastFollowRequestsSeenAt"" IS NULL THEN ""NotificationReadStates"".""LastFollowRequestsSeenAt""
+        WHEN ""NotificationReadStates"".""LastFollowRequestsSeenAt"" IS NULL OR ""NotificationReadStates"".""LastFollowRequestsSeenAt"" < EXCLUDED.""LastFollowRequestsSeenAt"" THEN EXCLUDED.""LastFollowRequestsSeenAt""
+        ELSE ""NotificationReadStates"".""LastFollowRequestsSeenAt""
+    END,
+    ""UpdatedAt"" = CASE
+        WHEN (
+            EXCLUDED.""LastNotificationsSeenAt"" IS NOT NULL AND
+            (""NotificationReadStates"".""LastNotificationsSeenAt"" IS NULL OR ""NotificationReadStates"".""LastNotificationsSeenAt"" < EXCLUDED.""LastNotificationsSeenAt"")
+        ) OR (
+            EXCLUDED.""LastFollowRequestsSeenAt"" IS NOT NULL AND
+            (""NotificationReadStates"".""LastFollowRequestsSeenAt"" IS NULL OR ""NotificationReadStates"".""LastFollowRequestsSeenAt"" < EXCLUDED.""LastFollowRequestsSeenAt"")
+        ) THEN {nowUtc}
+        ELSE ""NotificationReadStates"".""UpdatedAt""
+    END;", cancellationToken);
+                return;
+            }
+
+            var state = await _context.NotificationReadStates
+                .SingleOrDefaultAsync(x => x.AccountId == recipientId, cancellationToken);
+            var now = DateTime.UtcNow;
+            var hasChanges = false;
+
+            if (state == null)
+            {
+                state = new NotificationReadState
+                {
+                    AccountId = recipientId,
+                    LastNotificationsSeenAt = notificationsSeenAt,
+                    LastFollowRequestsSeenAt = followRequestsSeenAt,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+                await _context.NotificationReadStates.AddAsync(state, cancellationToken);
+                hasChanges = notificationsSeenAt.HasValue || followRequestsSeenAt.HasValue;
+            }
+            else
+            {
+                if (notificationsSeenAt.HasValue &&
+                    (!state.LastNotificationsSeenAt.HasValue || state.LastNotificationsSeenAt.Value < notificationsSeenAt.Value))
+                {
+                    state.LastNotificationsSeenAt = notificationsSeenAt.Value;
+                    hasChanges = true;
+                }
+
+                if (followRequestsSeenAt.HasValue &&
+                    (!state.LastFollowRequestsSeenAt.HasValue || state.LastFollowRequestsSeenAt.Value < followRequestsSeenAt.Value))
+                {
+                    state.LastFollowRequestsSeenAt = followRequestsSeenAt.Value;
+                    hasChanges = true;
+                }
+
+                if (hasChanges)
+                {
+                    state.UpdatedAt = now;
+                }
+            }
+
+            if (hasChanges)
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
         }
 
         private async Task<List<NotificationItemResponse>> BuildNotificationItemsAsync(
             Guid recipientId,
             List<Notification> notifications,
+            DateTime? lastNotificationsSeenAt,
             CancellationToken cancellationToken)
         {
             if (notifications.Count == 0)
@@ -299,6 +526,9 @@ namespace CloudM.Application.Services.NotificationServices
             var latestActorResolveByNotificationId = notificationIdsNeedActorRefresh.Count == 0
                 ? new Dictionary<Guid, LatestActorResolveResult>()
                 : await ResolveLatestActiveActorsAsync(notificationIdsNeedActorRefresh, cancellationToken);
+            var seenStateMetadataByNotificationId = await ResolveSeenStateMetadataAsync(
+                notifications.Select(x => x.NotificationId),
+                cancellationToken);
 
             var followedOwnerIds = ownerIds.Count == 0
                 ? new HashSet<Guid>()
@@ -401,15 +631,25 @@ namespace CloudM.Application.Services.NotificationServices
                     : BuildNotificationText(notification.Type, actorDisplay, notification.ActorCount);
                 var targetId = ResolveResponseTargetId(notification, actor);
                 var canOpen = CanOpenNotification(notification, shouldBeUnavailable, actor);
+                seenStateMetadataByNotificationId.TryGetValue(notification.NotificationId, out var seenStateMetadata);
+                var seenStateTimestamp = seenStateMetadata?.SeenStateTimestamp ?? notification.LastEventAt;
+                var hasAnyContribution = seenStateMetadata?.HasAnyContribution == true;
+                var tracksUnreadState = !hasAnyContribution || seenStateMetadata?.SeenStateTimestamp.HasValue == true;
+
+                var isSeenByCurrentState = !tracksUnreadState ||
+                    (lastNotificationsSeenAt.HasValue &&
+                     seenStateTimestamp <= lastNotificationsSeenAt.Value);
 
                 responseItems.Add(new NotificationItemResponse
                 {
                     NotificationId = notification.NotificationId,
                     Type = (int)notification.Type,
                     State = shouldBeUnavailable ? (int)NotificationStateEnum.Unavailable : (int)NotificationStateEnum.Active,
-                    IsRead = notification.IsRead,
                     CreatedAt = notification.CreatedAt,
                     LastEventAt = notification.LastEventAt,
+                    SeenStateTimestamp = seenStateTimestamp,
+                    IsSeenByCurrentState = isSeenByCurrentState,
+                    TracksUnreadState = tracksUnreadState,
                     ActorCount = notification.ActorCount,
                     EventCount = notification.EventCount,
                     Actor = actor,
@@ -477,6 +717,42 @@ namespace CloudM.Application.Services.NotificationServices
                 .OrderByDescending(x => x.LastEventAt)
                 .ThenByDescending(x => x.NotificationId)
                 .ToList();
+        }
+
+        private async Task<Dictionary<Guid, NotificationSeenStateMetadata>> ResolveSeenStateMetadataAsync(
+            IEnumerable<Guid> notificationIds,
+            CancellationToken cancellationToken)
+        {
+            var safeNotificationIds = (notificationIds ?? Enumerable.Empty<Guid>())
+                .Where(x => x != Guid.Empty)
+                .Distinct()
+                .ToList();
+            if (safeNotificationIds.Count == 0)
+            {
+                return new Dictionary<Guid, NotificationSeenStateMetadata>();
+            }
+
+            return await _context.NotificationContributions
+                .AsNoTracking()
+                .Where(x => safeNotificationIds.Contains(x.NotificationId))
+                .GroupBy(x => x.NotificationId)
+                .Select(x => new
+                {
+                    NotificationId = x.Key,
+                    SeenStateTimestamp = x
+                        .Where(item => item.IsActive)
+                        .Select(item => (DateTime?)item.UpdatedAt)
+                        .Max()
+                })
+                .ToDictionaryAsync(
+                    x => x.NotificationId,
+                    x => new NotificationSeenStateMetadata
+                    {
+                        NotificationId = x.NotificationId,
+                        HasAnyContribution = true,
+                        SeenStateTimestamp = x.SeenStateTimestamp
+                    },
+                    cancellationToken);
         }
 
         private async Task<Dictionary<Guid, LatestActorResolveResult>> ResolveLatestActiveActorsAsync(
@@ -753,6 +1029,34 @@ namespace CloudM.Application.Services.NotificationServices
             };
         }
 
+        private static DateTime? NormalizeUtc(DateTime? value)
+        {
+            if (!value.HasValue)
+            {
+                return null;
+            }
+
+            return value.Value.Kind switch
+            {
+                DateTimeKind.Utc => value.Value,
+                DateTimeKind.Local => value.Value.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            };
+        }
+
+        private static DateTime? NormalizeSeenTimestamp(DateTime? value, DateTime nowUtc)
+        {
+            var normalized = NormalizeUtc(value);
+            if (!normalized.HasValue)
+            {
+                return null;
+            }
+
+            return normalized.Value > nowUtc.AddMinutes(1)
+                ? null
+                : normalized.Value;
+        }
+
         private sealed class PostTargetProjection
         {
             public Guid PostId { get; set; }
@@ -798,6 +1102,19 @@ namespace CloudM.Application.Services.NotificationServices
             public Guid? LastActorId { get; set; }
             public string? LastActorSnapshotJson { get; set; }
             public bool ShouldPersistFixup { get; set; }
+        }
+
+        private sealed class NotificationSeenStateMetadata
+        {
+            public Guid NotificationId { get; set; }
+            public bool HasAnyContribution { get; set; }
+            public DateTime? SeenStateTimestamp { get; set; }
+        }
+
+        private sealed class NotificationReadStateSnapshot
+        {
+            public DateTime? LastNotificationsSeenAt { get; set; }
+            public DateTime? LastFollowRequestsSeenAt { get; set; }
         }
     }
 }

@@ -5,9 +5,11 @@ namespace CloudM.Application.DTOs.NotificationDTOs
         public Guid NotificationId { get; set; }
         public int Type { get; set; }
         public int State { get; set; }
-        public bool IsRead { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime LastEventAt { get; set; }
+        public DateTime SeenStateTimestamp { get; set; }
+        public bool IsSeenByCurrentState { get; set; }
+        public bool TracksUnreadState { get; set; } = true;
         public int ActorCount { get; set; }
         public int EventCount { get; set; }
         public NotificationActorResponse? Actor { get; set; }

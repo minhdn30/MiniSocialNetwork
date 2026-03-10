@@ -11,7 +11,6 @@ namespace CloudM.Domain.Entities
         [MaxLength(200)]
         public string AggregateKey { get; set; } = string.Empty;
         public NotificationStateEnum State { get; set; } = NotificationStateEnum.Active;
-        public bool IsRead { get; set; } = false;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime LastEventAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

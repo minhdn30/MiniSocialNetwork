@@ -45,5 +45,8 @@ namespace CloudM.Application.Services.NotificationServices
         public NotificationProjectionActionEnum Action { get; set; }
         public Guid RecipientId { get; set; }
         public Guid? NotificationId { get; set; }
+        public bool AffectsUnread { get; set; }
+        public Guid EventId { get; set; }
+        public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
     }
 }

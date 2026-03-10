@@ -40,6 +40,7 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<PinnedMessage> PinnedMessages { get; set; }
         public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
         public virtual DbSet<Notification> Notifications { get; set; } = null!;
+        public virtual DbSet<NotificationReadState> NotificationReadStates { get; set; } = null!;
         public virtual DbSet<NotificationContribution> NotificationContributions { get; set; } = null!;
         public virtual DbSet<NotificationOutbox> NotificationOutboxes { get; set; } = null!;
 
@@ -79,6 +80,11 @@ namespace CloudM.Infrastructure.Data
                 entity.HasOne(a => a.Settings)
                       .WithOne(s => s.Account)
                       .HasForeignKey<AccountSettings>(s => s.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(a => a.NotificationReadState)
+                      .WithOne(s => s.Account)
+                      .HasForeignKey<NotificationReadState>(s => s.AccountId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
@@ -201,9 +207,6 @@ namespace CloudM.Infrastructure.Data
                 entity.HasIndex(x => new { x.RecipientId, x.LastEventAt, x.NotificationId })
                     .HasDatabaseName("IX_Notifications_Recipient_LastEventAt_NotificationId");
 
-                entity.HasIndex(x => new { x.RecipientId, x.IsRead, x.LastEventAt, x.NotificationId })
-                    .HasDatabaseName("IX_Notifications_Recipient_IsRead_LastEventAt_NotificationId");
-
                 entity.HasOne(x => x.Recipient)
                     .WithMany()
                     .HasForeignKey(x => x.RecipientId)
@@ -212,6 +215,16 @@ namespace CloudM.Infrastructure.Data
                 entity.HasMany(x => x.Contributions)
                     .WithOne(x => x.Notification)
                     .HasForeignKey(x => x.NotificationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<NotificationReadState>(entity =>
+            {
+                entity.HasKey(x => x.AccountId);
+
+                entity.HasOne(x => x.Account)
+                    .WithOne(x => x.NotificationReadState)
+                    .HasForeignKey<NotificationReadState>(x => x.AccountId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
 

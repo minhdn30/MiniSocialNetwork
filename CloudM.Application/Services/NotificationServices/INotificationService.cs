@@ -18,6 +18,13 @@ namespace CloudM.Application.Services.NotificationServices
             Guid recipientId,
             NotificationCursorRequest request,
             CancellationToken cancellationToken = default);
+        Task<NotificationUnreadSummaryResponse> GetUnreadSummaryAsync(
+            Guid recipientId,
+            CancellationToken cancellationToken = default);
         Task<int> GetUnreadCountAsync(Guid recipientId, CancellationToken cancellationToken = default);
+        Task<NotificationUnreadSummaryResponse> UpdateReadStateAsync(
+            Guid recipientId,
+            NotificationReadStateRequest request,
+            CancellationToken cancellationToken = default);
     }
 }

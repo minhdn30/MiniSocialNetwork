@@ -335,25 +335,30 @@ namespace CloudM.API.Services
                 });
         }
 
-        public async Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId)
+        public async Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId, Guid eventId, DateTime occurredAt, bool affectsUnread)
         {
             await _userHubContext.Clients.User(accountId.ToString())
                 .SendAsync("ReceiveNotificationChanged", new
                 {
                     Action = "upsert",
                     NotificationId = notificationId,
-                    TargetAccountId = accountId
+                    TargetAccountId = accountId,
+                    EventId = eventId,
+                    OccurredAt = occurredAt,
+                    AffectsUnread = affectsUnread
                 });
         }
 
-        public async Task NotifyNotificationRemovedAsync(Guid accountId, Guid notificationId)
+        public async Task NotifyNotificationRemovedAsync(Guid accountId, Guid notificationId, Guid eventId, DateTime occurredAt)
         {
             await _userHubContext.Clients.User(accountId.ToString())
                 .SendAsync("ReceiveNotificationChanged", new
                 {
                     Action = "remove",
                     NotificationId = notificationId,
-                    TargetAccountId = accountId
+                    TargetAccountId = accountId,
+                    EventId = eventId,
+                    OccurredAt = occurredAt
                 });
         }
     }

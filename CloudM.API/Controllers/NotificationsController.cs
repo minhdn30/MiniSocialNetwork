@@ -55,15 +55,24 @@ namespace CloudM.API.Controllers
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
             }
 
-            var count = await _notificationService.GetUnreadCountAsync(currentId.Value);
-            return Ok(new { count });
+            var summary = await _notificationService.GetUnreadSummaryAsync(currentId.Value);
+            return Ok(summary);
         }
 
         [Authorize]
-        [HttpPost("mark-all-read")]
-        public IActionResult MarkAllRead()
+        [HttpPost("read-state")]
+        public async Task<IActionResult> UpdateReadState([FromBody] NotificationReadStateRequest? request)
         {
-            return StatusCode(501, new { message = "mark-all-read is not enabled in this phase." });
+            var currentId = User.GetAccountId();
+            if (currentId == null)
+            {
+                return Unauthorized(new { message = "Invalid token: no AccountId found." });
+            }
+
+            var summary = await _notificationService.UpdateReadStateAsync(
+                currentId.Value,
+                request ?? new NotificationReadStateRequest());
+            return Ok(summary);
         }
     }
 }
