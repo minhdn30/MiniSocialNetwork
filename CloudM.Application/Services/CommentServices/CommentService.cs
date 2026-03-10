@@ -408,7 +408,7 @@ namespace CloudM.Application.Services.CommentServices
             });
         }
 
-        public async Task<PagedResponse<CommentResponse>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize)
+        public async Task<CommentCursorResponse> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize)
         {
             var post = await _postRepository.GetPostBasicInfoById(postId);
             if (post == null)
@@ -416,7 +416,7 @@ namespace CloudM.Application.Services.CommentServices
 
             await ValidatePostPrivacyAsync(post, currentId, "view comments on");
 
-            var (items, totalItems) = await _commentRepository.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, page, pageSize);
+            var (items, totalItems, nextCursorCreatedAt, nextCursorCommentId) = await _commentRepository.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
 
             var responseItems = items.Select(item =>
             {
@@ -428,15 +428,20 @@ namespace CloudM.Application.Services.CommentServices
 
             await ApplyStoryRingStatesForCommentOwnersAsync(currentId, responseItems);
 
-            return new PagedResponse<CommentResponse>
+            return new CommentCursorResponse
             {
                 Items = responseItems,
-                TotalItems = totalItems,
-                Page = page,
-                PageSize = pageSize
+                TotalCount = totalItems,
+                NextCursor = nextCursorCreatedAt.HasValue && nextCursorCommentId.HasValue
+                    ? new CommentNextCursorResponse
+                    {
+                        CreatedAt = nextCursorCreatedAt.Value,
+                        CommentId = nextCursorCommentId.Value
+                    }
+                    : null
             };
         }
-        public async Task<PagedResponse<CommentResponse>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize)
+        public async Task<CommentCursorResponse> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize)
         {
             var comment = await _commentRepository.GetCommentById(commentId);
             if (comment == null)
@@ -448,7 +453,7 @@ namespace CloudM.Application.Services.CommentServices
 
             await ValidatePostPrivacyAsync(post, currentId, "view replies on");
 
-            var (items, totalItems) = await _commentRepository.GetRepliesByCommentIdAsync(commentId, currentId, page, pageSize);
+            var (items, totalItems, nextCursorCreatedAt, nextCursorCommentId) = await _commentRepository.GetRepliesByCommentIdAsync(commentId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
 
             var responseItems = items.Select(item =>
             {
@@ -460,12 +465,17 @@ namespace CloudM.Application.Services.CommentServices
 
             await ApplyStoryRingStatesForCommentOwnersAsync(currentId, responseItems);
 
-            return new PagedResponse<CommentResponse>
+            return new CommentCursorResponse
             {
                 Items = responseItems,
-                TotalItems = totalItems,
-                Page = page,
-                PageSize = pageSize
+                TotalCount = totalItems,
+                NextCursor = nextCursorCreatedAt.HasValue && nextCursorCommentId.HasValue
+                    ? new CommentNextCursorResponse
+                    {
+                        CreatedAt = nextCursorCreatedAt.Value,
+                        CommentId = nextCursorCommentId.Value
+                    }
+                    : null
             };
         }
         public async Task<CommentResponse?> GetCommentByIdAsync(Guid commentId)

@@ -189,13 +189,13 @@ namespace CloudM.Infrastructure.Migrations
                     b.HasIndex("AccountId")
                         .HasDatabaseName("IX_Comment_AccountId");
 
-                    b.HasIndex("ParentCommentId", "CreatedAt")
+                    b.HasIndex("ParentCommentId", "CreatedAt", "CommentId")
                         .HasDatabaseName("IX_Comment_Parent_Created");
 
                     b.HasIndex("PostId", "AccountId", "CreatedAt")
                         .HasDatabaseName("IX_Comment_Post_Account_Created");
 
-                    b.HasIndex("PostId", "ParentCommentId", "CreatedAt")
+                    b.HasIndex("PostId", "ParentCommentId", "CreatedAt", "CommentId")
                         .HasDatabaseName("IX_Comment_Post_Parent_Created");
 
                     b.ToTable("Comments");

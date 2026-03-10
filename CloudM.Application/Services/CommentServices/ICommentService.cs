@@ -14,8 +14,8 @@ namespace CloudM.Application.Services.CommentServices
         Task<CommentResponse> AddCommentAsync(Guid postId, Guid accountId, CommentCreateRequest request);
         Task<CommentResponse> UpdateCommentAsync(Guid commentId, Guid accountId, CommentUpdateRequest request);
         Task<CommentDeleteResult> DeleteCommentAsync(Guid commentId, Guid accountId, bool isAdmin);
-        Task<PagedResponse<CommentResponse>> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, int page, int pageSize);
-        Task<PagedResponse<CommentResponse>> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, int page, int pageSize);
+        Task<CommentCursorResponse> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize);
+        Task<CommentCursorResponse> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize);
         Task<CommentResponse?> GetCommentByIdAsync(Guid commentId);
         Task<int> GetReplyCountAsync(Guid commentId);
     }

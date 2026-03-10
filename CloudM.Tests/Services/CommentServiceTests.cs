@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -517,17 +517,51 @@ namespace CloudM.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
-            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, 1, 10))
-                .Returns(Task.FromResult<(IEnumerable<CommentWithReplyCountModel> items, int totalItems)>((comments, 1)));
+            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10))
+                .Returns(Task.FromResult<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((comments, 1, null, null)));
             _mockMapper.Setup(x => x.Map<CommentResponse>(It.IsAny<CommentWithReplyCountModel>()))
                 .Returns(new CommentResponse());
 
             // Act
-            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, 1, 10);
+            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, null, null, 10);
 
             // Assert
             result.Should().NotBeNull();
-            result.TotalItems.Should().Be(1);
+            result.TotalCount.Should().Be(1);
+        }
+
+        [Fact]
+        public async Task GetCommentsByPostIdAsync_WhenRepositoryReturnsNextCursor_ReturnsNextCursor()
+        {
+            // Arrange
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var nextCommentId = Guid.NewGuid();
+            var nextCreatedAt = DateTime.UtcNow;
+            var post = new Post { PostId = postId, Privacy = PostPrivacyEnum.Public };
+            var comments = new List<CommentWithReplyCountModel>
+            {
+                new CommentWithReplyCountModel
+                {
+                    CommentId = Guid.NewGuid(),
+                    Owner = new AccountBasicInfoModel { AccountId = Guid.NewGuid() },
+                    PostOwnerId = Guid.NewGuid()
+                }
+            };
+
+            _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
+            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10))
+                .Returns(Task.FromResult<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((comments, 2, nextCreatedAt, nextCommentId)));
+            _mockMapper.Setup(x => x.Map<CommentResponse>(It.IsAny<CommentWithReplyCountModel>()))
+                .Returns(new CommentResponse());
+
+            // Act
+            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, null, null, 10);
+
+            // Assert
+            result.NextCursor.Should().NotBeNull();
+            result.NextCursor!.CreatedAt.Should().Be(nextCreatedAt);
+            result.NextCursor.CommentId.Should().Be(nextCommentId);
         }
 
         [Fact]
@@ -539,7 +573,7 @@ namespace CloudM.Tests.Services
 
             // Act & Assert
             await Assert.ThrowsAsync<BadRequestException>(() =>
-                _commentService.GetCommentsByPostIdAsync(postId, null, 1, 10));
+                _commentService.GetCommentsByPostIdAsync(postId, null, null, null, 10));
         }
 
         #endregion
@@ -559,15 +593,15 @@ namespace CloudM.Tests.Services
 
             _mockCommentRepo.Setup(x => x.GetCommentById(commentId)).ReturnsAsync(comment);
             _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
-            _mockCommentRepo.Setup(x => x.GetRepliesByCommentIdAsync(commentId, currentId, 1, 10))
-                .Returns(Task.FromResult<(IEnumerable<ReplyCommentModel> items, int totalItems)>((replies, 0)));
+            _mockCommentRepo.Setup(x => x.GetRepliesByCommentIdAsync(commentId, currentId, null, null, 10))
+                .Returns(Task.FromResult<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((replies, 0, null, null)));
 
             // Act
-            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, 1, 10);
+            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, null, null, 10);
 
             // Assert
             result.Should().NotBeNull();
-            result.TotalItems.Should().Be(0);
+            result.TotalCount.Should().Be(0);
         }
 
         [Fact]
@@ -579,7 +613,7 @@ namespace CloudM.Tests.Services
 
             // Act & Assert
             await Assert.ThrowsAsync<BadRequestException>(() =>
-                _commentService.GetRepliesByCommentIdAsync(commentId, null, 1, 10));
+                _commentService.GetRepliesByCommentIdAsync(commentId, null, null, null, 10));
         }
 
         #endregion

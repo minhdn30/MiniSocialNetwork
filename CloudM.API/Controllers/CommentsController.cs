@@ -60,19 +60,25 @@ namespace CloudM.API.Controllers
 
         [Authorize]
         [HttpGet("post/{postId}")]
-        public async Task<ActionResult<PagedResponse<CommentResponse>>> GetCommentsByPostId([FromRoute] Guid postId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<ActionResult<CommentCursorResponse>> GetCommentsByPostId([FromRoute] Guid postId, [FromQuery] int pageSize = 10, [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorCommentId = null)
         {
             var currentId = User.GetAccountId();
-            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, page, pageSize);
+            if (cursorCreatedAt.HasValue != cursorCommentId.HasValue)
+                return BadRequest(new { message = "cursorCreatedAt and cursorCommentId must be provided together." });
+
+            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
             return Ok(result);
         }
 
         [Authorize]
         [HttpGet("replies/{commentId}")]
-        public async Task<ActionResult<PagedResponse<CommentResponse>>> GetRepliesByCommentId([FromRoute] Guid commentId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<ActionResult<CommentCursorResponse>> GetRepliesByCommentId([FromRoute] Guid commentId, [FromQuery] int pageSize = 10, [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorCommentId = null)
         {
             var currentId = User.GetAccountId();
-            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, page, pageSize);
+            if (cursorCreatedAt.HasValue != cursorCommentId.HasValue)
+                return BadRequest(new { message = "cursorCreatedAt and cursorCommentId must be provided together." });
+
+            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
             return Ok(result);
         }
 

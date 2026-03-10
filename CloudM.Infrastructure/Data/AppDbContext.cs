@@ -585,7 +585,7 @@ namespace CloudM.Infrastructure.Data
                 .HasKey(c => c.CommentId);
 
             modelBuilder.Entity<Comment>()
-                .HasIndex(c => new { c.PostId, c.ParentCommentId, c.CreatedAt })
+                .HasIndex(c => new { c.PostId, c.ParentCommentId, c.CreatedAt, c.CommentId })
                 .HasDatabaseName("IX_Comment_Post_Parent_Created");
 
             // Index for per-post interactions by account (feed affinity query)
@@ -594,7 +594,7 @@ namespace CloudM.Infrastructure.Data
                 .HasDatabaseName("IX_Comment_Post_Account_Created");
 
             modelBuilder.Entity<Comment>()
-                .HasIndex(c => new { c.ParentCommentId, c.CreatedAt })
+                .HasIndex(c => new { c.ParentCommentId, c.CreatedAt, c.CommentId })
                 .HasDatabaseName("IX_Comment_Parent_Created");
 
             // Index for querying comments by account
