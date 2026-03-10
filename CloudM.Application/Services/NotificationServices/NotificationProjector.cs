@@ -87,7 +87,7 @@ namespace CloudM.Application.Services.NotificationServices
 
             if (notification == null)
             {
-                if (payload.Action == NotificationAggregateActionEnum.Deactivate)
+                if (payload.Action != NotificationAggregateActionEnum.Upsert)
                 {
                     return None(recipientId);
                 }
@@ -149,6 +149,14 @@ namespace CloudM.Application.Services.NotificationServices
                     contribution.UpdatedAt = payload.OccurredAt;
                 }
 
+            }
+            else if (payload.Action == NotificationAggregateActionEnum.DeactivateAll)
+            {
+                foreach (var contribution in notification.Contributions.Where(x => x.IsActive))
+                {
+                    contribution.IsActive = false;
+                    contribution.UpdatedAt = payload.OccurredAt;
+                }
             }
             else
             {

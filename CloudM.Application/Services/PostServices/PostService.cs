@@ -899,6 +899,18 @@ namespace CloudM.Application.Services.PostServices
                 postId,
                 initiatorId,
                 occurredAt);
+            await _notificationService.EnqueueTargetUnavailableForExistingRecipientsAsync(
+                NotificationTypeEnum.CommentReact,
+                NotificationTargetKindEnum.Post,
+                postId,
+                initiatorId,
+                occurredAt);
+            await _notificationService.EnqueueTargetUnavailableForExistingRecipientsAsync(
+                NotificationTypeEnum.ReplyReact,
+                NotificationTargetKindEnum.Post,
+                postId,
+                initiatorId,
+                occurredAt);
         }
     }
 }

@@ -956,6 +956,8 @@ SET
                 NotificationTypeEnum.StoryReply => $"{actorLabel} replied to your story",
                 NotificationTypeEnum.PostReact => $"{actorLabel} reacted to your post",
                 NotificationTypeEnum.StoryReact => $"{actorLabel} reacted to your story",
+                NotificationTypeEnum.CommentReact => $"{actorLabel} reacted to your comment",
+                NotificationTypeEnum.ReplyReact => $"{actorLabel} reacted to your reply",
                 _ => $"{actorLabel} sent a notification"
             };
         }

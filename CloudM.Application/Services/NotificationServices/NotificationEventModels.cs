@@ -5,7 +5,8 @@ namespace CloudM.Application.Services.NotificationServices
     public enum NotificationAggregateActionEnum
     {
         Upsert = 0,
-        Deactivate = 1
+        Deactivate = 1,
+        DeactivateAll = 2
     }
 
     public static class NotificationOutboxEventTypes

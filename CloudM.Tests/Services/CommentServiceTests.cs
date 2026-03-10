@@ -8,6 +8,7 @@ using Moq;
 using CloudM.Application.DTOs.AccountDTOs;
 using CloudM.Application.DTOs.CommentDTOs;
 using CloudM.Application.Services.CommentServices;
+using CloudM.Application.Services.NotificationServices;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
@@ -31,6 +32,7 @@ namespace CloudM.Tests.Services
         private readonly Mock<IAccountRepository> _mockAccountRepo;
         private readonly Mock<IFollowRepository> _mockFollowRepo;
         private readonly Mock<IMapper> _mockMapper;
+        private readonly Mock<INotificationService> _mockNotificationService;
         private readonly Mock<IRealtimeService> _mockRealtimeService;
         private readonly Mock<IUnitOfWork> _mockUnitOfWork;
         private readonly CommentService _commentService;
@@ -43,8 +45,21 @@ namespace CloudM.Tests.Services
             _mockAccountRepo = new Mock<IAccountRepository>();
             _mockFollowRepo = new Mock<IFollowRepository>();
             _mockMapper = new Mock<IMapper>();
+            _mockNotificationService = new Mock<INotificationService>();
             _mockRealtimeService = new Mock<IRealtimeService>();
             _mockUnitOfWork = new Mock<IUnitOfWork>();
+            _mockNotificationService.Setup(x => x.EnqueueAggregateEventAsync(It.IsAny<NotificationAggregateEvent>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            _mockNotificationService.Setup(x => x.EnqueueTargetUnavailableEventAsync(It.IsAny<NotificationTargetUnavailableEvent>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            _mockNotificationService.Setup(x => x.EnqueueTargetUnavailableForExistingRecipientsAsync(
+                    It.IsAny<NotificationTypeEnum>(),
+                    It.IsAny<NotificationTargetKindEnum>(),
+                    It.IsAny<Guid>(),
+                    It.IsAny<Guid>(),
+                    It.IsAny<DateTime?>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
 
             _commentService = new CommentService(
                 _mockCommentRepo.Object,
@@ -53,6 +68,7 @@ namespace CloudM.Tests.Services
                 _mockAccountRepo.Object,
                 _mockFollowRepo.Object,
                 _mockMapper.Object,
+                _mockNotificationService.Object,
                 _mockRealtimeService.Object,
                 _mockUnitOfWork.Object
             );
@@ -366,6 +382,96 @@ namespace CloudM.Tests.Services
 
             // Assert
             result.Should().NotBeNull();
+        }
+
+        [Fact]
+        public async Task DeleteCommentAsync_WhenTopLevelCommentDeleted_ShouldQueueCommentReactDeactivateAll()
+        {
+            // Arrange
+            var commentId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+            var postId = Guid.NewGuid();
+            var comment = new Comment
+            {
+                CommentId = commentId,
+                AccountId = accountId,
+                PostId = postId,
+                Account = new Account { Status = AccountStatusEnum.Active }
+            };
+            var post = new Post { PostId = postId, AccountId = Guid.NewGuid(), Privacy = PostPrivacyEnum.Public };
+
+            _mockCommentRepo.Setup(x => x.GetCommentById(commentId)).ReturnsAsync(comment);
+            _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
+            _mockCommentRepo.Setup(x => x.DeleteCommentWithReplies(commentId)).Returns(Task.CompletedTask);
+            _mockCommentRepo.Setup(x => x.CountCommentsByPostId(postId)).ReturnsAsync(0);
+            _mockUnitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<Task<CommentDeleteResult>>>(), It.IsAny<Func<Task>?>()))
+                .Returns<Func<Task<CommentDeleteResult>>, Func<Task>?>((func, _) => func());
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyCommentDeletedAsync(postId, commentId, null, 0, null)).Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _commentService.DeleteCommentAsync(commentId, accountId, false);
+
+            // Assert
+            result.Should().NotBeNull();
+            _mockNotificationService.Verify(x => x.EnqueueAggregateEventAsync(
+                It.Is<NotificationAggregateEvent>(request =>
+                    request.RecipientId == accountId &&
+                    request.Action == NotificationAggregateActionEnum.DeactivateAll &&
+                    request.Type == NotificationTypeEnum.CommentReact &&
+                    request.AggregateKey == NotificationAggregateKeys.CommentReact(commentId) &&
+                    request.SourceType == NotificationSourceTypeEnum.CommentReact &&
+                    request.SourceId == Guid.Empty &&
+                    request.TargetKind == NotificationTargetKindEnum.Post &&
+                    request.TargetId == postId &&
+                    request.KeepWhenEmpty == false),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task DeleteCommentAsync_WhenReplyDeleted_ShouldQueueReplyReactDeactivateAll()
+        {
+            // Arrange
+            var commentId = Guid.NewGuid();
+            var parentCommentId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+            var postId = Guid.NewGuid();
+            var comment = new Comment
+            {
+                CommentId = commentId,
+                AccountId = accountId,
+                PostId = postId,
+                ParentCommentId = parentCommentId,
+                Account = new Account { Status = AccountStatusEnum.Active }
+            };
+            var post = new Post { PostId = postId, AccountId = Guid.NewGuid(), Privacy = PostPrivacyEnum.Public };
+
+            _mockCommentRepo.Setup(x => x.GetCommentById(commentId)).ReturnsAsync(comment);
+            _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
+            _mockCommentRepo.Setup(x => x.DeleteCommentWithReplies(commentId)).Returns(Task.CompletedTask);
+            _mockCommentRepo.Setup(x => x.CountCommentRepliesAsync(parentCommentId)).ReturnsAsync(0);
+            _mockUnitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<Task<CommentDeleteResult>>>(), It.IsAny<Func<Task>?>()))
+                .Returns<Func<Task<CommentDeleteResult>>, Func<Task>?>((func, _) => func());
+            _mockUnitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _mockRealtimeService.Setup(x => x.NotifyCommentDeletedAsync(postId, commentId, parentCommentId, null, 0)).Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _commentService.DeleteCommentAsync(commentId, accountId, false);
+
+            // Assert
+            result.Should().NotBeNull();
+            _mockNotificationService.Verify(x => x.EnqueueAggregateEventAsync(
+                It.Is<NotificationAggregateEvent>(request =>
+                    request.RecipientId == accountId &&
+                    request.Action == NotificationAggregateActionEnum.DeactivateAll &&
+                    request.Type == NotificationTypeEnum.ReplyReact &&
+                    request.AggregateKey == NotificationAggregateKeys.ReplyReact(commentId) &&
+                    request.SourceType == NotificationSourceTypeEnum.ReplyReact &&
+                    request.SourceId == Guid.Empty &&
+                    request.TargetKind == NotificationTargetKindEnum.Post &&
+                    request.TargetId == postId &&
+                    request.KeepWhenEmpty == false),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]

@@ -11,6 +11,7 @@ using CloudM.Infrastructure.Repositories.Comments;
 using CloudM.Infrastructure.Repositories.Posts;
 using CloudM.Infrastructure.Repositories.Follows;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
+using CloudM.Application.Services.NotificationServices;
 using CloudM.Application.Services.RealtimeServices;
 using System;
 using System.Collections.Generic;
@@ -29,11 +30,12 @@ namespace CloudM.Application.Services.CommentReactServices
         private readonly IFollowRepository _followRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly INotificationService _notificationService;
         private readonly IRealtimeService _realtimeService;
 
         public CommentReactService(ICommentRepository commentRepository, ICommentReactRepository commentReactRepository, IPostRepository postRepository,
             IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper, 
-            IRealtimeService realtimeService, IUnitOfWork unitOfWork)
+            INotificationService notificationService, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
         {
             _commentRepository = commentRepository;
             _commentReactRepository = commentReactRepository;
@@ -41,8 +43,30 @@ namespace CloudM.Application.Services.CommentReactServices
             _accountRepository = accountRepository;
             _followRepository = followRepository;
             _mapper = mapper;
+            _notificationService = notificationService;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
+        }
+        public CommentReactService(
+            ICommentRepository commentRepository,
+            ICommentReactRepository commentReactRepository,
+            IPostRepository postRepository,
+            IAccountRepository accountRepository,
+            IFollowRepository followRepository,
+            IMapper mapper,
+            IRealtimeService realtimeService,
+            IUnitOfWork unitOfWork)
+            : this(
+                commentRepository,
+                commentReactRepository,
+                postRepository,
+                accountRepository,
+                followRepository,
+                mapper,
+                NullNotificationService.Instance,
+                realtimeService,
+                unitOfWork)
+        {
         }
         public async Task<ReactToggleResponse> ToggleReactOnComment(Guid commentId, Guid accountId)
         {
@@ -60,12 +84,18 @@ namespace CloudM.Application.Services.CommentReactServices
 
             await ValidatePostPrivacyAsync(post, accountId, "react to comments on");
 
+            var nowUtc = DateTime.UtcNow;
             var existingReact = await _commentReactRepository.GetUserReactOnCommentAsync(commentId, accountId);
             var isReactedByCurrentUser = false;
             if (existingReact != null)
             {
                 await _commentReactRepository.RemoveCommentReact(existingReact);
                 isReactedByCurrentUser = false;
+                await EnqueueCommentReactNotificationAsync(
+                    comment,
+                    accountId,
+                    NotificationAggregateActionEnum.Deactivate,
+                    nowUtc);
             }
             else
             {
@@ -74,10 +104,15 @@ namespace CloudM.Application.Services.CommentReactServices
                     CommentId = commentId,
                     AccountId = accountId,
                     ReactType = ReactEnum.Love,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = nowUtc
                 };
                 await _commentReactRepository.AddCommentReact(newReact);
                 isReactedByCurrentUser = true;
+                await EnqueueCommentReactNotificationAsync(
+                    comment,
+                    accountId,
+                    NotificationAggregateActionEnum.Upsert,
+                    nowUtc);
             }
 
             // Must commit before counting
@@ -93,6 +128,37 @@ namespace CloudM.Application.Services.CommentReactServices
                 ReactCount = reactCount,
                 IsReactedByCurrentUser = isReactedByCurrentUser
             };
+        }
+        private async Task EnqueueCommentReactNotificationAsync(
+            Comment comment,
+            Guid actorId,
+            NotificationAggregateActionEnum action,
+            DateTime occurredAt)
+        {
+            if (comment.AccountId == Guid.Empty || actorId == Guid.Empty || comment.AccountId == actorId)
+            {
+                return;
+            }
+
+            var isReply = comment.ParentCommentId.HasValue;
+            await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+            {
+                RecipientId = comment.AccountId,
+                Action = action,
+                Type = isReply ? NotificationTypeEnum.ReplyReact : NotificationTypeEnum.CommentReact,
+                AggregateKey = isReply
+                    ? NotificationAggregateKeys.ReplyReact(comment.CommentId)
+                    : NotificationAggregateKeys.CommentReact(comment.CommentId),
+                SourceType = isReply
+                    ? NotificationSourceTypeEnum.ReplyReact
+                    : NotificationSourceTypeEnum.CommentReact,
+                SourceId = actorId,
+                ActorId = actorId,
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = comment.PostId,
+                KeepWhenEmpty = false,
+                OccurredAt = occurredAt
+            });
         }
         public async Task<PagedResponse<AccountReactListModel>> GetAccountsReactOnCommentPaged(Guid commentId, Guid? currentId, int page, int pageSize)
         {

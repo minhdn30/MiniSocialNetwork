@@ -374,6 +374,10 @@ namespace CloudM.Application.Services.CommentServices
                             notificationAt,
                             keepWhenEmpty: true);
                     }
+                    
+                    await EnqueueCommentReactDeactivateAllAsync(
+                        deletedComment,
+                        notificationAt);
                 }
 
                 // Get updated counts logic
@@ -763,6 +767,36 @@ namespace CloudM.Application.Services.CommentServices
                     OccurredAt = occurredAt
                 });
             }
+        }
+
+        private async Task EnqueueCommentReactDeactivateAllAsync(
+            Comment comment,
+            DateTime occurredAt)
+        {
+            if (comment.AccountId == Guid.Empty || comment.PostId == Guid.Empty)
+            {
+                return;
+            }
+
+            var isReply = comment.ParentCommentId.HasValue;
+            await _notificationService.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+            {
+                RecipientId = comment.AccountId,
+                Action = NotificationAggregateActionEnum.DeactivateAll,
+                Type = isReply ? NotificationTypeEnum.ReplyReact : NotificationTypeEnum.CommentReact,
+                AggregateKey = isReply
+                    ? NotificationAggregateKeys.ReplyReact(comment.CommentId)
+                    : NotificationAggregateKeys.CommentReact(comment.CommentId),
+                SourceType = isReply
+                    ? NotificationSourceTypeEnum.ReplyReact
+                    : NotificationSourceTypeEnum.CommentReact,
+                SourceId = Guid.Empty,
+                ActorId = null,
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = comment.PostId,
+                KeepWhenEmpty = false,
+                OccurredAt = occurredAt
+            });
         }
 
         private static HashSet<Guid> ExtractCanonicalMentionAccountIds(string? content)

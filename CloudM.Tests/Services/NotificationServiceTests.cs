@@ -1294,6 +1294,111 @@ namespace CloudM.Tests.Services
         }
 
         [Fact]
+        public async Task ProjectAsync_DeactivateAll_ShouldRemoveNotification()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+            var postId = Guid.NewGuid();
+            var commentId = Guid.NewGuid();
+
+            var recipient = CreateAccount("recipient");
+            var actorOne = CreateAccount("actor-one");
+            var actorTwo = CreateAccount("actor-two");
+            await context.Accounts.AddRangeAsync(recipient, actorOne, actorTwo);
+            await context.Posts.AddAsync(new Post
+            {
+                PostId = postId,
+                AccountId = recipient.AccountId,
+                Privacy = PostPrivacyEnum.Public,
+                CreatedAt = now.AddDays(-1),
+                UpdatedAt = now.AddDays(-1),
+                IsDeleted = false
+            });
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.CommentReact,
+                AggregateKey = NotificationAggregateKeys.CommentReact(commentId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-10),
+                LastEventAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2),
+                ActorCount = 2,
+                EventCount = 2,
+                LastActorId = actorTwo.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actorTwo.AccountId,
+                    Username = actorTwo.Username,
+                    FullName = actorTwo.FullName,
+                    AvatarUrl = actorTwo.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId
+            };
+
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddRangeAsync(
+                new NotificationContribution
+                {
+                    ContributionId = Guid.NewGuid(),
+                    NotificationId = notification.NotificationId,
+                    SourceType = NotificationSourceTypeEnum.CommentReact,
+                    SourceId = actorOne.AccountId,
+                    ActorId = actorOne.AccountId,
+                    IsActive = true,
+                    CreatedAt = now.AddMinutes(-3),
+                    UpdatedAt = now.AddMinutes(-3)
+                },
+                new NotificationContribution
+                {
+                    ContributionId = Guid.NewGuid(),
+                    NotificationId = notification.NotificationId,
+                    SourceType = NotificationSourceTypeEnum.CommentReact,
+                    SourceId = actorTwo.AccountId,
+                    ActorId = actorTwo.AccountId,
+                    IsActive = true,
+                    CreatedAt = now.AddMinutes(-2),
+                    UpdatedAt = now.AddMinutes(-2)
+                });
+            await context.SaveChangesAsync();
+
+            var payload = new NotificationAggregateChangedPayload
+            {
+                Action = NotificationAggregateActionEnum.DeactivateAll,
+                Type = NotificationTypeEnum.CommentReact,
+                AggregateKey = notification.AggregateKey,
+                SourceType = NotificationSourceTypeEnum.CommentReact,
+                SourceId = Guid.Empty,
+                ActorId = null,
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = postId,
+                KeepWhenEmpty = false,
+                OccurredAt = now
+            };
+
+            var outbox = new NotificationOutbox
+            {
+                OutboxId = Guid.NewGuid(),
+                EventType = NotificationOutboxEventTypes.AggregateChanged,
+                RecipientId = recipient.AccountId,
+                PayloadJson = JsonSerializer.Serialize(payload),
+                OccurredAt = now,
+                Status = NotificationOutboxStatusEnum.Pending,
+                NextRetryAt = now
+            };
+
+            var projector = new NotificationProjector(new NotificationRepository(context), context);
+            var projectionResult = await projector.ProjectAsync(outbox);
+
+            Assert.Equal(NotificationProjectionActionEnum.Remove, projectionResult.Action);
+            Assert.Equal(0, await context.Notifications.CountAsync());
+            Assert.Equal(0, await context.NotificationContributions.CountAsync());
+        }
+
+        [Fact]
         public async Task ProjectAsync_DeactivateWithRemainingActiveContribution_ShouldRecomputeLastEventAt()
         {
             await using var context = CreateContext();

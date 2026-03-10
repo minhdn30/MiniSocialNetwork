@@ -13,5 +13,7 @@ namespace CloudM.Application.Services.NotificationServices
         public static string StoryReply(Guid storyId) => $"story-reply:{storyId}";
         public static string PostReact(Guid postId) => $"post-react:{postId}";
         public static string StoryReact(Guid storyId) => $"story-react:{storyId}";
+        public static string CommentReact(Guid commentId) => $"comment-react:{commentId}";
+        public static string ReplyReact(Guid commentId) => $"reply-react:{commentId}";
     }
 }
