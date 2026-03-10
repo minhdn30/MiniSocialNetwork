@@ -25,7 +25,8 @@ namespace CloudM.Application.Services.NotificationServices
                     result.NotificationId,
                     result.EventId,
                     result.OccurredAt,
-                    result.AffectsUnread);
+                    result.AffectsUnread,
+                    result.Toast);
                 return;
             }
 

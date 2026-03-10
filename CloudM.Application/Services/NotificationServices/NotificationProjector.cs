@@ -235,11 +235,11 @@ namespace CloudM.Application.Services.NotificationServices
                 .Count();
             recomputedNotification.EventCount = activeContributions.Count;
             recomputedNotification.LastActorId = latestContribution.ActorId;
-            recomputedNotification.LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
-            {
-                AccountId = latestContribution.ActorId,
-                Username = latestContribution.Actor.Username,
-                FullName = latestContribution.Actor.FullName,
+                recomputedNotification.LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = latestContribution.ActorId,
+                    Username = latestContribution.Actor.Username,
+                    FullName = latestContribution.Actor.FullName,
                 AvatarUrl = latestContribution.Actor.AvatarUrl
             });
             recomputedNotification.LastEventAt = latestContribution.UpdatedAt;
@@ -258,7 +258,14 @@ namespace CloudM.Application.Services.NotificationServices
                 payload.Action,
                 previousSeenStateTimestamp,
                 recomputedSeenStateTimestamp);
-            return Upsert(recipientId, recomputedNotification.NotificationId, upsertAffectsUnread);
+            var projectionResult = Upsert(recipientId, recomputedNotification.NotificationId, upsertAffectsUnread);
+            if (upsertAffectsUnread)
+            {
+                projectionResult.Toast = BuildNotificationToastPayload(
+                    recomputedNotification,
+                    latestContribution.Actor);
+            }
+            return projectionResult;
         }
 
         private async Task<NotificationProjectionResult> ProjectTargetUnavailableAsync(
@@ -554,6 +561,41 @@ namespace CloudM.Application.Services.NotificationServices
             result.EventId = outbox.OutboxId;
             result.OccurredAt = outbox.OccurredAt;
             return result;
+        }
+
+        private static NotificationToastPayload? BuildNotificationToastPayload(
+            Notification notification,
+            Account? actor)
+        {
+            if (notification == null || actor == null)
+            {
+                return null;
+            }
+
+            var actorUsername = (actor.Username ?? string.Empty).Trim();
+            var actorFullName = string.IsNullOrWhiteSpace(actor.FullName)
+                ? null
+                : actor.FullName.Trim();
+
+            if (string.IsNullOrWhiteSpace(actorUsername) && string.IsNullOrWhiteSpace(actorFullName))
+            {
+                return null;
+            }
+
+            return new NotificationToastPayload
+            {
+                Type = (int)notification.Type,
+                ActorAccountId = actor.AccountId,
+                ActorUsername = actorUsername,
+                ActorFullName = actorFullName,
+                ActorAvatarUrl = string.IsNullOrWhiteSpace(actor.AvatarUrl)
+                    ? null
+                    : actor.AvatarUrl.Trim(),
+                TargetKind = (int)notification.TargetKind,
+                TargetId = notification.TargetId,
+                TargetPostCode = null,
+                CanOpen = notification.State != NotificationStateEnum.Unavailable
+            };
         }
     }
 }

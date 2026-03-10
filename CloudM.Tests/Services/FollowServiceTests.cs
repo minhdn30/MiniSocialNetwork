@@ -169,9 +169,17 @@ namespace CloudM.Tests.Services
             // Arrange
             var followerId = Guid.NewGuid();
             var targetId = Guid.NewGuid();
+            var requesterAccount = new Account
+            {
+                AccountId = followerId,
+                Username = "requester-user",
+                FullName = "requester user",
+                AvatarUrl = "https://cdn/requester.jpg"
+            };
 
             _mockAccountRepo.Setup(x => x.IsAccountIdExist(targetId)).ReturnsAsync(true);
             _mockAccountRepo.Setup(x => x.IsAccountIdExist(followerId)).ReturnsAsync(true);
+            _mockAccountRepo.Setup(x => x.GetAccountById(followerId)).ReturnsAsync(requesterAccount);
             _mockFollowRepo.Setup(x => x.IsFollowRecordExistAsync(followerId, targetId)).ReturnsAsync(false);
             _mockAccountSettingRepo
                 .Setup(x => x.GetGetAccountSettingsByAccountIdAsync(targetId))
@@ -201,6 +209,20 @@ namespace CloudM.Tests.Services
             result.TargetFollowPrivacy.Should().Be(FollowPrivacyEnum.Private);
             _mockFollowRequestRepo.Verify(x => x.AddFollowRequestIgnoreExistingAsync(It.IsAny<FollowRequest>(), It.IsAny<CancellationToken>()), Times.Once);
             _mockFollowRepo.Verify(x => x.AddFollowAsync(It.IsAny<Follow>()), Times.Never);
+            _mockRealtimeService.Verify(x => x.NotifyFollowRequestQueueChangedAsync(
+                targetId,
+                "upsert",
+                followerId,
+                It.Is<NotificationToastPayload>(payload =>
+                    payload.Type == (int)NotificationTypeEnum.FollowRequest &&
+                    payload.ActorAccountId == requesterAccount.AccountId &&
+                    payload.ActorUsername == requesterAccount.Username &&
+                    payload.ActorFullName == requesterAccount.FullName &&
+                    payload.ActorAvatarUrl == requesterAccount.AvatarUrl &&
+                    payload.TargetKind == (int)NotificationTargetKindEnum.Account &&
+                    payload.TargetId == followerId &&
+                    payload.CanOpen)),
+                Times.Once);
         }
 
         [Fact]

@@ -3,6 +3,7 @@ using CloudM.API.Hubs;
 using CloudM.Application.DTOs.CommentDTOs;
 using CloudM.Application.DTOs.MessageDTOs;
 using CloudM.Application.DTOs.PostDTOs;
+using CloudM.Application.Services.NotificationServices;
 using CloudM.Application.Services.RealtimeServices;
 using System.Collections.Generic;
 using System.Linq;
@@ -178,7 +179,7 @@ namespace CloudM.API.Services
                 });
         }
 
-        public async Task NotifyFollowRequestQueueChangedAsync(Guid targetId, string action = "refresh", Guid? requesterId = null)
+        public async Task NotifyFollowRequestQueueChangedAsync(Guid targetId, string action = "refresh", Guid? requesterId = null, NotificationToastPayload? toast = null)
         {
             var occurredAt = DateTime.UtcNow;
             await _userHubContext.Clients.User(targetId.ToString())
@@ -188,7 +189,16 @@ namespace CloudM.API.Services
                     Action = string.IsNullOrWhiteSpace(action) ? "refresh" : action,
                     RequesterId = requesterId,
                     EventId = Guid.NewGuid(),
-                    OccurredAt = occurredAt
+                    OccurredAt = occurredAt,
+                    ToastType = toast?.Type,
+                    ToastActorAccountId = toast?.ActorAccountId,
+                    ToastActorUsername = toast?.ActorUsername,
+                    ToastActorFullName = toast?.ActorFullName,
+                    ToastActorAvatarUrl = toast?.ActorAvatarUrl,
+                    ToastTargetKind = toast?.TargetKind,
+                    ToastTargetId = toast?.TargetId,
+                    ToastTargetPostCode = toast?.TargetPostCode,
+                    ToastCanOpen = toast?.CanOpen
                 });
         }
         
@@ -335,7 +345,13 @@ namespace CloudM.API.Services
                 });
         }
 
-        public async Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId, Guid eventId, DateTime occurredAt, bool affectsUnread)
+        public async Task NotifyNotificationUpsertAsync(
+            Guid accountId,
+            Guid? notificationId,
+            Guid eventId,
+            DateTime occurredAt,
+            bool affectsUnread,
+            NotificationToastPayload? toast = null)
         {
             await _userHubContext.Clients.User(accountId.ToString())
                 .SendAsync("ReceiveNotificationChanged", new
@@ -345,7 +361,16 @@ namespace CloudM.API.Services
                     TargetAccountId = accountId,
                     EventId = eventId,
                     OccurredAt = occurredAt,
-                    AffectsUnread = affectsUnread
+                    AffectsUnread = affectsUnread,
+                    ToastType = toast?.Type,
+                    ToastActorAccountId = toast?.ActorAccountId,
+                    ToastActorUsername = toast?.ActorUsername,
+                    ToastActorFullName = toast?.ActorFullName,
+                    ToastActorAvatarUrl = toast?.ActorAvatarUrl,
+                    ToastTargetKind = toast?.TargetKind,
+                    ToastTargetId = toast?.TargetId,
+                    ToastTargetPostCode = toast?.TargetPostCode,
+                    ToastCanOpen = toast?.CanOpen
                 });
         }
 

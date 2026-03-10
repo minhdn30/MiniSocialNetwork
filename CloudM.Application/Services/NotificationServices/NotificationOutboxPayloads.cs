@@ -46,7 +46,21 @@ namespace CloudM.Application.Services.NotificationServices
         public Guid RecipientId { get; set; }
         public Guid? NotificationId { get; set; }
         public bool AffectsUnread { get; set; }
+        public NotificationToastPayload? Toast { get; set; }
         public Guid EventId { get; set; }
         public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public class NotificationToastPayload
+    {
+        public int Type { get; set; }
+        public Guid ActorAccountId { get; set; }
+        public string ActorUsername { get; set; } = string.Empty;
+        public string? ActorFullName { get; set; }
+        public string? ActorAvatarUrl { get; set; }
+        public int TargetKind { get; set; }
+        public Guid? TargetId { get; set; }
+        public string? TargetPostCode { get; set; }
+        public bool CanOpen { get; set; } = true;
     }
 }

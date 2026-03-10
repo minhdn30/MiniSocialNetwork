@@ -1120,6 +1120,15 @@ namespace CloudM.Tests.Services
             Assert.Equal(outbox.OccurredAt, result.OccurredAt);
             Assert.True(result.AffectsUnread);
             Assert.NotNull(result.NotificationId);
+            Assert.NotNull(result.Toast);
+            Assert.Equal((int)NotificationTypeEnum.PostReact, result.Toast!.Type);
+            Assert.Equal(actor.AccountId, result.Toast.ActorAccountId);
+            Assert.Equal(actor.Username, result.Toast.ActorUsername);
+            Assert.Equal(actor.FullName, result.Toast.ActorFullName);
+            Assert.Equal(actor.AvatarUrl, result.Toast.ActorAvatarUrl);
+            Assert.Equal((int)NotificationTargetKindEnum.Post, result.Toast.TargetKind);
+            Assert.Equal(postId, result.Toast.TargetId);
+            Assert.False(result.Toast.CanOpen);
         }
 
         [Fact]
@@ -1653,6 +1662,7 @@ namespace CloudM.Tests.Services
 
             Assert.Equal(NotificationProjectionActionEnum.Upsert, projectionResult.Action);
             Assert.False(projectionResult.AffectsUnread);
+            Assert.Null(projectionResult.Toast);
 
             var reloaded = await context.Notifications
                 .AsNoTracking()

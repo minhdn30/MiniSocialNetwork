@@ -1,6 +1,7 @@
 using CloudM.Application.DTOs.CommentDTOs;
 using CloudM.Application.DTOs.MessageDTOs;
 using CloudM.Application.DTOs.PostDTOs;
+using CloudM.Application.Services.NotificationServices;
 using System.Collections.Generic;
 
 namespace CloudM.Application.Services.RealtimeServices
@@ -57,7 +58,7 @@ namespace CloudM.Application.Services.RealtimeServices
             string? currentUserAction = null);
         Task NotifyCurrentUserFollowChangedAsync(Guid currentId, Guid relatedTargetId, string action, int myFollowers, int myFollowing);
         Task NotifyFollowStatsChangedAsync(Guid targetId, int targetFollowers, int targetFollowing, string action = "follow_stats_updated");
-        Task NotifyFollowRequestQueueChangedAsync(Guid targetId, string action = "refresh", Guid? requesterId = null);
+        Task NotifyFollowRequestQueueChangedAsync(Guid targetId, string action = "refresh", Guid? requesterId = null, NotificationToastPayload? toast = null);
 
         // account notifications
 
@@ -98,7 +99,13 @@ namespace CloudM.Application.Services.RealtimeServices
         Task NotifyConversationRemovedAsync(Guid accountId, Guid conversationId, string reason);
 
         // notify a user that notifications panel data changed (upsert)
-        Task NotifyNotificationUpsertAsync(Guid accountId, Guid? notificationId, Guid eventId, DateTime occurredAt, bool affectsUnread);
+        Task NotifyNotificationUpsertAsync(
+            Guid accountId,
+            Guid? notificationId,
+            Guid eventId,
+            DateTime occurredAt,
+            bool affectsUnread,
+            NotificationToastPayload? toast = null);
 
         // notify a user that a notification item was removed
         Task NotifyNotificationRemovedAsync(Guid accountId, Guid notificationId, Guid eventId, DateTime occurredAt);

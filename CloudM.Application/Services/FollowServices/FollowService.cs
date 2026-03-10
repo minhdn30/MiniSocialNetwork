@@ -118,7 +118,25 @@ namespace CloudM.Application.Services.FollowServices
                         myCounts.Following,
                         "follow_request_sent");
 
-                    await _realtimeService.NotifyFollowRequestQueueChangedAsync(targetId, "upsert", followerId);
+                    var requesterAccount = await _accountRepository.GetAccountById(followerId);
+                    await _realtimeService.NotifyFollowRequestQueueChangedAsync(
+                        targetId,
+                        "upsert",
+                        followerId,
+                        requesterAccount == null
+                            ? null
+                            : new NotificationToastPayload
+                            {
+                                Type = (int)NotificationTypeEnum.FollowRequest,
+                                ActorAccountId = requesterAccount.AccountId,
+                                ActorUsername = requesterAccount.Username ?? string.Empty,
+                                ActorFullName = requesterAccount.FullName,
+                                ActorAvatarUrl = requesterAccount.AvatarUrl,
+                                TargetKind = (int)NotificationTargetKindEnum.Account,
+                                TargetId = followerId,
+                                TargetPostCode = null,
+                                CanOpen = true
+                            });
 
                     return BuildFollowCountResponse(
                         targetCounts,
