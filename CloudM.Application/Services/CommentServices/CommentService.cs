@@ -6,6 +6,7 @@ using CloudM.Application.Helpers.StoryHelpers;
 using CloudM.Application.Helpers.ValidationHelpers;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.CommentReacts;
@@ -98,7 +99,7 @@ namespace CloudM.Application.Services.CommentServices
                 throw new BadRequestException($"Account with ID {accountId} not found.");
             }
 
-            if (account.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(account))
                 throw new ForbiddenException("You must reactivate your account to comment.");
             Comment? parentComment = null;
             if (request.ParentCommentId.HasValue)

@@ -1,6 +1,7 @@
 using CloudM.Application.DTOs.NotificationDTOs;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Repositories.Notifications;
 using Microsoft.EntityFrameworkCore;
@@ -293,7 +294,8 @@ namespace CloudM.Application.Services.NotificationServices
                 .AsNoTracking()
                 .Where(x =>
                     x.TargetId == recipientId &&
-                    x.Requester.Status == AccountStatusEnum.Active);
+                    x.Requester.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Requester.RoleId));
 
             if (lastFollowRequestsSeenAt.HasValue)
             {
@@ -311,7 +313,8 @@ namespace CloudM.Application.Services.NotificationServices
                 .AsNoTracking()
                 .Where(x =>
                     x.TargetId == recipientId &&
-                    x.Requester.Status == AccountStatusEnum.Active)
+                    x.Requester.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Requester.RoleId))
                 .CountAsync(cancellationToken);
         }
 
@@ -448,6 +451,7 @@ SET
                     Privacy = x.Privacy,
                     IsDeleted = x.IsDeleted,
                     OwnerStatus = x.Account.Status,
+                    OwnerRoleId = x.Account.RoleId,
                     ThumbnailUrl = x.Medias
                         .OrderBy(m => m.CreatedAt)
                         .Select(m => m.MediaUrl)
@@ -466,6 +470,7 @@ SET
                     IsDeleted = x.IsDeleted,
                     ExpiresAt = x.ExpiresAt,
                     OwnerStatus = x.Account.Status,
+                    OwnerRoleId = x.Account.RoleId,
                     ThumbnailUrl = x.ContentType == StoryContentTypeEnum.Text ? null : x.MediaUrl
                 })
                 .ToDictionaryAsync(x => x.StoryId, cancellationToken);
@@ -476,7 +481,8 @@ SET
                 .Select(x => new AccountTargetProjection
                 {
                     AccountId = x.AccountId,
-                    Status = x.Status
+                    Status = x.Status,
+                    RoleId = x.RoleId
                 })
                 .ToDictionaryAsync(x => x.AccountId, cancellationToken);
 
@@ -496,11 +502,14 @@ SET
                 ? new Dictionary<Guid, ActorIdentityProjection>()
                 : await _context.Accounts
                     .AsNoTracking()
-                    .Where(x => lastActorIds.Contains(x.AccountId))
+                    .Where(x =>
+                        lastActorIds.Contains(x.AccountId) &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(x.RoleId))
                     .Select(x => new ActorIdentityProjection
                     {
                         AccountId = x.AccountId,
                         Status = x.Status,
+                        IsSocialEligible = true,
                         Username = x.Username,
                         FullName = x.FullName,
                         AvatarUrl = x.AvatarUrl
@@ -518,7 +527,8 @@ SET
                      actorSnapshotByNotificationId[notification.NotificationId] == null) ||
                     (notification.LastActorId.HasValue &&
                      (!actorIdentityById.TryGetValue(notification.LastActorId.Value, out var actorIdentity) ||
-                      actorIdentity.Status != AccountStatusEnum.Active)))
+                      actorIdentity.Status != AccountStatusEnum.Active ||
+                      !actorIdentity.IsSocialEligible)))
                 .Select(notification => notification.NotificationId)
                 .Distinct()
                 .ToList();
@@ -572,6 +582,7 @@ SET
                         {
                             AccountId = resolved.LastActorId.Value,
                             Status = AccountStatusEnum.Active,
+                            IsSocialEligible = true,
                             Username = resolved.Actor.Username,
                             FullName = resolved.Actor.FullName,
                             AvatarUrl = resolved.Actor.AvatarUrl
@@ -740,7 +751,10 @@ SET
 
             return await _context.NotificationContributions
                 .AsNoTracking()
-                .Where(x => safeNotificationIds.Contains(x.NotificationId))
+                .Where(x =>
+                    safeNotificationIds.Contains(x.NotificationId) &&
+                    x.Actor.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Actor.RoleId))
                 .GroupBy(x => x.NotificationId)
                 .Select(x => new
                 {
@@ -789,7 +803,8 @@ SET
                     .Where(x =>
                         latestContributionNotificationIds.Contains(x.NotificationId) &&
                         x.IsActive &&
-                        x.Actor.Status == AccountStatusEnum.Active)
+                        x.Actor.Status == AccountStatusEnum.Active &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(x.Actor.RoleId))
                     .Select(x => new LatestContributionNavigationProjection
                     {
                         NotificationId = x.NotificationId,
@@ -949,7 +964,8 @@ SET
                 .Where(x =>
                     safeNotificationIds.Contains(x.NotificationId) &&
                     x.IsActive &&
-                    x.Actor.Status == AccountStatusEnum.Active)
+                    x.Actor.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Actor.RoleId))
                 .Select(x => new
                 {
                     x.NotificationId,
@@ -1042,7 +1058,8 @@ SET
             if (notification.TargetKind == NotificationTargetKindEnum.Account)
             {
                 return accountTargets.TryGetValue(notification.TargetId.Value, out var accountTarget)
-                    && accountTarget.Status == AccountStatusEnum.Active;
+                    && accountTarget.Status == AccountStatusEnum.Active
+                    && SocialRoleRules.IsSocialEligibleRole(accountTarget.RoleId);
             }
 
             if (notification.TargetKind == NotificationTargetKindEnum.Post)
@@ -1052,7 +1069,9 @@ SET
                     return false;
                 }
 
-                if (postTarget.IsDeleted || postTarget.OwnerStatus != AccountStatusEnum.Active)
+                if (postTarget.IsDeleted ||
+                    postTarget.OwnerStatus != AccountStatusEnum.Active ||
+                    !SocialRoleRules.IsSocialEligibleRole(postTarget.OwnerRoleId))
                 {
                     return false;
                 }
@@ -1083,7 +1102,8 @@ SET
                 }
 
                 if (storyTarget.IsDeleted ||
-                    storyTarget.OwnerStatus != AccountStatusEnum.Active)
+                    storyTarget.OwnerStatus != AccountStatusEnum.Active ||
+                    !SocialRoleRules.IsSocialEligibleRole(storyTarget.OwnerRoleId))
                 {
                     return false;
                 }
@@ -1182,7 +1202,8 @@ SET
         {
             if (lastActorId.HasValue &&
                 actorIdentityById.TryGetValue(lastActorId.Value, out var actorIdentity) &&
-                actorIdentity.Status == AccountStatusEnum.Active)
+                actorIdentity.Status == AccountStatusEnum.Active &&
+                actorIdentity.IsSocialEligible)
             {
                 return new NotificationActorResponse
                 {
@@ -1243,6 +1264,7 @@ SET
             public PostPrivacyEnum Privacy { get; set; }
             public bool IsDeleted { get; set; }
             public AccountStatusEnum OwnerStatus { get; set; }
+            public int OwnerRoleId { get; set; }
             public string? ThumbnailUrl { get; set; }
         }
 
@@ -1254,6 +1276,7 @@ SET
             public bool IsDeleted { get; set; }
             public DateTime ExpiresAt { get; set; }
             public AccountStatusEnum OwnerStatus { get; set; }
+            public int OwnerRoleId { get; set; }
             public string? ThumbnailUrl { get; set; }
         }
 
@@ -1261,12 +1284,14 @@ SET
         {
             public Guid AccountId { get; set; }
             public AccountStatusEnum Status { get; set; }
+            public int RoleId { get; set; }
         }
 
         private sealed class ActorIdentityProjection
         {
             public Guid AccountId { get; set; }
             public AccountStatusEnum Status { get; set; }
+            public bool IsSocialEligible { get; set; }
             public string Username { get; set; } = string.Empty;
             public string FullName { get; set; } = string.Empty;
             public string? AvatarUrl { get; set; }

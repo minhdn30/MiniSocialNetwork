@@ -2343,7 +2343,7 @@ namespace CloudM.Tests.Services
                 Username = username,
                 FullName = $"{username} full",
                 Email = $"{username}@test.local",
-                RoleId = 1,
+                RoleId = (int)RoleEnum.User,
                 Status = AccountStatusEnum.Active,
                 CreatedAt = DateTime.UtcNow
             };

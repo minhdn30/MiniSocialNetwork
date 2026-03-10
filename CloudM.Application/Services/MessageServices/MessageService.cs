@@ -9,6 +9,7 @@ using CloudM.Infrastructure.Services.Cloudinary;
 using CloudM.Application.Services.ConversationServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
@@ -134,12 +135,12 @@ namespace CloudM.Application.Services.MessageServices
             
             if (receiver == null)
                 throw new BadRequestException($"Receiver account with ID {request.ReceiverId} does not exist.");
-            if (receiver.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(receiver))
                 throw new BadRequestException("This user is currently unavailable.");
 
             if(sender == null) 
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-            if (sender.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
             
             var now = DateTime.UtcNow;
@@ -314,7 +315,7 @@ namespace CloudM.Application.Services.MessageServices
             var sender = await _accountRepository.GetAccountById(senderId);
             if(sender == null) 
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-            if (sender.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
 
             var sanitizedContent = request.Content;
@@ -324,7 +325,7 @@ namespace CloudM.Application.Services.MessageServices
                 var groupMembers = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
                 var mentionCandidates = groupMembers
                     .Where(member => member.Account != null
-                                     && member.Account.Status == AccountStatusEnum.Active
+                                     && SocialRoleRules.IsSocialEligible(member.Account)
                                      && !string.IsNullOrWhiteSpace(member.Account.Username))
                     .Select(member => member.Account!)
                     .GroupBy(account => account.AccountId)
@@ -577,11 +578,11 @@ namespace CloudM.Application.Services.MessageServices
 
             if (receiver == null)
                 throw new BadRequestException($"Receiver account with ID {request.ReceiverId} does not exist.");
-            if (receiver.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(receiver))
                 throw new BadRequestException("This user is currently unavailable.");
             if (sender == null)
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-            if (sender.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
 
             var now = DateTime.UtcNow;
@@ -691,7 +692,7 @@ namespace CloudM.Application.Services.MessageServices
             var sender = await _accountRepository.GetAccountById(senderId);
             if (sender == null)
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-            if (sender.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
 
             var normalizedKeyword = keyword?.Trim() ?? string.Empty;
@@ -851,7 +852,7 @@ namespace CloudM.Application.Services.MessageServices
             var sender = await _accountRepository.GetAccountById(senderId);
             if (sender == null)
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-            if (sender.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
 
             var conversationIds = (request.ConversationIds ?? new List<Guid>())
@@ -944,7 +945,7 @@ namespace CloudM.Application.Services.MessageServices
                         continue;
                     }
 
-                    if (receiver.Status != AccountStatusEnum.Active)
+                    if (!SocialRoleRules.IsSocialEligible(receiver))
                     {
                         results.Add(new PostShareSendResult
                         {
@@ -1013,7 +1014,7 @@ namespace CloudM.Application.Services.MessageServices
             var sender = await _accountRepository.GetAccountById(senderId);
             if (sender == null)
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
-            if (sender.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
 
             var conversationIds = (request.ConversationIds ?? new List<Guid>())
@@ -1134,7 +1135,7 @@ namespace CloudM.Application.Services.MessageServices
                         continue;
                     }
 
-                    if (receiver.Status != AccountStatusEnum.Active)
+                    if (!SocialRoleRules.IsSocialEligible(receiver))
                     {
                         results.Add(new PostShareSendResult
                         {
@@ -1466,7 +1467,7 @@ namespace CloudM.Application.Services.MessageServices
             }
 
             var activeCandidates = (mentionCandidates ?? Array.Empty<Account>())
-                .Where(account => account.Status == AccountStatusEnum.Active
+                .Where(account => SocialRoleRules.IsSocialEligible(account)
                                   && !string.IsNullOrWhiteSpace(account.Username))
                 .ToList();
 

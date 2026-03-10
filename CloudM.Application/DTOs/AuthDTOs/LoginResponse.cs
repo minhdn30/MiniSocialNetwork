@@ -17,6 +17,7 @@ namespace CloudM.Application.DTOs.AuthDTOs
         public string? RefreshToken { get; set; }
         public DateTime RefreshTokenExpiryTime { get; set; }
         public AccountStatusEnum Status { get; set; }
+        public bool IsSocialEligible { get; set; }
         public PostPrivacyEnum DefaultPostPrivacy { get; set; }
     }
 }

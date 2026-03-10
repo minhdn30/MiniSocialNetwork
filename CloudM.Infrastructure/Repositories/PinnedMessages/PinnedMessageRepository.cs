@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using System;
@@ -62,6 +63,11 @@ namespace CloudM.Infrastructure.Repositories.PinnedMessages
                 .Where(pm => !pm.Message.HiddenBy.Any(hb => hb.AccountId == currentAccountId))
                 // recalled message is treated as removed from pinned list
                 .Where(pm => !pm.Message.IsRecalled)
+                .Where(pm =>
+                    pm.Message.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(pm.Message.Account.RoleId) &&
+                    pm.PinnedByAccount.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(pm.PinnedByAccount.RoleId))
                 .OrderByDescending(pm => pm.PinnedAt);
 
             var totalItems = await query.CountAsync();
@@ -86,7 +92,7 @@ namespace CloudM.Infrastructure.Repositories.PinnedMessages
                         Username = pm.Message.Account.Username,
                         FullName = pm.Message.Account.FullName,
                         AvatarUrl = pm.Message.Account.AvatarUrl,
-                        IsActive = pm.Message.Account.Status == AccountStatusEnum.Active
+                        IsActive = pm.Message.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(pm.Message.Account.RoleId)
                     },
                     PinnedByAccount = new AccountChatInfoModel
                     {
@@ -94,7 +100,7 @@ namespace CloudM.Infrastructure.Repositories.PinnedMessages
                         Username = pm.PinnedByAccount.Username,
                         FullName = pm.PinnedByAccount.FullName,
                         AvatarUrl = pm.PinnedByAccount.AvatarUrl,
-                        IsActive = pm.PinnedByAccount.Status == AccountStatusEnum.Active
+                        IsActive = pm.PinnedByAccount.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(pm.PinnedByAccount.RoleId)
                     },
                     Medias = pm.Message.IsRecalled ? null : pm.Message.Medias
                         .OrderBy(m => m.CreatedAt)
@@ -187,6 +193,7 @@ namespace CloudM.Infrastructure.Repositories.PinnedMessages
                                     && s.ExpiresAt > DateTime.UtcNow
                                     && !s.IsDeleted
                                     && s.Account.Status == AccountStatusEnum.Active
+                                    && SocialRoleRules.SocialEligibleRoleIds.Contains(s.Account.RoleId)
                                     && (
                                         s.AccountId == currentAccountId ||
                                         s.Privacy == StoryPrivacyEnum.Public ||
@@ -259,6 +266,7 @@ namespace CloudM.Infrastructure.Repositories.PinnedMessages
                         .Where(p => postIds.Contains(p.PostId)
                                     && !p.IsDeleted
                                     && p.Account.Status == AccountStatusEnum.Active
+                                    && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId)
                                     && (
                                         p.AccountId == currentAccountId ||
                                         p.Privacy == PostPrivacyEnum.Public ||

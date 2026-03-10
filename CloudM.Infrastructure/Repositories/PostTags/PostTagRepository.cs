@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using System;
 using System.Threading.Tasks;
@@ -27,7 +28,8 @@ namespace CloudM.Infrastructure.Repositories.PostTags
                     x.PostId == postId &&
                     x.TaggedAccountId == currentId &&
                     !x.Post.IsDeleted &&
-                    x.Post.Account.Status == AccountStatusEnum.Active);
+                    x.Post.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Post.Account.RoleId));
 
             if (targetTag == null)
             {

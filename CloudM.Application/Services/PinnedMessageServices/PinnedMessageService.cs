@@ -7,6 +7,7 @@ using CloudM.Application.DTOs.PinnedMessageDTOs;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
@@ -139,6 +140,8 @@ namespace CloudM.Application.Services.PinnedMessageServices
             var actor = await _accountRepository.GetAccountById(currentAccountId);
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentAccountId} does not exist.");
+            if (!SocialRoleRules.IsSocialEligible(actor))
+                throw new ForbiddenException("This account cannot pin messages.");
 
             // pin the message
             var pinnedMessage = new PinnedMessage
@@ -196,6 +199,8 @@ namespace CloudM.Application.Services.PinnedMessageServices
             var actor = await _accountRepository.GetAccountById(currentAccountId);
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentAccountId} does not exist.");
+            if (!SocialRoleRules.IsSocialEligible(actor))
+                throw new ForbiddenException("This account cannot unpin messages.");
 
             // unpin the message
             await _pinnedMessageRepository.RemoveAsync(conversationId, messageId);

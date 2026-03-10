@@ -1,5 +1,6 @@
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -84,7 +85,11 @@ namespace CloudM.Infrastructure.Repositories.Notifications
         {
             return await _context.NotificationContributions
                 .Include(x => x.Actor)
-                .Where(x => x.NotificationId == notificationId && x.IsActive)
+                .Where(x =>
+                    x.NotificationId == notificationId &&
+                    x.IsActive &&
+                    x.Actor.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Actor.RoleId))
                 .OrderByDescending(x => x.UpdatedAt)
                 .ToListAsync(cancellationToken);
         }
@@ -112,6 +117,8 @@ namespace CloudM.Infrastructure.Repositories.Notifications
                     (x.Contributions.Any() &&
                      x.Contributions.Any(c =>
                          c.IsActive &&
+                         c.Actor.Status == AccountStatusEnum.Active &&
+                         SocialRoleRules.SocialEligibleRoleIds.Contains(c.Actor.RoleId) &&
                          c.UpdatedAt > lastNotificationsSeenAt.Value)) ||
                     (!x.Contributions.Any() &&
                      x.LastEventAt > lastNotificationsSeenAt.Value));
@@ -162,6 +169,8 @@ namespace CloudM.Infrastructure.Repositories.Notifications
                     (x.Contributions.Any() &&
                      x.Contributions.Any(c =>
                          c.IsActive &&
+                         c.Actor.Status == AccountStatusEnum.Active &&
+                         SocialRoleRules.SocialEligibleRoleIds.Contains(c.Actor.RoleId) &&
                          c.UpdatedAt > lastNotificationsSeenAt.Value)) ||
                     (!x.Contributions.Any() &&
                      x.LastEventAt > lastNotificationsSeenAt.Value));

@@ -2,6 +2,7 @@
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
+using CloudM.Domain.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,8 +26,8 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 .AsNoTracking()
                 .Where(c => !c.IsDeleted && !c.IsGroup)
                 .Where(c => c.Members.Count == 2 
-                            && c.Members.Any(m => m.AccountId == accountId1 && m.Account.Status == AccountStatusEnum.Active) 
-                            && c.Members.Any(m => m.AccountId == accountId2 && m.Account.Status == AccountStatusEnum.Active))
+                            && c.Members.Any(m => m.AccountId == accountId1 && m.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId)) 
+                            && c.Members.Any(m => m.AccountId == accountId2 && m.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId)))
                 .Include(c => c.Members)
                     .ThenInclude(m => m.Account)
                 .FirstOrDefaultAsync();
@@ -46,8 +47,8 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 !c.IsDeleted &&
                 !c.IsGroup &&
                 c.Members.Count == 2 &&
-                c.Members.Any(m => m.AccountId == accountId1 && m.Account.Status == AccountStatusEnum.Active) &&
-                c.Members.Any(m => m.AccountId == accountId2 && m.Account.Status == AccountStatusEnum.Active)
+                c.Members.Any(m => m.AccountId == accountId1 && m.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId)) &&
+                c.Members.Any(m => m.AccountId == accountId2 && m.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId))
             );
         }
 
@@ -91,7 +92,15 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 .AsNoTracking()
                 .Where(cm => cm.AccountId == currentId && !cm.Conversation.IsDeleted && !cm.HasLeft
                 && cm.Conversation.Messages.Any(m => (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) 
-                && !m.HiddenBy.Any(hb => hb.AccountId == currentId)));
+                && !m.HiddenBy.Any(hb => hb.AccountId == currentId)
+                && m.Account.Status == AccountStatusEnum.Active
+                && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId))
+                && (cm.Conversation.IsGroup ||
+                    cm.Conversation.Members.Any(m =>
+                        m.AccountId != currentId &&
+                        !m.HasLeft &&
+                        m.Account.Status == AccountStatusEnum.Active &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId))));
 
             if (isPrivate.HasValue)
             {
@@ -111,6 +120,8 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 baseQuery = baseQuery.Where(cm =>
                     (cm.Conversation.IsGroup && EF.Functions.ILike(cm.Conversation.ConversationName!, searchPattern)) ||
                     (!cm.Conversation.IsGroup && cm.Conversation.Members.Any(m => m.AccountId != currentId
+                        && m.Account.Status == AccountStatusEnum.Active
+                        && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId)
                         && (EF.Functions.ILike(m.Account.FullName, searchPattern)
                             || EF.Functions.ILike(m.Account.Username, searchPattern))))
                 );
@@ -133,7 +144,9 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 // Correlation subquery for sorting by last message
                 LastMessageSentAt = (DateTime?)_context.Messages
                     .Where(m => m.ConversationId == cm.ConversationId && (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) 
-                    && !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                    && !m.HiddenBy.Any(hb => hb.AccountId == currentId)
+                    && m.Account.Status == AccountStatusEnum.Active
+                    && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId))
                     .OrderByDescending(m => m.SentAt)
                     .Select(m => m.SentAt)
                     .FirstOrDefault()
@@ -170,7 +183,11 @@ namespace CloudM.Infrastructure.Repositories.Conversations
             var privateConvIds = pagedData.Where(x => !x.IsGroup).Select(x => x.ConversationId).ToList();
             var otherMembers = await _context.ConversationMembers
                 .AsNoTracking()
-                .Where(cm => privateConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId)
+                .Where(cm =>
+                    privateConvIds.Contains(cm.ConversationId) &&
+                    cm.AccountId != currentId &&
+                    cm.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId))
                 .Select(cm => new {
                     cm.ConversationId,
                     Info = new OtherMemberBasicInfo
@@ -180,7 +197,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                         FullName = cm.Account.FullName,
                         Nickname = cm.Nickname,
                         AvatarUrl = cm.Account.AvatarUrl,
-                        IsActive = cm.Account.Status == AccountStatusEnum.Active
+                        IsActive = cm.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId)
                     }
                 })
                 .ToListAsync();
@@ -199,7 +216,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     // Optimized path: limit to top 4 members per conversation in SQL.
                     groupMembersInfo = await _context.ConversationMembers
                         .AsNoTracking()
-                        .Where(cm => groupConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft)
+                        .Where(cm => groupConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft && cm.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId))
                         .GroupBy(cm => cm.ConversationId)
                         .SelectMany(g => g
                             .OrderBy(cm => cm.JoinedAt)
@@ -219,7 +236,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     // Fallback path: preserve existing behavior if provider cannot translate the optimized query.
                     groupMembersInfo = await _context.ConversationMembers
                         .AsNoTracking()
-                        .Where(cm => groupConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft)
+                        .Where(cm => groupConvIds.Contains(cm.ConversationId) && cm.AccountId != currentId && !cm.HasLeft && cm.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId))
                         .Select(cm => new GroupAvatarProjection
                         {
                             ConversationId = cm.ConversationId,
@@ -252,7 +269,9 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     MessageId = _context.Messages
                         .Where(m => m.ConversationId == cm.ConversationId
                             && (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value)
-                            && !m.HiddenBy.Any(hb => hb.AccountId == currentId))
+                            && !m.HiddenBy.Any(hb => hb.AccountId == currentId)
+                            && m.Account.Status == AccountStatusEnum.Active
+                            && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId))
                         .OrderByDescending(m => m.SentAt)
                         .ThenByDescending(m => m.MessageId)
                         .Select(m => (Guid?)m.MessageId)
@@ -298,7 +317,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                                 FullName = msg.Account.FullName,
                                 AvatarUrl = msg.Account.AvatarUrl,
                                 Username = msg.Account.Username,
-                                IsActive = msg.Account.Status == AccountStatusEnum.Active
+                                IsActive = msg.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(msg.Account.RoleId)
                             },
                             Medias = new List<MessageMediaBasicModel>()
                         }))
@@ -346,7 +365,9 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     cm.ConversationId,
                     Count = _context.Messages.Count(m => m.ConversationId == cm.ConversationId && m.AccountId != cm.AccountId && 
                     !m.HiddenBy.Any(hb => hb.AccountId == currentId) && (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) 
-                    && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value))
+                    && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value)
+                    && m.Account.Status == AccountStatusEnum.Active
+                    && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId))
                 })
                 .ToListAsync();
             var unreadMap = unreadCounts.ToDictionary(x => x.ConversationId, x => x.Count);
@@ -449,7 +470,11 @@ namespace CloudM.Infrastructure.Repositories.Conversations
             {
                 otherMember = await _context.ConversationMembers
                     .AsNoTracking()
-                    .Where(x => x.ConversationId == conversationId && x.AccountId != currentId)
+                    .Where(x =>
+                        x.ConversationId == conversationId &&
+                        x.AccountId != currentId &&
+                        x.Account.Status == AccountStatusEnum.Active &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(x.Account.RoleId))
                     .Select(x => new OtherMemberBasicInfo
                     {
                         AccountId = x.AccountId,
@@ -457,14 +482,21 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                         FullName = x.Account.FullName,
                         Nickname = x.Nickname,
                         AvatarUrl = x.Account.AvatarUrl,
-                        IsActive = x.Account.Status == AccountStatusEnum.Active
+                        IsActive = x.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(x.Account.RoleId)
                     })
                     .FirstOrDefaultAsync();
+
+                if (otherMember == null)
+                {
+                    return null;
+                }
             }
 
             var unreadCount = await _context.Messages
                 .AsNoTracking()
                 .CountAsync(m => m.ConversationId == conversationId && m.AccountId != currentId && !m.HiddenBy.Any(hb => hb.AccountId == currentId) 
+                && m.Account.Status == AccountStatusEnum.Active
+                && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId)
                 && (!cm.ClearedAt.HasValue || m.SentAt >= cm.ClearedAt.Value) && (!cm.LastSeenAt.HasValue || m.SentAt > cm.LastSeenAt.Value));
 
             string? displayName = cm.Conversation.IsGroup ? cm.Conversation.ConversationName : (otherMember?.Nickname ?? otherMember?.Username);
@@ -474,7 +506,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
             {
                 groupAvatars = await _context.ConversationMembers
                     .AsNoTracking()
-                    .Where(g_cm => g_cm.ConversationId == conversationId && g_cm.AccountId != currentId && !g_cm.HasLeft)
+                    .Where(g_cm => g_cm.ConversationId == conversationId && g_cm.AccountId != currentId && !g_cm.HasLeft && g_cm.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(g_cm.Account.RoleId))
                     .OrderBy(g_cm => g_cm.JoinedAt)
                     .ThenBy(g_cm => g_cm.AccountId)
                     .Select(g_cm => g_cm.Account.AvatarUrl ?? string.Empty)

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using System.Text.Json;
@@ -131,7 +132,8 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
                 .Where(v =>
                     normalizedStoryIds.Contains(v.StoryId) &&
                     v.ViewerAccountId != authorId &&
-                    v.ViewerAccount.Status == AccountStatusEnum.Active)
+                    v.ViewerAccount.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(v.ViewerAccount.RoleId))
                 .Select(v => new
                 {
                     v.StoryId,
@@ -261,7 +263,10 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
         {
             var query = _context.StoryViews
                 .AsNoTracking()
-                .Where(v => v.StoryId == storyId && v.ViewerAccount.Status == AccountStatusEnum.Active);
+                .Where(v =>
+                    v.StoryId == storyId &&
+                    v.ViewerAccount.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(v.ViewerAccount.RoleId));
 
             int totalItems = await query.CountAsync();
 
@@ -298,6 +303,7 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
                     !s.IsDeleted &&
                     s.ExpiresAt > nowUtc &&
                     s.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(s.Account.RoleId) &&
                     (
                         s.AccountId == currentId ||
                         (

@@ -2,6 +2,7 @@
 using CloudM.Application.DTOs.PostMediaDTOs;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using System;
@@ -39,6 +40,19 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         {
             _context = context;
         }
+
+        private IQueryable<Account> GetSocialAccountsQuery()
+        {
+            return _context.Accounts
+                .Where(a =>
+                    a.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(a.RoleId));
+        }
+
+        private IQueryable<Account> GetSocialAccountsNoTrackingQuery()
+        {
+            return GetSocialAccountsQuery().AsNoTracking();
+        }
         public async Task<bool> IsUsernameExist (string username)
         {
             var normalizedUsername = (username ?? string.Empty).Trim().ToLower();
@@ -51,7 +65,10 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         }
         public async Task<bool> IsAccountIdExist(Guid accountId)
         {
-            return await _context.Accounts.AnyAsync(a => a.AccountId == accountId && a.Status == AccountStatusEnum.Active);
+            return await _context.Accounts.AnyAsync(a =>
+                a.AccountId == accountId &&
+                a.Status == AccountStatusEnum.Active &&
+                SocialRoleRules.SocialEligibleRoleIds.Contains(a.RoleId));
         }
         public async Task AddAccount(Account account)
         {
@@ -146,8 +163,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         public async Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId)
         {
-            var data = await _context.Accounts
-                .AsNoTracking()
+            var data = await GetSocialAccountsNoTrackingQuery()
                 .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active)
                 .Select(a => new
                 {
@@ -161,10 +177,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                         CoverUrl = a.CoverUrl,
                         Status = a.Status
                     },
-
-                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any()),
-                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
-                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
+                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any() && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId)),
+                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId)),
+                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId)),
 
                     IsCurrentUser = currentId.HasValue && a.AccountId == currentId.Value,
                     IsFollowedByCurrentUser =
@@ -215,8 +230,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         public async Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId)
         {
-            var data = await _context.Accounts
-                .AsNoTracking()
+            var data = await GetSocialAccountsNoTrackingQuery()
                 .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active)
                 .Select(a => new
                 {
@@ -231,9 +245,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     a.Gender,
                     a.Address,
                     a.CreatedAt,
-                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any()),
-                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
-                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
+                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any() && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId)),
+                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId)),
+                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId)),
                     IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
                     IsFollowRequestPendingByCurrentUser =
                         currentId.HasValue && _context.FollowRequests.Any(fr =>
@@ -284,8 +298,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         public async Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId)
         {
-            var data = await _context.Accounts
-                .AsNoTracking()
+            var data = await GetSocialAccountsNoTrackingQuery()
                 .Where(a => a.Username.ToLower() == username.ToLower() && a.Status == AccountStatusEnum.Active)
                 .Select(a => new
                 {
@@ -300,9 +313,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     a.Gender,
                     a.Address,
                     a.CreatedAt,
-                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any()),
-                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active),
-                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active),
+                    PostCount = a.Posts.Count(p => !p.IsDeleted && p.Medias.Any() && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId)),
+                    FollowerCount = a.Followers.Count(f => f.Follower.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId)),
+                    FollowingCount = a.Followings.Count(f => f.Followed.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId)),
                     IsFollowedByCurrentUser = currentId.HasValue && a.Followers.Any(f => f.FollowerId == currentId.Value),
                     IsFollowRequestPendingByCurrentUser =
                         currentId.HasValue && _context.FollowRequests.Any(fr =>
@@ -381,9 +394,8 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var containsPattern = $"%{normalizedKeyword}%";
             var startsWithPattern = $"{normalizedKeyword}%";
 
-            var query = _context.Accounts
-                .AsNoTracking()
-                .Where(a => a.Status == AccountStatusEnum.Active && a.AccountId != currentId);
+            var query = GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.AccountId != currentId);
 
             if (excludeIds.Count > 0)
             {
@@ -542,9 +554,8 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var containsPattern = $"%{normalizedKeyword}%";
             var startsWithPattern = $"{normalizedKeyword}%";
 
-            var preliminaryCandidates = await _context.Accounts
-                .AsNoTracking()
-                .Where(a => a.Status == AccountStatusEnum.Active && a.AccountId != currentId)
+            var preliminaryCandidates = await GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.AccountId != currentId)
                 .Select(a => new PreliminaryPostShareAccountCandidate
                 {
                     AccountId = a.AccountId,
@@ -672,9 +683,8 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var containsPattern = $"%{normalizedKeyword}%";
             var startsWithPattern = $"{normalizedKeyword}%";
 
-            var query = _context.Accounts
-                .AsNoTracking()
-                .Where(a => a.Status == AccountStatusEnum.Active && a.AccountId != currentId);
+            var query = GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.AccountId != currentId);
 
             if (excludeIds.Count > 0)
             {
@@ -795,7 +805,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         public async Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds)
         {
-            return await _context.Accounts
+            return await GetSocialAccountsQuery()
                 .Include(a => a.Settings)
                 .Where(a => accountIds.Contains(a.AccountId))
                 .ToListAsync();
@@ -814,7 +824,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 return new List<Account>();
             }
 
-            return await _context.Accounts
+            return await GetSocialAccountsQuery()
                 .Include(a => a.Settings)
                 .Where(a => normalizedUsernames.Contains(a.Username.ToLower()))
                 .ToListAsync();
@@ -858,9 +868,8 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var recentDirectMessageMap = recentDirectChatRows.ToDictionary(x => x.AccountId, x => x.LastMessageAt);
             var recentAccountIds = recentDirectChatRows.Select(x => x.AccountId).ToList();
 
-            var accountsQuery = _context.Accounts
-                .AsNoTracking()
-                .Where(a => recentAccountIds.Contains(a.AccountId) && a.Status == AccountStatusEnum.Active);
+            var accountsQuery = GetSocialAccountsNoTrackingQuery()
+                .Where(a => recentAccountIds.Contains(a.AccountId));
 
             if (excludeIds.Count > 0)
             {
@@ -1000,9 +1009,8 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var recentDirectMessageMap = recentDirectChatRows.ToDictionary(x => x.AccountId, x => x.LastMessageAt);
             var recentAccountIds = recentDirectChatRows.Select(x => x.AccountId).ToList();
 
-            var candidatesQuery = _context.Accounts
-                .AsNoTracking()
-                .Where(a => a.Status == AccountStatusEnum.Active && a.AccountId != currentId);
+            var candidatesQuery = GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.AccountId != currentId);
 
             if (excludeIds.Count > 0)
             {

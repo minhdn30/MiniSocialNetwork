@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using System;
@@ -61,6 +62,7 @@ namespace CloudM.Infrastructure.Repositories.PostSaves
                     s.AccountId == currentId &&
                     !s.Post.IsDeleted &&
                     s.Post.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(s.Post.Account.RoleId) &&
                     s.Post.Medias.Any() &&
                     (
                         s.Post.AccountId == currentId ||
@@ -96,8 +98,8 @@ namespace CloudM.Infrastructure.Repositories.PostSaves
                         .Take(1)
                         .ToList(),
                     MediaCount = s.Post.Medias.Count(),
-                    ReactCount = s.Post.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
-                    CommentCount = s.Post.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
+                    ReactCount = s.Post.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    CommentCount = s.Post.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
                     SavedAt = s.CreatedAt
                 })
                 .ToListAsync();

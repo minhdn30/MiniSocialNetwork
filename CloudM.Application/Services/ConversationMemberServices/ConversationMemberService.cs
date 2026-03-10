@@ -6,6 +6,7 @@ using CloudM.Application.DTOs.MessageDTOs;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
@@ -232,7 +233,7 @@ namespace CloudM.Application.Services.ConversationMemberServices
             if (!actorMember.IsAdmin && !actorIsOwner)
                 throw new ForbiddenException("Only group admins can search and add members.");
 
-            var activeMemberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(conversationId);
+            var activeMemberIds = await _conversationMemberRepository.GetAllActiveMemberIdsByConversationIdAsync(conversationId);
             if (activeMemberIds.Count >= MaxGroupConversationMembers)
                 return new List<GroupInviteAccountSearchResponse>();
 
@@ -275,7 +276,7 @@ namespace CloudM.Application.Services.ConversationMemberServices
             if (!actorMember.IsAdmin && !actorIsOwner)
                 throw new ForbiddenException("Only group admins can add members.");
 
-            var activeMemberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(conversationId);
+            var activeMemberIds = await _conversationMemberRepository.GetAllActiveMemberIdsByConversationIdAsync(conversationId);
             if (activeMemberIds.Count >= MaxGroupConversationMembers)
                 throw new BadRequestException($"A group can contain at most {MaxGroupConversationMembers} members.");
 
@@ -302,7 +303,7 @@ namespace CloudM.Application.Services.ConversationMemberServices
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentId} does not exist.");
 
-            if (actor.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(actor))
                 throw new ForbiddenException("You must reactivate your account to add members.");
 
             var targetAccounts = allAccounts
@@ -319,7 +320,7 @@ namespace CloudM.Application.Services.ConversationMemberServices
                 .ToList();
 
             var inactiveAccounts = orderedTargets
-                .Where(account => account.Status != AccountStatusEnum.Active)
+                .Where(account => !SocialRoleRules.IsSocialEligible(account))
                 .ToList();
 
             if (inactiveAccounts.Count > 0)
@@ -484,12 +485,11 @@ namespace CloudM.Application.Services.ConversationMemberServices
             if (!actorIsOwner && targetMember.IsAdmin)
                 throw new BadRequestException("Only group owner can kick another admin.");
 
-            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
-            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            var actor = await _accountRepository.GetAccountById(currentId);
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentId} does not exist.");
 
-            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            var target = await _accountRepository.GetAccountById(targetAccountId);
             if (target == null)
                 throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
 
@@ -559,14 +559,15 @@ namespace CloudM.Application.Services.ConversationMemberServices
 
             targetMember.IsAdmin = true;
 
-            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
-            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            var actor = await _accountRepository.GetAccountById(currentId);
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentId} does not exist.");
 
-            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            var target = await _accountRepository.GetAccountById(targetAccountId);
             if (target == null)
                 throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
+            if (!SocialRoleRules.IsSocialEligible(target))
+                throw new BadRequestException("Target account is not available for social group management.");
 
             var sentAt = DateTime.UtcNow;
             var systemMessage = new Message
@@ -630,12 +631,11 @@ namespace CloudM.Application.Services.ConversationMemberServices
 
             targetMember.IsAdmin = false;
 
-            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
-            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            var actor = await _accountRepository.GetAccountById(currentId);
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentId} does not exist.");
 
-            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            var target = await _accountRepository.GetAccountById(targetAccountId);
             if (target == null)
                 throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
 
@@ -696,14 +696,15 @@ namespace CloudM.Application.Services.ConversationMemberServices
             conversation.Owner = targetAccountId;
             targetMember.IsAdmin = true;
 
-            var accounts = await _accountRepository.GetAccountsByIds(new[] { currentId, targetAccountId });
-            var actor = accounts.FirstOrDefault(a => a.AccountId == currentId);
+            var actor = await _accountRepository.GetAccountById(currentId);
             if (actor == null)
                 throw new NotFoundException($"Account with ID {currentId} does not exist.");
 
-            var target = accounts.FirstOrDefault(a => a.AccountId == targetAccountId);
+            var target = await _accountRepository.GetAccountById(targetAccountId);
             if (target == null)
                 throw new NotFoundException($"Account with ID {targetAccountId} does not exist.");
+            if (!SocialRoleRules.IsSocialEligible(target))
+                throw new BadRequestException("Target account is not available for social group management.");
 
             var sentAt = DateTime.UtcNow;
             var systemMessage = new Message
@@ -760,7 +761,7 @@ namespace CloudM.Application.Services.ConversationMemberServices
             if (actorMember == null)
                 throw new ForbiddenException("You are not a member of this conversation.");
 
-            var activeMembers = await _conversationMemberRepository.GetConversationMembersAsync(conversationId);
+            var activeMembers = await _conversationMemberRepository.GetAllActiveConversationMembersAsync(conversationId);
             if (activeMembers.Count == 0)
                 throw new BadRequestException("This group has no active members.");
 

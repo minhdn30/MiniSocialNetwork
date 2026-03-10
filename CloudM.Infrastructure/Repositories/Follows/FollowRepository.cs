@@ -2,6 +2,7 @@
 using CloudM.Infrastructure.Models;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -23,7 +24,11 @@ namespace CloudM.Infrastructure.Repositories.Follows
         public async Task<bool> IsFollowingAsync(Guid followerId, Guid followedId)
         {
             return await _context.Follows
-                .AnyAsync(f => f.FollowerId == followerId && f.FollowedId == followedId && f.Followed.Status == AccountStatusEnum.Active);
+                .AnyAsync(f =>
+                    f.FollowerId == followerId &&
+                    f.FollowedId == followedId &&
+                    f.Followed.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId));
         }
 
         public async Task<bool> IsFollowRecordExistAsync(Guid followerId, Guid followedId)
@@ -77,7 +82,10 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
         public async Task<List<Guid>> GetFollowingIdsAsync(Guid followerId)
         {
             return await _context.Follows
-                .Where(f => f.FollowerId == followerId)
+                .Where(f =>
+                    f.FollowerId == followerId &&
+                    f.Followed.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId))
                 .Select(f => f.FollowedId)
                 .ToListAsync();
         }
@@ -85,7 +93,10 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
         public async Task<List<Guid>> GetFollowerIdsAsync(Guid followedId)
         {
             return await _context.Follows
-                .Where(f => f.FollowedId == followedId)
+                .Where(f =>
+                    f.FollowedId == followedId &&
+                    f.Follower.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId))
                 .Select(f => f.FollowerId)
                 .ToListAsync();
         }
@@ -103,7 +114,11 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
             }
 
             var followerIds = await _context.Follows
-                .Where(f => f.FollowedId == followedId && normalizedTargetIds.Contains(f.FollowerId))
+                .Where(f =>
+                    f.FollowedId == followedId &&
+                    normalizedTargetIds.Contains(f.FollowerId) &&
+                    f.Follower.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId))
                 .Select(f => f.FollowerId)
                 .Distinct()
                 .ToListAsync();
@@ -123,8 +138,18 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
 
             var connectedIds = await _context.Follows
                 .Where(f =>
-                    (f.FollowerId == currentId && normalizedTargetIds.Contains(f.FollowedId)) ||
-                    (f.FollowedId == currentId && normalizedTargetIds.Contains(f.FollowerId)))
+                    (
+                        f.FollowerId == currentId &&
+                        normalizedTargetIds.Contains(f.FollowedId) &&
+                        f.Followed.Status == AccountStatusEnum.Active &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId)
+                    ) ||
+                    (
+                        f.FollowedId == currentId &&
+                        normalizedTargetIds.Contains(f.FollowerId) &&
+                        f.Follower.Status == AccountStatusEnum.Active &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId)
+                    ))
                 .Select(f => f.FollowerId == currentId ? f.FollowedId : f.FollowerId)
                 .Distinct()
                 .ToListAsync();
@@ -136,7 +161,10 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
         public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowersAsync(Guid accountId, Guid? currentId, string? keyword, bool? sortByCreatedASC, int page, int pageSize)
         {
             var query = _context.Follows
-                .Where(f => f.FollowedId == accountId && f.Follower.Status == AccountStatusEnum.Active)
+                .Where(f =>
+                    f.FollowedId == accountId &&
+                    f.Follower.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId))
                 .Select(f => new
                 {
                     f.Follower.AccountId,
@@ -194,7 +222,10 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
         public async Task<(List<AccountWithFollowStatusModel> Items, int TotalItems)> GetFollowingAsync(Guid accountId, Guid? currentId, string? keyword, bool? sortByCreatedASC, int page, int pageSize)
         {
             var query = _context.Follows
-                .Where(f => f.FollowerId == accountId && f.Followed.Status == AccountStatusEnum.Active)
+                .Where(f =>
+                    f.FollowerId == accountId &&
+                    f.Followed.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId))
                 .Select(f => new
                 {
                     f.Followed.AccountId,
@@ -250,13 +281,19 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
         public async Task<int> CountFollowersAsync(Guid accountId)
         {
             return await _context.Follows
-                .Where(f => f.FollowedId == accountId && f.Follower.Status == AccountStatusEnum.Active)
+                .Where(f =>
+                    f.FollowedId == accountId &&
+                    f.Follower.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId))
                 .CountAsync();
         }
         public async Task<int> CountFollowingAsync(Guid accountId)
         {
             return await _context.Follows
-                .Where(f => f.FollowerId == accountId && f.Followed.Status == AccountStatusEnum.Active)
+                .Where(f =>
+                    f.FollowerId == accountId &&
+                    f.Followed.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId))
                 .CountAsync();
         }
 
@@ -264,10 +301,16 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
         {
             // Count using separate queries to ensure stable SQL translation and correct active status filtering
             var followers = await _context.Follows
-                .CountAsync(f => f.FollowedId == targetId && f.Follower.Status == AccountStatusEnum.Active);
+                .CountAsync(f =>
+                    f.FollowedId == targetId &&
+                    f.Follower.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId));
 
             var following = await _context.Follows
-                .CountAsync(f => f.FollowerId == targetId && f.Followed.Status == AccountStatusEnum.Active);
+                .CountAsync(f =>
+                    f.FollowerId == targetId &&
+                    f.Followed.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId));
 
             return (followers, following);
         }
@@ -284,7 +327,10 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
             }
 
             var followerCounts = await _context.Follows
-                .Where(f => safeAccountIds.Contains(f.FollowedId) && f.Follower.Status == AccountStatusEnum.Active)
+                .Where(f =>
+                    safeAccountIds.Contains(f.FollowedId) &&
+                    f.Follower.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId))
                 .GroupBy(f => f.FollowedId)
                 .Select(g => new
                 {
@@ -294,7 +340,10 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
                 .ToDictionaryAsync(x => x.AccountId, x => x.Count, cancellationToken);
 
             var followingCounts = await _context.Follows
-                .Where(f => safeAccountIds.Contains(f.FollowerId) && f.Followed.Status == AccountStatusEnum.Active)
+                .Where(f =>
+                    safeAccountIds.Contains(f.FollowerId) &&
+                    f.Followed.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Followed.RoleId))
                 .GroupBy(f => f.FollowerId)
                 .Select(g => new
                 {

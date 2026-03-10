@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -29,7 +30,9 @@ namespace CloudM.Infrastructure.Repositories.MessageReacts
             return await _context.MessageReacts
                 .Where(mr => mr.MessageId == messageId)
                 .Include(mr => mr.Account)
-                .Where(mr => mr.Account.Status == AccountStatusEnum.Active)
+                .Where(mr =>
+                    mr.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(mr.Account.RoleId))
                 .ToListAsync();
         }
 
@@ -37,7 +40,9 @@ namespace CloudM.Infrastructure.Repositories.MessageReacts
         {
             return await _context.MessageReacts
                 .Where(mr => mr.MessageId == messageId)
-                .Where(mr => mr.Account.Status == AccountStatusEnum.Active)
+                .Where(mr =>
+                    mr.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(mr.Account.RoleId))
                 .CountAsync();
         }
 
@@ -45,7 +50,9 @@ namespace CloudM.Infrastructure.Repositories.MessageReacts
         {
             return await _context.MessageReacts
                 .Where(mr => mr.MessageId == messageId && mr.ReactType == reactType)
-                .Where(mr => mr.Account.Status == AccountStatusEnum.Active)
+                .Where(mr =>
+                    mr.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(mr.Account.RoleId))
                 .CountAsync();
         }
 

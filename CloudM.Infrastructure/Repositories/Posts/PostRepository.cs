@@ -2,6 +2,7 @@
 using CloudM.Application.DTOs.PostMediaDTOs;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using System;
@@ -30,19 +31,19 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     .ThenInclude(t => t.TaggedAccount)
                 .Include(p => p.Reacts)
                 .Include(p => p.Comments)
-                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId));
         }
         public async Task<Post?> GetPostBasicInfoById(Guid postId)
         {
             return await _context.Posts
                 .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId));
         }
         public async Task<Post?> GetPostForUpdateContent(Guid postId)
         {
              return await _context.Posts
                 .Include(p => p.Medias)
-                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
+                .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId));
         }
         public async Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId)
         {
@@ -61,6 +62,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     p.PostId == postId &&
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     (
                         p.AccountId == currentId || // owner
                         p.Privacy == PostPrivacyEnum.Public ||
@@ -99,10 +101,10 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         .ToList(),
 
                     TotalMedias = p.Medias.Count(),
-                    TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
-                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
+                    TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
 
-                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsCurrentUserTagged = p.Tags.Any(t => t.TaggedAccountId == currentId),
@@ -141,6 +143,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     p.PostCode == postCode &&
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     (
                         p.AccountId == currentId || // owner
                         p.Privacy == PostPrivacyEnum.Public ||
@@ -179,10 +182,10 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         .ToList(),
 
                     TotalMedias = p.Medias.Count(),
-                    TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
-                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
+                    TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
 
-                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsCurrentUserTagged = p.Tags.Any(t => t.TaggedAccountId == currentId),
@@ -243,6 +246,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     p.AccountId == accountId &&
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     p.Medias.Any() &&
                     (
                         isOwner ||
@@ -279,8 +283,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         .Take(1)
                         .ToList(),
                     MediaCount = p.Medias.Count(),
-                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active)
+                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId))
                 })
                 .ToListAsync();
 
@@ -306,6 +310,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Where(p =>
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     p.Medias.Any() &&
                     p.Tags.Any(t => t.TaggedAccountId == accountId) &&
                     (
@@ -344,8 +349,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         .Take(1)
                         .ToList(),
                     MediaCount = p.Medias.Count(),
-                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active)
+                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId))
                 })
                 .ToListAsync();
         }
@@ -356,12 +361,13 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Where(p => p.AccountId == accountId &&
                             !p.IsDeleted &&
                             p.Medias.Any() &&
-                            p.Account.Status == AccountStatusEnum.Active)
+                            p.Account.Status == AccountStatusEnum.Active &&
+                            SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId))
                 .CountAsync();
         }
         public async Task<bool> IsPostExist(Guid postId)
         {
-            return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active);
+            return await _context.Posts.AnyAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId));
         }
 
         public async Task<bool> IsPostCodeExist(string postCode)
@@ -375,7 +381,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .AsNoTracking()
                 .Where(x =>
                     x.PostId == postId &&
-                    x.TaggedAccount.Status == AccountStatusEnum.Active)
+                    x.TaggedAccount.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.TaggedAccount.RoleId))
                 .Select(x => x.TaggedAccountId)
                 .ToListAsync();
         }
@@ -425,7 +432,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Where(p =>
                     p.PostId == postId &&
                     !p.IsDeleted &&
-                    p.Account.Status == AccountStatusEnum.Active)
+                    p.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId))
                 .Select(p => new
                 {
                     p.AccountId,
@@ -471,7 +479,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .AsNoTracking()
                 .Where(t =>
                     t.PostId == postId &&
-                    (t.TaggedAccount.Status == AccountStatusEnum.Active || t.TaggedAccountId == currentId))
+                    ((t.TaggedAccount.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(t.TaggedAccount.RoleId)) || t.TaggedAccountId == currentId))
                 .Select(t => new PostTaggedAccountRawModel
                 {
                     AccountId = t.TaggedAccountId,
@@ -551,6 +559,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
             var query = _context.Posts.AsNoTracking()
                         .Where(p => !p.IsDeleted && 
                                p.Account.Status == AccountStatusEnum.Active &&
+                               SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                                p.Medias.Any() &&
                                ( p.Privacy == PostPrivacyEnum.Public
                                || (p.Privacy == PostPrivacyEnum.FollowOnly && _context.Follows.Any(f =>
@@ -596,9 +605,9 @@ namespace CloudM.Infrastructure.Repositories.Posts
                        Type = m.Type
                    }).ToList(),
                    MediaCount = p.Medias.Count(),
-                   ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
-                   CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
-                   IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                   ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                   CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                   IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                    IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                    IsOwner = p.AccountId == currentId
                 }).ToListAsync();
@@ -620,6 +629,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Where(p =>
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     p.Medias.Any() &&
                     (
                         p.Privacy == PostPrivacyEnum.Public ||
@@ -658,10 +668,10 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     AuthorAvatarUrl = p.Account.AvatarUrl,
                     AuthorStatus = p.Account.Status,
                     MediaCount = p.Medias.Count(),
-                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active),
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active),
-                    ReplyCount = p.Comments.Count(c => c.ParentCommentId != null && c.Account.Status == AccountStatusEnum.Active),
-                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                    ReplyCount = p.Comments.Count(c => c.ParentCommentId != null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,
                     IsFollowedAuthor = followedIdsQuery.Contains(p.AccountId),
@@ -792,7 +802,8 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .AsNoTracking()
                 .Where(t =>
                     topPostIds.Contains(t.PostId) &&
-                    t.TaggedAccount.Status == AccountStatusEnum.Active)
+                    t.TaggedAccount.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(t.TaggedAccount.RoleId))
                 .Select(t => new
                 {
                     t.PostId,

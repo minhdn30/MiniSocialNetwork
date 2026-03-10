@@ -16,8 +16,10 @@ namespace CloudM.Infrastructure.Repositories.ConversationMembers
         Task<ConversationMember?> GetConversationMemberAsync(Guid conversationId, Guid accountId);
         Task<List<ConversationMember>> GetConversationMembersByAccountIdsAsync(Guid conversationId, IEnumerable<Guid> accountIds);
         Task<List<Guid>> GetMemberIdsByConversationIdAsync(Guid conversationId);
+        Task<List<Guid>> GetAllActiveMemberIdsByConversationIdAsync(Guid conversationId);
         Task<Dictionary<Guid, bool>> GetMembersWithMuteStatusAsync(Guid conversationId);
         Task<List<ConversationMember>> GetConversationMembersAsync(Guid conversationId);
+        Task<List<ConversationMember>> GetAllActiveConversationMembersAsync(Guid conversationId);
         Task<(List<ConversationMember> Members, int TotalCount)> GetConversationMembersPagedAsync(
             Guid conversationId,
             bool adminOnly,

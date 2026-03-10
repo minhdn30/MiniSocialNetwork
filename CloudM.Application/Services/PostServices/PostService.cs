@@ -9,6 +9,7 @@ using CloudM.Domain.Exceptions;
 using CloudM.Application.Helpers.FileTypeHelpers;
 using CloudM.Application.Helpers.StoryHelpers;
 using CloudM.Application.Helpers.SwaggerHelpers;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Services.Cloudinary;
 using CloudM.Application.Services.NotificationServices;
 using CloudM.Application.Services.RealtimeServices;
@@ -186,7 +187,7 @@ namespace CloudM.Application.Services.PostServices
             if (account == null)
                 throw new BadRequestException($"Account with ID {accountId} not found.");
 
-            if (account.Status != AccountStatusEnum.Active)
+            if (!SocialRoleRules.IsSocialEligible(account))
                 throw new ForbiddenException("You must reactivate your account to create posts.");
 
             var normalizedTagIds = NormalizePostTagIds(request.TaggedAccountIds, accountId);

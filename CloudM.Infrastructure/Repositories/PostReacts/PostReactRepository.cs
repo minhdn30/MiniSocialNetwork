@@ -3,6 +3,7 @@ using CloudM.Domain.Entities;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,25 +30,40 @@ namespace CloudM.Infrastructure.Repositories.PostReacts
         }
         public async Task<int> GetReactCountByPostId(Guid postId)
         {
-            return await _context.PostReacts.CountAsync(pr => pr.PostId == postId && pr.Account.Status == AccountStatusEnum.Active);
+            return await _context.PostReacts.CountAsync(pr =>
+                pr.PostId == postId &&
+                pr.Account.Status == AccountStatusEnum.Active &&
+                SocialRoleRules.SocialEligibleRoleIds.Contains(pr.Account.RoleId));
         }
         public async Task<PostReact?> GetUserReactOnPostAsync(Guid postId, Guid accountId)
         {
             return await _context.PostReacts
-                .FirstOrDefaultAsync(pr => pr.PostId == postId && pr.AccountId == accountId && pr.Account.Status == AccountStatusEnum.Active);
+                .FirstOrDefaultAsync(pr =>
+                    pr.PostId == postId &&
+                    pr.AccountId == accountId &&
+                    pr.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(pr.Account.RoleId));
         }
         public async Task<bool> IsCurrentUserReactedOnPostAsync(Guid postId, Guid? currentId)
         {
             if (currentId == null)
                 return false;
             return await _context.PostReacts
-                .AnyAsync(pr => pr.PostId == postId && pr.AccountId == currentId && pr.Account.Status == AccountStatusEnum.Active);
+                .AnyAsync(pr =>
+                    pr.PostId == postId &&
+                    pr.AccountId == currentId &&
+                    pr.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(pr.Account.RoleId));
         }
         public async Task<(List<AccountReactListModel> reacts, int totalItems)> GetAccountsReactOnPostPaged(Guid postId, Guid? currentId, int page, int pageSize)
         {
             // First: Calculate flags once using projection
             var baseQuery = _context.PostReacts
-                .Where(r => r.PostId == postId && (r.Account.Status == AccountStatusEnum.Active || (currentId.HasValue && r.AccountId == currentId.Value)))
+                .Where(r =>
+                    r.PostId == postId &&
+                    ((r.Account.Status == AccountStatusEnum.Active &&
+                      SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)) ||
+                     (currentId.HasValue && r.AccountId == currentId.Value)))
                 .Select(r => new
                 {
                     r.AccountId,

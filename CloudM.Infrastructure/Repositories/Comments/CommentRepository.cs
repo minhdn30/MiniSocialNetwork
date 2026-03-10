@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using System;
@@ -24,7 +25,11 @@ namespace CloudM.Infrastructure.Repositories.Comments
 
             var baseQuery = _context.Comments
                 .AsNoTracking()
-                .Where(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);
+                .Where(c =>
+                    c.PostId == postId &&
+                    c.ParentCommentId == null &&
+                    c.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
 
             var totalItems = await baseQuery.CountAsync();
 
@@ -56,9 +61,9 @@ namespace CloudM.Infrastructure.Repositories.Comments
                         Content = c.Content,
                         CreatedAt = c.CreatedAt,
                         UpdatedAt = c.UpdatedAt,
-                        ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
-                        ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
-                        IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                        ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                        ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                        IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                         PostOwnerId = postOwnerId
                     })
                     .FirstOrDefaultAsync();
@@ -100,9 +105,9 @@ namespace CloudM.Infrastructure.Repositories.Comments
                     },
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,
-                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
-                    ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
-                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     PostOwnerId = postOwnerId
                 })
                 .ToListAsync();
@@ -132,7 +137,10 @@ namespace CloudM.Infrastructure.Repositories.Comments
 
         public async Task<Comment?> GetCommentById(Guid commentId)
         {
-            return await _context.Comments.Include(c => c.Account).FirstOrDefaultAsync(c => c.CommentId == commentId && c.Account.Status == AccountStatusEnum.Active);
+            return await _context.Comments.Include(c => c.Account).FirstOrDefaultAsync(c =>
+                c.CommentId == commentId &&
+                c.Account.Status == AccountStatusEnum.Active &&
+                SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
         }
         public async Task AddComment(Comment comment)
         {
@@ -145,12 +153,19 @@ namespace CloudM.Infrastructure.Repositories.Comments
         }
         public async Task<bool> IsCommentExist(Guid commentId)
         {
-            return await _context.Comments.AnyAsync(c => c.CommentId == commentId && c.Account.Status == AccountStatusEnum.Active);
+            return await _context.Comments.AnyAsync(c =>
+                c.CommentId == commentId &&
+                c.Account.Status == AccountStatusEnum.Active &&
+                SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
         }
         public async Task<int> CountCommentsByPostId(Guid postId)
         {
             //comment (not reply)
-            return await _context.Comments.CountAsync(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);
+            return await _context.Comments.CountAsync(c =>
+                c.PostId == postId &&
+                c.ParentCommentId == null &&
+                c.Account.Status == AccountStatusEnum.Active &&
+                SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
         }
         public async Task DeleteCommentWithReplies(Guid commentId)
         {
@@ -175,12 +190,19 @@ namespace CloudM.Infrastructure.Repositories.Comments
 
         public async Task<bool> IsCommentCanReply(Guid commentId)
         {
-            return await _context.Comments.AnyAsync(c => c.CommentId == commentId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);
+            return await _context.Comments.AnyAsync(c =>
+                c.CommentId == commentId &&
+                c.ParentCommentId == null &&
+                c.Account.Status == AccountStatusEnum.Active &&
+                SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
         }
         public async Task<int> CountCommentRepliesAsync(Guid commentId)
         {
             int count = 0;
-            count += await _context.Comments.Where(c => c.ParentCommentId == commentId && c.Account.Status == AccountStatusEnum.Active).CountAsync();
+            count += await _context.Comments.Where(c =>
+                c.ParentCommentId == commentId &&
+                c.Account.Status == AccountStatusEnum.Active &&
+                SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)).CountAsync();
             return count;
         }
         public async Task<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityReplyId = null)
@@ -189,7 +211,10 @@ namespace CloudM.Infrastructure.Repositories.Comments
 
             var baseQuery = _context.Comments
                 .AsNoTracking()
-                .Where(c => c.ParentCommentId == parentCommentId && c.Account.Status == AccountStatusEnum.Active);
+                .Where(c =>
+                    c.ParentCommentId == parentCommentId &&
+                    c.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
 
             var totalItems = await baseQuery.CountAsync();
 
@@ -231,8 +256,8 @@ namespace CloudM.Infrastructure.Repositories.Comments
                         Content = c.Content,
                         CreatedAt = c.CreatedAt,
                         UpdatedAt = c.UpdatedAt,
-                        ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
-                        IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                        ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                        IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                         PostOwnerId = postOwnerId
                     })
                     .FirstOrDefaultAsync();
@@ -267,8 +292,8 @@ namespace CloudM.Infrastructure.Repositories.Comments
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt,
-                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
-                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                    ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     PostOwnerId = postOwnerId
                 })
                 .ToListAsync();

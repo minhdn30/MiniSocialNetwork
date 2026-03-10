@@ -8,6 +8,7 @@ using CloudM.Application.Helpers.StoryHelpers;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
@@ -576,8 +577,8 @@ namespace CloudM.Application.Services.ConversationServices
 
             // Case: New Conversation
             var otherAccount = await _accountRepository.GetAccountById(otherId);
-            if (otherAccount == null || otherAccount.Status != AccountStatusEnum.Active)
-                throw new NotFoundException("Account not found or inactive.");
+            if (otherAccount == null || !SocialRoleRules.IsSocialEligible(otherAccount))
+                throw new NotFoundException("Account not found or unavailable.");
 
             return new PrivateConversationIncludeMessagesResponse
             {

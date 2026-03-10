@@ -1,5 +1,6 @@
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Repositories.Notifications;
 using Microsoft.EntityFrameworkCore;
@@ -207,7 +208,7 @@ namespace CloudM.Application.Services.NotificationServices
             }
 
             var activeActorContributions = activeContributions
-                .Where(x => x.Actor != null && x.Actor.Status == AccountStatusEnum.Active)
+                .Where(x => x.Actor != null && SocialRoleRules.IsSocialEligible(x.Actor))
                 .ToList();
 
             if (activeActorContributions.Count == 0)
@@ -377,7 +378,9 @@ namespace CloudM.Application.Services.NotificationServices
                 return await _context.Accounts
                     .AsNoTracking()
                     .AnyAsync(
-                        x => x.AccountId == targetId.Value && x.Status == AccountStatusEnum.Active,
+                        x => x.AccountId == targetId.Value &&
+                             x.Status == AccountStatusEnum.Active &&
+                             SocialRoleRules.SocialEligibleRoleIds.Contains(x.RoleId),
                         cancellationToken);
             }
 
@@ -392,11 +395,15 @@ namespace CloudM.Application.Services.NotificationServices
                         x.AccountId,
                         x.Privacy,
                         x.IsDeleted,
-                        OwnerStatus = x.Account.Status
+                        OwnerStatus = x.Account.Status,
+                        OwnerRoleId = x.Account.RoleId
                     })
                     .FirstOrDefaultAsync(cancellationToken);
 
-                if (post == null || post.IsDeleted || post.OwnerStatus != AccountStatusEnum.Active)
+                if (post == null ||
+                    post.IsDeleted ||
+                    post.OwnerStatus != AccountStatusEnum.Active ||
+                    !SocialRoleRules.IsSocialEligibleRole(post.OwnerRoleId))
                 {
                     return false;
                 }
@@ -436,14 +443,16 @@ namespace CloudM.Application.Services.NotificationServices
                         x.Privacy,
                         x.IsDeleted,
                         x.ExpiresAt,
-                        OwnerStatus = x.Account.Status
+                        OwnerStatus = x.Account.Status,
+                        OwnerRoleId = x.Account.RoleId
                     })
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (story == null ||
                     story.IsDeleted ||
                     story.ExpiresAt <= nowUtc ||
-                    story.OwnerStatus != AccountStatusEnum.Active)
+                    story.OwnerStatus != AccountStatusEnum.Active ||
+                    !SocialRoleRules.IsSocialEligibleRole(story.OwnerRoleId))
                 {
                     return false;
                 }

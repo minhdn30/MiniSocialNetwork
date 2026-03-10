@@ -1,5 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
+using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -65,7 +67,22 @@ namespace CloudM.Infrastructure.Repositories.ConversationMembers
         public async Task<List<Guid>> GetMemberIdsByConversationIdAsync(Guid conversationId)
         {
             return await _context.ConversationMembers
-                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .Where(cm =>
+                    cm.ConversationId == conversationId &&
+                    !cm.HasLeft &&
+                    cm.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId))
+                .Select(cm => cm.AccountId)
+                .ToListAsync();
+        }
+
+        public async Task<List<Guid>> GetAllActiveMemberIdsByConversationIdAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Where(cm =>
+                    cm.ConversationId == conversationId &&
+                    !cm.HasLeft &&
+                    cm.Account.Status == AccountStatusEnum.Active)
                 .Select(cm => cm.AccountId)
                 .ToListAsync();
         }
@@ -74,7 +91,22 @@ namespace CloudM.Infrastructure.Repositories.ConversationMembers
         {
             return await _context.ConversationMembers
                 .Include(cm => cm.Account)
-                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .Where(cm =>
+                    cm.ConversationId == conversationId &&
+                    !cm.HasLeft &&
+                    cm.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId))
+                .ToListAsync();
+        }
+
+        public async Task<List<ConversationMember>> GetAllActiveConversationMembersAsync(Guid conversationId)
+        {
+            return await _context.ConversationMembers
+                .Include(cm => cm.Account)
+                .Where(cm =>
+                    cm.ConversationId == conversationId &&
+                    !cm.HasLeft &&
+                    cm.Account.Status == AccountStatusEnum.Active)
                 .ToListAsync();
         }
 
@@ -90,7 +122,11 @@ namespace CloudM.Infrastructure.Repositories.ConversationMembers
             var query = _context.ConversationMembers
                 .AsNoTracking()
                 .Include(cm => cm.Account)
-                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft);
+                .Where(cm =>
+                    cm.ConversationId == conversationId &&
+                    !cm.HasLeft &&
+                    cm.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId));
 
             if (adminOnly)
             {
@@ -113,7 +149,11 @@ namespace CloudM.Infrastructure.Repositories.ConversationMembers
         public async Task<Dictionary<Guid, bool>> GetMembersWithMuteStatusAsync(Guid conversationId)
         {
             return await _context.ConversationMembers
-                .Where(cm => cm.ConversationId == conversationId && !cm.HasLeft)
+                .Where(cm =>
+                    cm.ConversationId == conversationId &&
+                    !cm.HasLeft &&
+                    cm.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(cm.Account.RoleId))
                 .ToDictionaryAsync(cm => cm.AccountId, cm => cm.IsMuted);
         }
     }

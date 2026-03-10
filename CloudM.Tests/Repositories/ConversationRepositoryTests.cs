@@ -212,5 +212,261 @@ namespace CloudM.Tests.Repositories
             privateItem.LastMessageSeenBy.Should().NotBeNull();
             privateItem.LastMessageSeenBy!.Should().ContainSingle(x => x.AccountId == otherPrivateId);
         }
+
+        [Fact]
+        public async Task GetConversationsByCursorAsync_ShouldIgnoreLegacySystemMessages_ForLastMessageAndUnread()
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase($"conv-repo-social-filter-{Guid.NewGuid()}")
+                .Options;
+
+            await using var context = new AppDbContext(options);
+            var repo = new ConversationRepository(context);
+
+            var now = new DateTime(2026, 3, 11, 8, 0, 0, DateTimeKind.Utc);
+            var currentId = Guid.NewGuid();
+            var socialMemberId = Guid.NewGuid();
+            var legacyAdminId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+
+            context.Accounts.AddRange(
+                new Account
+                {
+                    AccountId = currentId,
+                    Username = "current",
+                    Email = "current@test.local",
+                    FullName = "Current User",
+                    PasswordHash = "hash",
+                    Status = AccountStatusEnum.Active,
+                    RoleId = (int)RoleEnum.User
+                },
+                new Account
+                {
+                    AccountId = socialMemberId,
+                    Username = "social-user",
+                    Email = "social@test.local",
+                    FullName = "Social User",
+                    PasswordHash = "hash",
+                    Status = AccountStatusEnum.Active,
+                    RoleId = (int)RoleEnum.User
+                },
+                new Account
+                {
+                    AccountId = legacyAdminId,
+                    Username = "legacy-admin",
+                    Email = "admin@test.local",
+                    FullName = "Legacy Admin",
+                    PasswordHash = "hash",
+                    Status = AccountStatusEnum.Active,
+                    RoleId = (int)RoleEnum.Admin
+                });
+
+            context.Conversations.Add(new Conversation
+            {
+                ConversationId = conversationId,
+                IsGroup = true,
+                ConversationName = "Legacy Group",
+                CreatedAt = now.AddDays(-1),
+                CreatedBy = currentId,
+                Owner = currentId
+            });
+
+            context.ConversationMembers.AddRange(
+                new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = currentId,
+                    LastSeenAt = now.AddMinutes(-10)
+                },
+                new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = socialMemberId,
+                    LastSeenAt = now.AddMinutes(-5)
+                },
+                new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = legacyAdminId,
+                    LastSeenAt = now.AddMinutes(-1)
+                });
+
+            var socialMessageId = Guid.NewGuid();
+            var legacyMessageId = Guid.NewGuid();
+
+            context.Messages.AddRange(
+                new Message
+                {
+                    MessageId = socialMessageId,
+                    ConversationId = conversationId,
+                    AccountId = socialMemberId,
+                    Content = "social message",
+                    MessageType = MessageTypeEnum.Text,
+                    SentAt = now.AddMinutes(-3)
+                },
+                new Message
+                {
+                    MessageId = legacyMessageId,
+                    ConversationId = conversationId,
+                    AccountId = legacyAdminId,
+                    Content = "legacy admin message",
+                    MessageType = MessageTypeEnum.Text,
+                    SentAt = now.AddMinutes(-1)
+                });
+
+            await context.SaveChangesAsync();
+
+            var (items, hasMore) = await repo.GetConversationsByCursorAsync(currentId, null, null, null, null, 10);
+
+            hasMore.Should().BeFalse();
+            items.Should().ContainSingle(x => x.ConversationId == conversationId);
+
+            var conversation = items.Single(x => x.ConversationId == conversationId);
+            conversation.LastMessage.Should().NotBeNull();
+            conversation.LastMessage!.MessageId.Should().Be(socialMessageId);
+            conversation.LastMessage.Content.Should().Be("social message");
+            conversation.LastMessageSentAt.Should().Be(now.AddMinutes(-3));
+            conversation.UnreadCount.Should().Be(1);
+        }
+
+        [Fact]
+        public async Task GetConversationsByCursorAsync_ShouldExcludePrivateConversation_WithLegacySystemAccount()
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase($"conv-repo-private-legacy-{Guid.NewGuid()}")
+                .Options;
+
+            await using var context = new AppDbContext(options);
+            var repo = new ConversationRepository(context);
+
+            var now = new DateTime(2026, 3, 11, 9, 0, 0, DateTimeKind.Utc);
+            var currentId = Guid.NewGuid();
+            var legacyAdminId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+
+            context.Accounts.AddRange(
+                new Account
+                {
+                    AccountId = currentId,
+                    Username = "current",
+                    Email = "current-private@test.local",
+                    FullName = "Current User",
+                    PasswordHash = "hash",
+                    Status = AccountStatusEnum.Active,
+                    RoleId = (int)RoleEnum.User
+                },
+                new Account
+                {
+                    AccountId = legacyAdminId,
+                    Username = "legacy-admin",
+                    Email = "legacy-private@test.local",
+                    FullName = "Legacy Admin",
+                    PasswordHash = "hash",
+                    Status = AccountStatusEnum.Active,
+                    RoleId = (int)RoleEnum.Admin
+                });
+
+            context.Conversations.Add(new Conversation
+            {
+                ConversationId = conversationId,
+                IsGroup = false,
+                CreatedAt = now.AddDays(-1),
+                CreatedBy = currentId
+            });
+
+            context.ConversationMembers.AddRange(
+                new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = currentId,
+                    LastSeenAt = now.AddMinutes(-10)
+                },
+                new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = legacyAdminId,
+                    LastSeenAt = now.AddMinutes(-9)
+                });
+
+            context.Messages.Add(new Message
+            {
+                MessageId = Guid.NewGuid(),
+                ConversationId = conversationId,
+                AccountId = currentId,
+                Content = "hello legacy",
+                MessageType = MessageTypeEnum.Text,
+                SentAt = now.AddMinutes(-5)
+            });
+
+            await context.SaveChangesAsync();
+
+            var (items, hasMore) = await repo.GetConversationsByCursorAsync(currentId, null, null, null, null, 10);
+
+            hasMore.Should().BeFalse();
+            items.Should().NotContain(x => x.ConversationId == conversationId);
+        }
+
+        [Fact]
+        public async Task GetConversationMetaDataAsync_ShouldReturnNull_ForPrivateConversationWithLegacySystemAccount()
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase($"conv-repo-private-meta-legacy-{Guid.NewGuid()}")
+                .Options;
+
+            await using var context = new AppDbContext(options);
+            var repo = new ConversationRepository(context);
+
+            var currentId = Guid.NewGuid();
+            var legacyAdminId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+
+            context.Accounts.AddRange(
+                new Account
+                {
+                    AccountId = currentId,
+                    Username = "current",
+                    Email = "current-meta@test.local",
+                    FullName = "Current User",
+                    PasswordHash = "hash",
+                    Status = AccountStatusEnum.Active,
+                    RoleId = (int)RoleEnum.User
+                },
+                new Account
+                {
+                    AccountId = legacyAdminId,
+                    Username = "legacy-admin",
+                    Email = "legacy-meta@test.local",
+                    FullName = "Legacy Admin",
+                    PasswordHash = "hash",
+                    Status = AccountStatusEnum.Active,
+                    RoleId = (int)RoleEnum.Admin
+                });
+
+            context.Conversations.Add(new Conversation
+            {
+                ConversationId = conversationId,
+                IsGroup = false,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = currentId
+            });
+
+            context.ConversationMembers.AddRange(
+                new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = currentId
+                },
+                new ConversationMember
+                {
+                    ConversationId = conversationId,
+                    AccountId = legacyAdminId
+                });
+
+            await context.SaveChangesAsync();
+
+            var metadata = await repo.GetConversationMetaDataAsync(conversationId, currentId);
+
+            metadata.Should().BeNull();
+        }
     }
 }

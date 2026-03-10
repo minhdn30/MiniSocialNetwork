@@ -4,6 +4,7 @@ using CloudM.Application.DTOs.AuthDTOs;
 using CloudM.Application.Services.JwtServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.AccountSettingRepos;
 using CloudM.Infrastructure.Repositories.ExternalLogins;
@@ -440,6 +441,7 @@ namespace CloudM.Application.Services.AuthServices
                 Fullname = account.FullName,
                 AvatarUrl = account.AvatarUrl,
                 Status = account.Status,
+                IsSocialEligible = SocialRoleRules.IsSocialEligibleRole(account.RoleId),
                 DefaultPostPrivacy = defaultPostPrivacy
             };
         }
@@ -662,6 +664,7 @@ namespace CloudM.Application.Services.AuthServices
                 RefreshToken = account.RefreshToken,
                 RefreshTokenExpiryTime = account.RefreshTokenExpiryTime ?? DateTime.UtcNow.AddDays(7),
                 Status = account.Status,
+                IsSocialEligible = SocialRoleRules.IsSocialEligibleRole(account.RoleId),
                 DefaultPostPrivacy = defaultPostPrivacy
             };
         }

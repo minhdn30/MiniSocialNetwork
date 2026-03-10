@@ -1,5 +1,6 @@
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using Microsoft.EntityFrameworkCore;
@@ -78,7 +79,8 @@ ON CONFLICT (""RequesterId"", ""TargetId"") DO NOTHING;",
                 .AsNoTracking()
                 .Where(x =>
                     x.TargetId == targetId &&
-                    x.Requester.Status == AccountStatusEnum.Active);
+                    x.Requester.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Requester.RoleId));
 
             if (cursorCreatedAt.HasValue && cursorRequesterId.HasValue)
             {
@@ -127,7 +129,10 @@ ON CONFLICT (""RequesterId"", ""TargetId"") DO NOTHING;",
             var safePageSize = pageSize <= 0 ? 20 : Math.Min(pageSize, 50);
 
             var query = _context.FollowRequests
-                .Where(fr => fr.RequesterId == requesterId && fr.Target.Status == AccountStatusEnum.Active)
+                .Where(fr =>
+                    fr.RequesterId == requesterId &&
+                    fr.Target.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(fr.Target.RoleId))
                 .Select(fr => new
                 {
                     fr.TargetId,
@@ -183,7 +188,8 @@ ON CONFLICT (""RequesterId"", ""TargetId"") DO NOTHING;",
                 .AsNoTracking()
                 .Where(x =>
                     x.TargetId == targetId &&
-                    x.Requester.Status == AccountStatusEnum.Active)
+                    x.Requester.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(x.Requester.RoleId))
                 .CountAsync(cancellationToken);
         }
 
@@ -202,6 +208,8 @@ WITH picked AS (
     INNER JOIN ""Accounts"" target ON target.""AccountId"" = fr.""TargetId""
     WHERE settings.""FollowPrivacy"" = {(int)FollowPrivacyEnum.Anyone}
       AND target.""Status"" = {(int)AccountStatusEnum.Active}
+      AND requester.""RoleId"" IN ({string.Join(",", SocialRoleRules.SocialEligibleRoleIds)})
+      AND target.""RoleId"" IN ({string.Join(",", SocialRoleRules.SocialEligibleRoleIds)})
     ORDER BY fr.""CreatedAt"", fr.""TargetId"", fr.""RequesterId""
     LIMIT {safeBatchSize}
     FOR UPDATE OF fr SKIP LOCKED

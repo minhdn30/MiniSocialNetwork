@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 
@@ -336,6 +337,7 @@ namespace CloudM.Infrastructure.Repositories.Stories
                     !s.IsDeleted &&
                     s.ExpiresAt > nowUtc &&
                     s.Account.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(s.Account.RoleId) &&
                     (
                         s.AccountId == currentId ||
                         (

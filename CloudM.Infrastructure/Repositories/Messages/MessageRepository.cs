@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
+using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
 using CloudM.Infrastructure.Models;
 using System;
@@ -36,6 +37,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                 .Where(m => m.ConversationId == conversationId &&
                        (clearedAt == null || m.SentAt >= clearedAt) &&
                        m.Account.Status == AccountStatusEnum.Active &&
+                       SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId) &&
                        !m.HiddenBy.Any(hb => hb.AccountId == currentId));
 
             var cursorDirection = MessageCursorDirection.Older;
@@ -123,7 +125,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                         Username = m.Account.Username,
                         FullName = m.Account.FullName,
                         AvatarUrl = m.Account.AvatarUrl,
-                        IsActive = m.Account.Status == AccountStatusEnum.Active
+                        IsActive = m.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId)
                     },
 
                     Medias = new List<MessageMediaBasicModel>(),
@@ -206,7 +208,8 @@ namespace CloudM.Infrastructure.Repositories.Messages
                         on mr.AccountId equals cm.AccountId into cmGroup
                     from cm in cmGroup.DefaultIfEmpty()
                     where pageMessageIds.Contains(mr.MessageId) &&
-                          mr.Account.Status == AccountStatusEnum.Active
+                          mr.Account.Status == AccountStatusEnum.Active &&
+                          SocialRoleRules.SocialEligibleRoleIds.Contains(mr.Account.RoleId)
                     select new
                     {
                         mr.MessageId,
@@ -311,6 +314,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                                         && s.ExpiresAt > DateTime.UtcNow 
                                         && !s.IsDeleted
                                         && s.Account.Status == AccountStatusEnum.Active
+                                        && SocialRoleRules.SocialEligibleRoleIds.Contains(s.Account.RoleId)
                                         && (
                                             s.AccountId == currentId ||
                                             s.Privacy == StoryPrivacyEnum.Public ||
@@ -378,6 +382,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                             .Where(p => postIds.Contains(p.PostId)
                                         && !p.IsDeleted
                                         && p.Account.Status == AccountStatusEnum.Active
+                                        && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId)
                                         && (
                                             p.AccountId == currentId ||
                                             p.Privacy == PostPrivacyEnum.Public ||
@@ -612,7 +617,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
             return await _context.Messages
                 .Include(m => m.Account)
                 .Where(m => m.MessageId == messageId)
-                .Where(m => m.Account.Status == AccountStatusEnum.Active)
+                .Where(m => m.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId))
                 .Where(m => !m.HiddenBy.Any(hb => hb.AccountId == currentId))
                 .Where(m => _context.ConversationMembers.Any(cm =>
                     cm.ConversationId == m.ConversationId &&
@@ -647,6 +652,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                 .Where(m => m.ConversationId == conversationId &&
                        (clearedAt == null || m.SentAt >= clearedAt) &&
                        m.Account.Status == AccountStatusEnum.Active &&
+                       SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId) &&
                        !m.HiddenBy.Any(hb => hb.AccountId == currentId))
                 .Where(m => m.SentAt >= targetMessage.SentAt)
                 .CountAsync();
@@ -668,6 +674,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                 .Where(mm => mm.Message.ConversationId == conversationId &&
                             (clearedAt == null || mm.Message.SentAt >= clearedAt) &&
                             mm.Message.Account.Status == AccountStatusEnum.Active &&
+                            SocialRoleRules.SocialEligibleRoleIds.Contains(mm.Message.Account.RoleId) &&
                             !mm.Message.IsRecalled &&
                             !mm.Message.HiddenBy.Any(hb => hb.AccountId == currentId) &&
                             (mm.MediaType == MediaTypeEnum.Image || mm.MediaType == MediaTypeEnum.Video))
@@ -710,6 +717,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                 .Where(mm => mm.Message.ConversationId == conversationId &&
                             (clearedAt == null || mm.Message.SentAt >= clearedAt) &&
                             mm.Message.Account.Status == AccountStatusEnum.Active &&
+                            SocialRoleRules.SocialEligibleRoleIds.Contains(mm.Message.Account.RoleId) &&
                             !mm.Message.IsRecalled &&
                             !mm.Message.HiddenBy.Any(hb => hb.AccountId == currentId) &&
                             mm.MediaType == MediaTypeEnum.Document)
@@ -752,6 +760,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                 .Where(m => m.ConversationId == conversationId &&
                        (clearedAt == null || m.SentAt >= clearedAt) &&
                        m.Account.Status == AccountStatusEnum.Active &&
+                       SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId) &&
                        !m.HiddenBy.Any(hb => hb.AccountId == currentId) &&
                        !m.IsRecalled &&
                        m.MessageType != MessageTypeEnum.System &&
@@ -791,7 +800,7 @@ namespace CloudM.Infrastructure.Repositories.Messages
                         Username = m.Account.Username,
                         FullName = m.Account.FullName,
                         AvatarUrl = m.Account.AvatarUrl,
-                        IsActive = m.Account.Status == AccountStatusEnum.Active
+                        IsActive = m.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(m.Account.RoleId)
                     },
 
                     Medias = new List<MessageMediaBasicModel>(),
