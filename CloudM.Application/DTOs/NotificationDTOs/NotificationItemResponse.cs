@@ -16,6 +16,8 @@ namespace CloudM.Application.DTOs.NotificationDTOs
         public string Text { get; set; } = string.Empty;
         public int TargetKind { get; set; }
         public Guid? TargetId { get; set; }
+        public Guid? TargetCommentId { get; set; }
+        public Guid? ParentCommentId { get; set; }
         public string? TargetPostCode { get; set; }
         public string? ThumbnailUrl { get; set; }
         public bool CanOpen { get; set; }

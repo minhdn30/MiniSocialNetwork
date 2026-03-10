@@ -2046,6 +2046,287 @@ namespace CloudM.Tests.Services
             Assert.Equal(remainingActor.AccountId, item.Actor!.AccountId);
         }
 
+        [Fact]
+        public async Task GetNotificationsAsync_PostComment_ShouldExposeTargetCommentId()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = recipient.AccountId,
+                PostCode = "POSTCMT00001",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddDays(-1)
+            };
+            var comment = new Comment
+            {
+                CommentId = Guid.NewGuid(),
+                PostId = post.PostId,
+                AccountId = actor.AccountId,
+                Content = "target comment",
+                CreatedAt = now.AddMinutes(-3)
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostComment,
+                AggregateKey = NotificationAggregateKeys.PostComment(post.PostId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-3),
+                LastEventAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var contribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.Comment,
+                SourceId = comment.CommentId,
+                ActorId = actor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-2)
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, actor);
+            await context.Posts.AddAsync(post);
+            await context.Comments.AddAsync(comment);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(contribution);
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var result = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            var item = Assert.Single(result.Items);
+            Assert.Equal(comment.CommentId, item.TargetCommentId);
+            Assert.Null(item.ParentCommentId);
+        }
+
+        [Fact]
+        public async Task GetNotificationsAsync_PostComment_ShouldResolveTargetCommentIdFromLatestActiveActor()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var activeActor = CreateAccount("active-actor");
+            var inactiveActor = CreateAccount("inactive-actor");
+            inactiveActor.Status = AccountStatusEnum.Inactive;
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = recipient.AccountId,
+                PostCode = "POSTCMT00002",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddDays(-1)
+            };
+            var activeComment = new Comment
+            {
+                CommentId = Guid.NewGuid(),
+                PostId = post.PostId,
+                AccountId = activeActor.AccountId,
+                Content = "active target comment",
+                CreatedAt = now.AddMinutes(-4)
+            };
+            var inactiveComment = new Comment
+            {
+                CommentId = Guid.NewGuid(),
+                PostId = post.PostId,
+                AccountId = inactiveActor.AccountId,
+                Content = "inactive target comment",
+                CreatedAt = now.AddMinutes(-2)
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.PostComment,
+                AggregateKey = NotificationAggregateKeys.PostComment(post.PostId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-5),
+                LastEventAt = now.AddMinutes(-1),
+                UpdatedAt = now.AddMinutes(-1),
+                ActorCount = 1,
+                EventCount = 2,
+                LastActorId = inactiveActor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = inactiveActor.AccountId,
+                    Username = inactiveActor.Username,
+                    FullName = inactiveActor.FullName,
+                    AvatarUrl = inactiveActor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var activeContribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.Comment,
+                SourceId = activeComment.CommentId,
+                ActorId = activeActor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-4),
+                UpdatedAt = now.AddMinutes(-4)
+            };
+            var inactiveContribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.Comment,
+                SourceId = inactiveComment.CommentId,
+                ActorId = inactiveActor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-2),
+                UpdatedAt = now.AddMinutes(-1)
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, activeActor, inactiveActor);
+            await context.Posts.AddAsync(post);
+            await context.Comments.AddRangeAsync(activeComment, inactiveComment);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddRangeAsync(activeContribution, inactiveContribution);
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var result = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            var item = Assert.Single(result.Items);
+            Assert.NotNull(item.Actor);
+            Assert.Equal(activeActor.AccountId, item.Actor!.AccountId);
+            Assert.Equal(activeComment.CommentId, item.TargetCommentId);
+            Assert.Null(item.ParentCommentId);
+        }
+
+        [Fact]
+        public async Task GetNotificationsAsync_ReplyReact_ShouldExposeParentCommentId()
+        {
+            await using var context = CreateContext();
+            var now = DateTime.UtcNow;
+
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+            var post = new Post
+            {
+                PostId = Guid.NewGuid(),
+                AccountId = recipient.AccountId,
+                PostCode = "POSTRPL00001",
+                Privacy = PostPrivacyEnum.Public,
+                IsDeleted = false,
+                CreatedAt = now.AddDays(-1)
+            };
+            var parentComment = new Comment
+            {
+                CommentId = Guid.NewGuid(),
+                PostId = post.PostId,
+                AccountId = recipient.AccountId,
+                Content = "parent comment",
+                CreatedAt = now.AddMinutes(-10)
+            };
+            var reply = new Comment
+            {
+                CommentId = Guid.NewGuid(),
+                PostId = post.PostId,
+                AccountId = recipient.AccountId,
+                ParentCommentId = parentComment.CommentId,
+                Content = "target reply",
+                CreatedAt = now.AddMinutes(-5)
+            };
+
+            var notification = new Notification
+            {
+                NotificationId = Guid.NewGuid(),
+                RecipientId = recipient.AccountId,
+                Type = NotificationTypeEnum.ReplyReact,
+                AggregateKey = NotificationAggregateKeys.ReplyReact(reply.CommentId),
+                State = NotificationStateEnum.Active,
+                CreatedAt = now.AddMinutes(-4),
+                LastEventAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3),
+                ActorCount = 1,
+                EventCount = 1,
+                LastActorId = actor.AccountId,
+                LastActorSnapshot = JsonSerializer.Serialize(new NotificationActorSnapshot
+                {
+                    AccountId = actor.AccountId,
+                    Username = actor.Username,
+                    FullName = actor.FullName,
+                    AvatarUrl = actor.AvatarUrl
+                }),
+                TargetKind = NotificationTargetKindEnum.Post,
+                TargetId = post.PostId
+            };
+
+            var contribution = new NotificationContribution
+            {
+                ContributionId = Guid.NewGuid(),
+                NotificationId = notification.NotificationId,
+                SourceType = NotificationSourceTypeEnum.ReplyReact,
+                SourceId = actor.AccountId,
+                ActorId = actor.AccountId,
+                IsActive = true,
+                CreatedAt = now.AddMinutes(-3),
+                UpdatedAt = now.AddMinutes(-3)
+            };
+
+            await context.Accounts.AddRangeAsync(recipient, actor);
+            await context.Posts.AddAsync(post);
+            await context.Comments.AddRangeAsync(parentComment, reply);
+            await context.Notifications.AddAsync(notification);
+            await context.NotificationContributions.AddAsync(contribution);
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            var result = await service.GetNotificationsAsync(
+                recipient.AccountId,
+                new NotificationCursorRequest { Limit = 20, Filter = "all" });
+
+            var item = Assert.Single(result.Items);
+            Assert.Equal(reply.CommentId, item.TargetCommentId);
+            Assert.Equal(parentComment.CommentId, item.ParentCommentId);
+        }
+
         private static AppDbContext CreateContext()
         {
             var options = new DbContextOptionsBuilder<AppDbContext>()

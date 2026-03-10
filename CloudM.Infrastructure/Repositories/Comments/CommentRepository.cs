@@ -18,23 +18,62 @@ namespace CloudM.Infrastructure.Repositories.Comments
         {
             _context = context;
         }
-        public async Task<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetCommentsByPostIdWithReplyCountAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize)
+        public async Task<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetCommentsByPostIdWithReplyCountAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityCommentId = null)
         {
             if (pageSize <= 0) pageSize = 10;
 
-            var totalItems = await _context.Comments
+            var baseQuery = _context.Comments
                 .AsNoTracking()
-                .Where(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active)
-                .CountAsync();
+                .Where(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);
+
+            var totalItems = await baseQuery.CountAsync();
 
             var postOwnerId = await _context.Posts
                 .Where(p => p.PostId == postId)
                 .Select(p => p.AccountId)
                 .FirstOrDefaultAsync();
 
-            var query = _context.Comments
-                .AsNoTracking()
-                .Where(c => c.PostId == postId && c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active);
+            var effectivePriorityCommentId = priorityCommentId.HasValue && priorityCommentId.Value != Guid.Empty
+                ? priorityCommentId.Value
+                : Guid.Empty;
+            CommentWithReplyCountModel? priorityItem = null;
+            if (effectivePriorityCommentId != Guid.Empty && !cursorCreatedAt.HasValue && !cursorCommentId.HasValue)
+            {
+                priorityItem = await baseQuery
+                    .Where(c => c.CommentId == effectivePriorityCommentId)
+                    .Select(c => new CommentWithReplyCountModel
+                    {
+                        CommentId = c.CommentId,
+                        PostId = c.PostId,
+                        Owner = new AccountBasicInfoModel
+                        {
+                            AccountId = c.Account.AccountId,
+                            FullName = c.Account.FullName,
+                            Username = c.Account.Username,
+                            AvatarUrl = c.Account.AvatarUrl,
+                            Status = c.Account.Status
+                        },
+                        Content = c.Content,
+                        CreatedAt = c.CreatedAt,
+                        UpdatedAt = c.UpdatedAt,
+                        ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
+                        ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
+                        IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                        PostOwnerId = postOwnerId
+                    })
+                    .FirstOrDefaultAsync();
+            }
+
+            var query = baseQuery;
+
+            if (priorityItem != null)
+            {
+                query = query.Where(c => c.CommentId != priorityItem.CommentId);
+            }
+            else if (effectivePriorityCommentId != Guid.Empty)
+            {
+                query = query.Where(c => c.CommentId != effectivePriorityCommentId);
+            }
 
             if (cursorCreatedAt.HasValue && cursorCommentId.HasValue)
             {
@@ -69,15 +108,21 @@ namespace CloudM.Infrastructure.Repositories.Comments
                 .ToListAsync();
 
             var hasMore = rawItems.Count > pageSize;
-            var items = hasMore
+            var pagedItems = hasMore
                 ? rawItems.Take(pageSize).ToList()
                 : rawItems;
 
+            var items = priorityItem == null
+                ? pagedItems
+                : new[] { priorityItem }
+                    .Concat(pagedItems)
+                    .ToList();
+
             DateTime? nextCursorCreatedAt = null;
             Guid? nextCursorCommentId = null;
-            if (hasMore && items.Count > 0)
+            if (hasMore && pagedItems.Count > 0)
             {
-                var last = items[^1];
+                var last = pagedItems[^1];
                 nextCursorCreatedAt = last.CreatedAt;
                 nextCursorCommentId = last.CommentId;
             }
@@ -138,7 +183,7 @@ namespace CloudM.Infrastructure.Repositories.Comments
             count += await _context.Comments.Where(c => c.ParentCommentId == commentId && c.Account.Status == AccountStatusEnum.Active).CountAsync();
             return count;
         }
-        public async Task<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize)
+        public async Task<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityReplyId = null)
         {
             if (pageSize <= 0) pageSize = 10;
 
@@ -161,6 +206,46 @@ namespace CloudM.Infrastructure.Repositories.Comments
                 .Where(c => c.CommentId == parentCommentId)
                 .Select(c => c.Post.AccountId)
                 .FirstOrDefaultAsync();
+
+            var effectivePriorityReplyId = priorityReplyId.HasValue && priorityReplyId.Value != Guid.Empty
+                ? priorityReplyId.Value
+                : Guid.Empty;
+            ReplyCommentModel? priorityItem = null;
+            if (effectivePriorityReplyId != Guid.Empty && !cursorCreatedAt.HasValue && !cursorCommentId.HasValue)
+            {
+                priorityItem = await baseQuery
+                    .Where(c => c.CommentId == effectivePriorityReplyId)
+                    .Select(c => new ReplyCommentModel
+                    {
+                        CommentId = c.CommentId,
+                        PostId = c.PostId,
+                        ParentCommentId = c.ParentCommentId!.Value,
+                        Owner = new AccountBasicInfoModel
+                        {
+                            AccountId = c.Account.AccountId,
+                            FullName = c.Account.FullName,
+                            Username = c.Account.Username,
+                            AvatarUrl = c.Account.AvatarUrl,
+                            Status = c.Account.Status
+                        },
+                        Content = c.Content,
+                        CreatedAt = c.CreatedAt,
+                        UpdatedAt = c.UpdatedAt,
+                        ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active),
+                        IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active),
+                        PostOwnerId = postOwnerId
+                    })
+                    .FirstOrDefaultAsync();
+            }
+
+            if (priorityItem != null)
+            {
+                query = query.Where(c => c.CommentId != priorityItem.CommentId);
+            }
+            else if (effectivePriorityReplyId != Guid.Empty)
+            {
+                query = query.Where(c => c.CommentId != effectivePriorityReplyId);
+            }
 
             var rawItems = await query
                 .OrderBy(c => c.CreatedAt) // Replies usually ordered ascending
@@ -189,15 +274,21 @@ namespace CloudM.Infrastructure.Repositories.Comments
                 .ToListAsync();
 
             var hasMore = rawItems.Count > pageSize;
-            var items = hasMore
+            var pagedItems = hasMore
                 ? rawItems.Take(pageSize).ToList()
                 : rawItems;
 
+            var items = priorityItem == null
+                ? pagedItems
+                : new[] { priorityItem }
+                    .Concat(pagedItems)
+                    .ToList();
+
             DateTime? nextCursorCreatedAt = null;
             Guid? nextCursorCommentId = null;
-            if (hasMore && items.Count > 0)
+            if (hasMore && pagedItems.Count > 0)
             {
-                var last = items[^1];
+                var last = pagedItems[^1];
                 nextCursorCreatedAt = last.CreatedAt;
                 nextCursorCommentId = last.CommentId;
             }

@@ -529,6 +529,9 @@ SET
             var seenStateMetadataByNotificationId = await ResolveSeenStateMetadataAsync(
                 notifications.Select(x => x.NotificationId),
                 cancellationToken);
+            var commentNavigationByNotificationId = await ResolveCommentNavigationMetadataAsync(
+                notifications,
+                cancellationToken);
 
             var followedOwnerIds = ownerIds.Count == 0
                 ? new HashSet<Guid>()
@@ -639,6 +642,7 @@ SET
                 var isSeenByCurrentState = !tracksUnreadState ||
                     (lastNotificationsSeenAt.HasValue &&
                      seenStateTimestamp <= lastNotificationsSeenAt.Value);
+                commentNavigationByNotificationId.TryGetValue(notification.NotificationId, out var commentNavigation);
 
                 responseItems.Add(new NotificationItemResponse
                 {
@@ -656,6 +660,8 @@ SET
                     Text = text,
                     TargetKind = (int)notification.TargetKind,
                     TargetId = targetId,
+                    TargetCommentId = commentNavigation?.TargetCommentId,
+                    ParentCommentId = commentNavigation?.ParentCommentId,
                     TargetPostCode = targetPostCode,
                     ThumbnailUrl = thumbnailUrl,
                     CanOpen = canOpen
@@ -753,6 +759,176 @@ SET
                         SeenStateTimestamp = x.SeenStateTimestamp
                     },
                     cancellationToken);
+        }
+
+        private async Task<Dictionary<Guid, NotificationCommentNavigationMetadata>> ResolveCommentNavigationMetadataAsync(
+            IEnumerable<Notification> notifications,
+            CancellationToken cancellationToken)
+        {
+            var safeNotifications = (notifications ?? Enumerable.Empty<Notification>())
+                .Where(x => x != null && x.NotificationId != Guid.Empty)
+                .ToList();
+            if (safeNotifications.Count == 0)
+            {
+                return new Dictionary<Guid, NotificationCommentNavigationMetadata>();
+            }
+
+            var result = new Dictionary<Guid, NotificationCommentNavigationMetadata>();
+            var latestContributionNotificationIds = safeNotifications
+                .Where(x =>
+                    x.Type == NotificationTypeEnum.PostComment ||
+                    x.Type == NotificationTypeEnum.CommentReply)
+                .Select(x => x.NotificationId)
+                .Distinct()
+                .ToList();
+
+            var latestContributionByNotificationId = latestContributionNotificationIds.Count == 0
+                ? new Dictionary<Guid, LatestContributionNavigationProjection>()
+                : (await _context.NotificationContributions
+                    .AsNoTracking()
+                    .Where(x =>
+                        latestContributionNotificationIds.Contains(x.NotificationId) &&
+                        x.IsActive &&
+                        x.Actor.Status == AccountStatusEnum.Active)
+                    .Select(x => new LatestContributionNavigationProjection
+                    {
+                        NotificationId = x.NotificationId,
+                        SourceId = x.SourceId,
+                        UpdatedAt = x.UpdatedAt
+                    })
+                    .ToListAsync(cancellationToken))
+                    .GroupBy(x => x.NotificationId)
+                    .ToDictionary(
+                        x => x.Key,
+                        x => x
+                            .OrderByDescending(item => item.UpdatedAt)
+                            .ThenByDescending(item => item.SourceId)
+                            .First());
+
+            var targetCommentIds = new HashSet<Guid>();
+
+            foreach (var notification in safeNotifications)
+            {
+                var metadata = ResolveCommentNavigationMetadata(
+                    notification,
+                    latestContributionByNotificationId);
+                if (metadata == null)
+                {
+                    continue;
+                }
+
+                result[notification.NotificationId] = metadata;
+                if (metadata.TargetCommentId.HasValue && metadata.TargetCommentId.Value != Guid.Empty)
+                {
+                    targetCommentIds.Add(metadata.TargetCommentId.Value);
+                }
+            }
+
+            if (targetCommentIds.Count == 0)
+            {
+                return result;
+            }
+
+            var commentParentLookup = await _context.Comments
+                .AsNoTracking()
+                .Where(x => targetCommentIds.Contains(x.CommentId))
+                .Select(x => new CommentNavigationLookupProjection
+                {
+                    CommentId = x.CommentId,
+                    ParentCommentId = x.ParentCommentId
+                })
+                .ToDictionaryAsync(x => x.CommentId, cancellationToken);
+
+            foreach (var metadata in result.Values)
+            {
+                if (!metadata.TargetCommentId.HasValue || metadata.TargetCommentId.Value == Guid.Empty)
+                {
+                    continue;
+                }
+
+                if (commentParentLookup.TryGetValue(metadata.TargetCommentId.Value, out var lookup))
+                {
+                    metadata.ParentCommentId ??= lookup.ParentCommentId;
+                }
+            }
+
+            return result;
+        }
+
+        private static NotificationCommentNavigationMetadata? ResolveCommentNavigationMetadata(
+            Notification notification,
+            IReadOnlyDictionary<Guid, LatestContributionNavigationProjection> latestContributionByNotificationId)
+        {
+            if (notification == null)
+            {
+                return null;
+            }
+
+            if (notification.Type == NotificationTypeEnum.PostComment)
+            {
+                if (!latestContributionByNotificationId.TryGetValue(notification.NotificationId, out var latestContribution) ||
+                    latestContribution.SourceId == Guid.Empty)
+                {
+                    return null;
+                }
+
+                return new NotificationCommentNavigationMetadata
+                {
+                    TargetCommentId = latestContribution.SourceId
+                };
+            }
+
+            if (notification.Type == NotificationTypeEnum.CommentReply)
+            {
+                if (!latestContributionByNotificationId.TryGetValue(notification.NotificationId, out var latestContribution) ||
+                    latestContribution.SourceId == Guid.Empty)
+                {
+                    return null;
+                }
+
+                return new NotificationCommentNavigationMetadata
+                {
+                    TargetCommentId = latestContribution.SourceId,
+                    ParentCommentId = TryParseNotificationAggregateGuid(notification.AggregateKey)
+                };
+            }
+
+            if (notification.Type == NotificationTypeEnum.CommentMention ||
+                notification.Type == NotificationTypeEnum.CommentReact ||
+                notification.Type == NotificationTypeEnum.ReplyReact)
+            {
+                var targetCommentId = TryParseNotificationAggregateGuid(notification.AggregateKey);
+                if (!targetCommentId.HasValue || targetCommentId.Value == Guid.Empty)
+                {
+                    return null;
+                }
+
+                return new NotificationCommentNavigationMetadata
+                {
+                    TargetCommentId = targetCommentId.Value
+                };
+            }
+
+            return null;
+        }
+
+        private static Guid? TryParseNotificationAggregateGuid(string? aggregateKey)
+        {
+            var raw = (aggregateKey ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            var separatorIndex = raw.IndexOf(':');
+            if (separatorIndex < 0 || separatorIndex >= raw.Length - 1)
+            {
+                return null;
+            }
+
+            return Guid.TryParse(raw[(separatorIndex + 1)..], out var parsed)
+                ? parsed
+                : null;
         }
 
         private async Task<Dictionary<Guid, LatestActorResolveResult>> ResolveLatestActiveActorsAsync(
@@ -1111,6 +1287,25 @@ SET
             public Guid NotificationId { get; set; }
             public bool HasAnyContribution { get; set; }
             public DateTime? SeenStateTimestamp { get; set; }
+        }
+
+        private sealed class LatestContributionNavigationProjection
+        {
+            public Guid NotificationId { get; set; }
+            public Guid SourceId { get; set; }
+            public DateTime UpdatedAt { get; set; }
+        }
+
+        private sealed class CommentNavigationLookupProjection
+        {
+            public Guid CommentId { get; set; }
+            public Guid? ParentCommentId { get; set; }
+        }
+
+        private sealed class NotificationCommentNavigationMetadata
+        {
+            public Guid? TargetCommentId { get; set; }
+            public Guid? ParentCommentId { get; set; }
         }
 
         private sealed class NotificationReadStateSnapshot

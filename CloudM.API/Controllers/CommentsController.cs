@@ -60,25 +60,25 @@ namespace CloudM.API.Controllers
 
         [Authorize]
         [HttpGet("post/{postId}")]
-        public async Task<ActionResult<CommentCursorResponse>> GetCommentsByPostId([FromRoute] Guid postId, [FromQuery] int pageSize = 10, [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorCommentId = null)
+        public async Task<ActionResult<CommentCursorResponse>> GetCommentsByPostId([FromRoute] Guid postId, [FromQuery] int pageSize = 10, [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorCommentId = null, [FromQuery] Guid? priorityCommentId = null)
         {
             var currentId = User.GetAccountId();
             if (cursorCreatedAt.HasValue != cursorCommentId.HasValue)
                 return BadRequest(new { message = "cursorCreatedAt and cursorCommentId must be provided together." });
 
-            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
+            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, cursorCreatedAt, cursorCommentId, pageSize, priorityCommentId);
             return Ok(result);
         }
 
         [Authorize]
         [HttpGet("replies/{commentId}")]
-        public async Task<ActionResult<CommentCursorResponse>> GetRepliesByCommentId([FromRoute] Guid commentId, [FromQuery] int pageSize = 10, [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorCommentId = null)
+        public async Task<ActionResult<CommentCursorResponse>> GetRepliesByCommentId([FromRoute] Guid commentId, [FromQuery] int pageSize = 10, [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorCommentId = null, [FromQuery] Guid? priorityReplyId = null)
         {
             var currentId = User.GetAccountId();
             if (cursorCreatedAt.HasValue != cursorCommentId.HasValue)
                 return BadRequest(new { message = "cursorCreatedAt and cursorCommentId must be provided together." });
 
-            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
+            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, cursorCreatedAt, cursorCommentId, pageSize, priorityReplyId);
             return Ok(result);
         }
 

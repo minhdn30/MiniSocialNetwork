@@ -408,7 +408,7 @@ namespace CloudM.Application.Services.CommentServices
             });
         }
 
-        public async Task<CommentCursorResponse> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize)
+        public async Task<CommentCursorResponse> GetCommentsByPostIdAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityCommentId = null)
         {
             var post = await _postRepository.GetPostBasicInfoById(postId);
             if (post == null)
@@ -416,7 +416,7 @@ namespace CloudM.Application.Services.CommentServices
 
             await ValidatePostPrivacyAsync(post, currentId, "view comments on");
 
-            var (items, totalItems, nextCursorCreatedAt, nextCursorCommentId) = await _commentRepository.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
+            var (items, totalItems, nextCursorCreatedAt, nextCursorCommentId) = await _commentRepository.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, cursorCreatedAt, cursorCommentId, pageSize, priorityCommentId);
 
             var responseItems = items.Select(item =>
             {
@@ -441,7 +441,7 @@ namespace CloudM.Application.Services.CommentServices
                     : null
             };
         }
-        public async Task<CommentCursorResponse> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize)
+        public async Task<CommentCursorResponse> GetRepliesByCommentIdAsync(Guid commentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityReplyId = null)
         {
             var comment = await _commentRepository.GetCommentById(commentId);
             if (comment == null)
@@ -453,7 +453,7 @@ namespace CloudM.Application.Services.CommentServices
 
             await ValidatePostPrivacyAsync(post, currentId, "view replies on");
 
-            var (items, totalItems, nextCursorCreatedAt, nextCursorCommentId) = await _commentRepository.GetRepliesByCommentIdAsync(commentId, currentId, cursorCreatedAt, cursorCommentId, pageSize);
+            var (items, totalItems, nextCursorCreatedAt, nextCursorCommentId) = await _commentRepository.GetRepliesByCommentIdAsync(commentId, currentId, cursorCreatedAt, cursorCommentId, pageSize, priorityReplyId);
 
             var responseItems = items.Select(item =>
             {

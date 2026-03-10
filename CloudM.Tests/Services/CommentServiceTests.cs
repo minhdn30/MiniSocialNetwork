@@ -517,7 +517,7 @@ namespace CloudM.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
-            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10))
+            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10, null))
                 .Returns(Task.FromResult<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((comments, 1, null, null)));
             _mockMapper.Setup(x => x.Map<CommentResponse>(It.IsAny<CommentWithReplyCountModel>()))
                 .Returns(new CommentResponse());
@@ -550,7 +550,7 @@ namespace CloudM.Tests.Services
             };
 
             _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
-            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10))
+            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10, null))
                 .Returns(Task.FromResult<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((comments, 2, nextCreatedAt, nextCommentId)));
             _mockMapper.Setup(x => x.Map<CommentResponse>(It.IsAny<CommentWithReplyCountModel>()))
                 .Returns(new CommentResponse());
@@ -576,6 +576,24 @@ namespace CloudM.Tests.Services
                 _commentService.GetCommentsByPostIdAsync(postId, null, null, null, 10));
         }
 
+        [Fact]
+        public async Task GetCommentsByPostIdAsync_WhenPriorityCommentProvided_ForwardsPriorityCommentId()
+        {
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var priorityCommentId = Guid.NewGuid();
+            var post = new Post { PostId = postId, Privacy = PostPrivacyEnum.Public };
+
+            _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
+            _mockCommentRepo.Setup(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10, priorityCommentId))
+                .Returns(Task.FromResult<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((Enumerable.Empty<CommentWithReplyCountModel>(), 0, null, null)));
+
+            var result = await _commentService.GetCommentsByPostIdAsync(postId, currentId, null, null, 10, priorityCommentId);
+
+            result.TotalCount.Should().Be(0);
+            _mockCommentRepo.Verify(x => x.GetCommentsByPostIdWithReplyCountAsync(postId, currentId, null, null, 10, priorityCommentId), Times.Once);
+        }
+
         #endregion
 
         #region GetRepliesByCommentIdAsync Tests
@@ -593,7 +611,7 @@ namespace CloudM.Tests.Services
 
             _mockCommentRepo.Setup(x => x.GetCommentById(commentId)).ReturnsAsync(comment);
             _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
-            _mockCommentRepo.Setup(x => x.GetRepliesByCommentIdAsync(commentId, currentId, null, null, 10))
+            _mockCommentRepo.Setup(x => x.GetRepliesByCommentIdAsync(commentId, currentId, null, null, 10, null))
                 .Returns(Task.FromResult<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((replies, 0, null, null)));
 
             // Act
@@ -614,6 +632,27 @@ namespace CloudM.Tests.Services
             // Act & Assert
             await Assert.ThrowsAsync<BadRequestException>(() =>
                 _commentService.GetRepliesByCommentIdAsync(commentId, null, null, null, 10));
+        }
+
+        [Fact]
+        public async Task GetRepliesByCommentIdAsync_WhenPriorityReplyProvided_ForwardsPriorityReplyId()
+        {
+            var commentId = Guid.NewGuid();
+            var postId = Guid.NewGuid();
+            var currentId = Guid.NewGuid();
+            var priorityReplyId = Guid.NewGuid();
+            var comment = new Comment { CommentId = commentId, PostId = postId };
+            var post = new Post { PostId = postId, Privacy = PostPrivacyEnum.Public };
+
+            _mockCommentRepo.Setup(x => x.GetCommentById(commentId)).ReturnsAsync(comment);
+            _mockPostRepo.Setup(x => x.GetPostBasicInfoById(postId)).ReturnsAsync(post);
+            _mockCommentRepo.Setup(x => x.GetRepliesByCommentIdAsync(commentId, currentId, null, null, 10, priorityReplyId))
+                .Returns(Task.FromResult<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)>((Enumerable.Empty<ReplyCommentModel>(), 0, null, null)));
+
+            var result = await _commentService.GetRepliesByCommentIdAsync(commentId, currentId, null, null, 10, priorityReplyId);
+
+            result.TotalCount.Should().Be(0);
+            _mockCommentRepo.Verify(x => x.GetRepliesByCommentIdAsync(commentId, currentId, null, null, 10, priorityReplyId), Times.Once);
         }
 
         #endregion

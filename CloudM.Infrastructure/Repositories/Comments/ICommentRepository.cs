@@ -10,7 +10,7 @@ namespace CloudM.Infrastructure.Repositories.Comments
 {
     public interface ICommentRepository
     {
-        Task<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetCommentsByPostIdWithReplyCountAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize);
+        Task<(IEnumerable<CommentWithReplyCountModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetCommentsByPostIdWithReplyCountAsync(Guid postId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityCommentId = null);
         Task<Comment?> GetCommentById(Guid commentId);
         Task AddComment(Comment comment);
         Task UpdateComment(Comment comment);
@@ -20,7 +20,7 @@ namespace CloudM.Infrastructure.Repositories.Comments
         Task<List<Comment>> GetCommentThreadForDeleteAsync(Guid commentId);
         Task<bool> IsCommentCanReply(Guid commentId);
         Task<int> CountCommentRepliesAsync(Guid commentId);
-        Task<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize);
+        Task<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityReplyId = null);
 
     }
 }
