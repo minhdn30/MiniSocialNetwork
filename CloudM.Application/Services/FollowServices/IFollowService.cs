@@ -22,6 +22,7 @@ namespace CloudM.Application.Services.FollowServices
         Task<PagedResponse<AccountWithFollowStatusModel>> GetSentPendingRequestsAsync(Guid currentId, FollowPagingRequest request);
         Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowersAsync(Guid userId, Guid? currentId, FollowPagingRequest request);
         Task<PagedResponse<AccountWithFollowStatusModel>> GetFollowingAsync(Guid userId, Guid? currentId, FollowPagingRequest request);
+        Task<PagedResponse<FollowSuggestionModel>> GetSuggestionsAsync(Guid currentId, FollowSuggestionPagingRequest request);
         Task<FollowCountResponse> GetStatsAsync(Guid userId);
     }
 }

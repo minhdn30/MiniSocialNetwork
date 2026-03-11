@@ -43,5 +43,10 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             PostPrivacyEnum? postPrivacy,
             IEnumerable<Guid>? excludeAccountIds,
             int limit = 10);
+        Task<(List<FollowSuggestionModel> Items, int TotalItems)> GetFollowSuggestionsAsync(
+            Guid currentId,
+            int page,
+            int pageSize,
+            bool prioritizeDiscovery);
     }
 }

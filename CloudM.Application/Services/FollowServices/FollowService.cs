@@ -795,6 +795,35 @@ namespace CloudM.Application.Services.FollowServices
                 PageSize = request.PageSize
             };
         }
+
+        public async Task<PagedResponse<FollowSuggestionModel>> GetSuggestionsAsync(Guid currentId, FollowSuggestionPagingRequest request)
+        {
+            if (!await _accountRepository.IsAccountIdExist(currentId))
+                throw new ForbiddenException("You must reactivate your account to view follow suggestions.");
+
+            var safeRequest = request ?? new FollowSuggestionPagingRequest();
+            var normalizedPage = safeRequest.Page <= 0 ? 1 : safeRequest.Page;
+            var normalizedSurface = (safeRequest.Surface ?? "page").Trim().ToLowerInvariant();
+            var prioritizeDiscovery = normalizedSurface == "home";
+            var maxPageSize = prioritizeDiscovery ? 12 : 20;
+            var normalizedPageSize = safeRequest.PageSize <= 0
+                ? (prioritizeDiscovery ? 5 : 12)
+                : Math.Min(safeRequest.PageSize, maxPageSize);
+
+            var (items, total) = await _accountRepository.GetFollowSuggestionsAsync(
+                currentId,
+                normalizedPage,
+                normalizedPageSize,
+                prioritizeDiscovery);
+
+            return new PagedResponse<FollowSuggestionModel>
+            {
+                Items = items,
+                TotalItems = total,
+                Page = normalizedPage,
+                PageSize = normalizedPageSize
+            };
+        }
         
         public async Task<FollowCountResponse> GetStatsAsync(Guid userId)
         {

@@ -871,6 +871,101 @@ namespace CloudM.Tests.Services
 
         #endregion
 
+        #region GetSuggestionsAsync Tests
+
+        [Fact]
+        public async Task GetSuggestionsAsync_WhenCurrentAccountMissing_ThrowsForbiddenException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(currentId)).ReturnsAsync(false);
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                _followService.GetSuggestionsAsync(currentId, new FollowSuggestionPagingRequest()));
+        }
+
+        [Fact]
+        public async Task GetSuggestionsAsync_WhenHomeSurfaceRequested_NormalizesRequestAndUsesDiscoveryMode()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var items = new List<FollowSuggestionModel>
+            {
+                new()
+                {
+                    AccountId = Guid.NewGuid(),
+                    Username = "home-user",
+                    FullName = "Home User",
+                    AvatarUrl = "/avatars/home-user.png"
+                }
+            };
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(currentId)).ReturnsAsync(true);
+            _mockAccountRepo
+                .Setup(x => x.GetFollowSuggestionsAsync(currentId, 1, 5, true))
+                .ReturnsAsync((items, 1));
+
+            var request = new FollowSuggestionPagingRequest
+            {
+                Page = 0,
+                PageSize = 0,
+                Surface = "HOME"
+            };
+
+            // Act
+            var result = await _followService.GetSuggestionsAsync(currentId, request);
+
+            // Assert
+            result.Page.Should().Be(1);
+            result.PageSize.Should().Be(5);
+            result.TotalItems.Should().Be(1);
+            result.Items.Should().ContainSingle();
+            _mockAccountRepo.Verify(x => x.GetFollowSuggestionsAsync(currentId, 1, 5, true), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetSuggestionsAsync_WhenPageSurfaceRequested_CapsPageSizeAtTwenty()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var items = new List<FollowSuggestionModel>
+            {
+                new()
+                {
+                    AccountId = Guid.NewGuid(),
+                    Username = "page-user",
+                    FullName = "Page User",
+                    AvatarUrl = "/avatars/page-user.png"
+                }
+            };
+
+            _mockAccountRepo.Setup(x => x.IsAccountIdExist(currentId)).ReturnsAsync(true);
+            _mockAccountRepo
+                .Setup(x => x.GetFollowSuggestionsAsync(currentId, 2, 20, false))
+                .ReturnsAsync((items, 25));
+
+            var request = new FollowSuggestionPagingRequest
+            {
+                Page = 2,
+                PageSize = 200,
+                Surface = "page"
+            };
+
+            // Act
+            var result = await _followService.GetSuggestionsAsync(currentId, request);
+
+            // Assert
+            result.Page.Should().Be(2);
+            result.PageSize.Should().Be(20);
+            result.TotalItems.Should().Be(25);
+            result.Items.Should().ContainSingle();
+            _mockAccountRepo.Verify(x => x.GetFollowSuggestionsAsync(currentId, 2, 20, false), Times.Once);
+        }
+
+        #endregion
+
         #region GetStatsAsync Tests
 
         [Fact]
