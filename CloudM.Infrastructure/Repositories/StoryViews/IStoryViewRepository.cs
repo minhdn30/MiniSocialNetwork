@@ -21,6 +21,6 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
             DateTime nowUtc);
         Task<StoryView?> GetStoryViewAsync(Guid storyId, Guid viewerAccountId);
         Task UpdateStoryViewAsync(StoryView storyView);
-        Task<(List<StoryViewerBasicModel> Items, int TotalItems)> GetStoryViewersPagedAsync(Guid storyId, int page, int pageSize);
+        Task<(List<StoryViewerBasicModel> Items, int TotalItems)> GetStoryViewersPagedAsync(Guid storyId, Guid currentId, int page, int pageSize);
     }
 }

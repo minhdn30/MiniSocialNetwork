@@ -9,6 +9,7 @@ using CloudM.Application.Services.ConversationServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Repositories.Accounts;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
 using CloudM.Infrastructure.Repositories.Follows;
@@ -17,6 +18,7 @@ using CloudM.Infrastructure.Repositories.UnitOfWork;
 using CloudM.Infrastructure.Services.Cloudinary;
 using CloudM.Infrastructure.Models;
 using CloudM.Tests.Helpers;
+using System.Text.Json;
 using static CloudM.Domain.Exceptions.CustomExceptions;
 
 namespace CloudM.Tests.Services
@@ -32,6 +34,7 @@ namespace CloudM.Tests.Services
         private readonly Mock<ICloudinaryService> _cloudinaryServiceMock;
         private readonly Mock<IMapper> _mapperMock;
         private readonly Mock<IRealtimeService> _realtimeServiceMock;
+        private readonly Mock<IAccountBlockRepository> _accountBlockRepositoryMock;
         private readonly ConversationService _conversationService;
 
         public ConversationServiceTests()
@@ -45,6 +48,7 @@ namespace CloudM.Tests.Services
             _cloudinaryServiceMock = new Mock<ICloudinaryService>();
             _mapperMock = new Mock<IMapper>();
             _realtimeServiceMock = new Mock<IRealtimeService>();
+            _accountBlockRepositoryMock = new Mock<IAccountBlockRepository>();
 
             _messageRepositoryMock
                 .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
@@ -78,6 +82,21 @@ namespace CloudM.Tests.Services
                     It.IsAny<Guid?>(),
                     It.IsAny<Guid>()))
                 .Returns(Task.CompletedTask);
+            _accountBlockRepositoryMock
+                .Setup(x => x.IsBlockedEitherWayAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+                .ReturnsAsync(false);
+            _accountBlockRepositoryMock
+                .Setup(x => x.HasAnyRelationWithinAsync(
+                    It.IsAny<IEnumerable<Guid>>(),
+                    It.IsAny<IEnumerable<Guid>?>(),
+                    It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(false);
+            _accountBlockRepositoryMock
+                .Setup(x => x.GetRelationsAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<IEnumerable<Guid>>(),
+                    It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<AccountBlockRelationModel>());
 
             _conversationService = new ConversationService(
                 _conversationRepositoryMock.Object,
@@ -88,7 +107,10 @@ namespace CloudM.Tests.Services
                 _unitOfWorkMock.Object,
                 _cloudinaryServiceMock.Object,
                 _mapperMock.Object,
-                _realtimeServiceMock.Object
+                _realtimeServiceMock.Object,
+                null,
+                null,
+                _accountBlockRepositoryMock.Object
             );
         }
 
@@ -197,6 +219,147 @@ namespace CloudM.Tests.Services
             result.Items.Should().HaveCount(1);
             result.Items.First().LastMessagePreview.Should().Be("Replied: alooo");
             result.HasMore.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task GetConversationsByCursorAsync_WhenBlockedGroupMemberAvatarExists_ShouldKeepAvatarSlot()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var blockedMemberId = Guid.NewGuid();
+            var allowedMemberId = Guid.NewGuid();
+
+            var items = new List<ConversationListModel>
+            {
+                new ConversationListModel
+                {
+                    ConversationId = conversationId,
+                    IsGroup = true,
+                    DisplayName = "Project team",
+                    GroupAvatars = new List<string>
+                    {
+                        "https://cdn.example.com/blocked.png",
+                        "https://cdn.example.com/allowed.png"
+                    },
+                    GroupAvatarAccountIds = new List<Guid>
+                    {
+                        blockedMemberId,
+                        allowedMemberId
+                    }
+                }
+            };
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationsByCursorAsync(currentId, null, null, null, null, 20))
+                .ReturnsAsync((items, false));
+            // Act
+            var result = await _conversationService.GetConversationsByCursorAsync(currentId, null, null, null, null, 20);
+
+            // Assert
+            result.Items.Should().HaveCount(1);
+            result.Items[0].GroupAvatars.Should().Equal(
+                "https://cdn.example.com/blocked.png",
+                "https://cdn.example.com/allowed.png");
+        }
+
+        [Fact]
+        public async Task GetConversationMessagesWithMetaDataAsync_WhenBlockedGroupMemberAvatarExists_ShouldKeepMetaAvatarSlot()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var blockedMemberId = Guid.NewGuid();
+            var allowedMemberId = Guid.NewGuid();
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
+                .ReturnsAsync(true);
+            _messageRepositoryMock
+                .Setup(x => x.GetMessagesByConversationId(conversationId, currentId, null, 20))
+                .ReturnsAsync((Array.Empty<MessageBasicModel>(), null, null, false, false));
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationMetaDataAsync(conversationId, currentId))
+                .ReturnsAsync(new ConversationListModel
+                {
+                    ConversationId = conversationId,
+                    IsGroup = true,
+                    DisplayName = "Project team",
+                    GroupAvatars = new List<string>
+                    {
+                        "https://cdn.example.com/blocked.png",
+                        "https://cdn.example.com/allowed.png"
+                    },
+                    GroupAvatarAccountIds = new List<Guid>
+                    {
+                        blockedMemberId,
+                        allowedMemberId
+                    }
+                });
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetConversationMembersAsync(conversationId))
+                .ReturnsAsync(new List<ConversationMember>());
+            // Act
+            var result = await _conversationService.GetConversationMessagesWithMetaDataAsync(conversationId, currentId, null, 20);
+
+            // Assert
+            result.MetaData.Should().NotBeNull();
+            result.MetaData!.GroupAvatars.Should().Equal(
+                "https://cdn.example.com/blocked.png",
+                "https://cdn.example.com/allowed.png");
+        }
+
+        [Fact]
+        public async Task SearchMessagesAsync_WhenSystemMessageContainsBlockedTargets_ShouldKeepPayloadLabels()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var blockedMemberId = Guid.NewGuid();
+
+            var systemMessage = new MessageBasicModel
+            {
+                MessageId = Guid.NewGuid(),
+                MessageType = MessageTypeEnum.System,
+                Content = "@current added @blocked-user to the group.",
+                SentAt = DateTime.UtcNow,
+                Sender = new AccountChatInfoModel
+                {
+                    AccountId = currentId,
+                    Username = "current",
+                    FullName = "Current user",
+                    IsActive = true
+                },
+                SystemMessageDataJson = JsonSerializer.Serialize(new
+                {
+                    action = 1,
+                    actorAccountId = currentId,
+                    actorUsername = "current",
+                    targetAccountIds = new[] { blockedMemberId },
+                    targetUsernames = new[] { "blocked-user" }
+                })
+            };
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, currentId))
+                .ReturnsAsync(true);
+            _messageRepositoryMock
+                .Setup(x => x.SearchMessagesAsync(conversationId, currentId, "blocked", 1, 20))
+                .ReturnsAsync((new[] { systemMessage }, 1));
+            // Act
+            var result = await _conversationService.SearchMessagesAsync(conversationId, currentId, "blocked", 1, 20);
+
+            // Assert
+            result.Items.Should().HaveCount(1);
+            var messageResult = result.Items.Single();
+            messageResult.SystemMessageDataJson.Should().NotBeNullOrWhiteSpace();
+
+            using var payload = JsonDocument.Parse(messageResult.SystemMessageDataJson!);
+            payload.RootElement
+                .GetProperty("targetUsernames")[0]
+                .GetString()
+                .Should()
+                .Be("blocked-user");
         }
 
         #endregion
@@ -416,6 +579,43 @@ namespace CloudM.Tests.Services
             capturedRealtimeMessage!.Sender.Should().NotBeNull();
             capturedRealtimeMessage.Sender.AccountId.Should().Be(currentId);
             capturedRealtimeMessage.Sender.Username.Should().Be("creator");
+        }
+
+        [Fact]
+        public async Task CreateGroupConversationAsync_WhenBlockedRelationExists_ThrowsBadRequestException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var member1Id = Guid.NewGuid();
+            var member2Id = Guid.NewGuid();
+            var request = new CreateGroupConversationRequest
+            {
+                GroupName = "Blocked Group",
+                MemberIds = new List<Guid> { member1Id, member2Id }
+            };
+
+            _accountBlockRepositoryMock
+                .Setup(x => x.GetRelationsAsync(
+                    currentId,
+                    It.IsAny<IEnumerable<Guid>>(),
+                    It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<AccountBlockRelationModel>
+                {
+                    new()
+                    {
+                        TargetId = member1Id,
+                        IsBlockedByCurrentUser = true
+                    }
+                });
+
+            // Act
+            var act = () => _conversationService.CreateGroupConversationAsync(currentId, request);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("*selected members are unavailable*");
+            _accountRepositoryMock.Verify(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()), Times.Never);
+            _conversationRepositoryMock.Verify(x => x.AddConversationAsync(It.IsAny<Conversation>()), Times.Never);
         }
 
         [Fact]

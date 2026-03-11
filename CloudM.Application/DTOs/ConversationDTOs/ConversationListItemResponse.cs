@@ -24,6 +24,10 @@ namespace CloudM.Application.DTOs.ConversationDTOs
         public int UnreadCount { get; set; }
         public DateTime? LastMessageSentAt { get; set; }
         public bool IsMuted { get; set; }
+        public bool CanSendMessage { get; set; } = true;
+        public bool IsBlockedConversation { get; set; }
+        public bool BlockedByCurrentUser { get; set; }
+        public bool BlockedByOtherUser { get; set; }
         public string? Theme { get; set; }
         public Guid? Owner { get; set; }
         public int CurrentUserRole { get; set; }

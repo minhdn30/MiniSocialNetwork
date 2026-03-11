@@ -8,6 +8,7 @@ using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
@@ -30,6 +31,7 @@ namespace CloudM.Application.Services.PinnedMessageServices
         private readonly IConversationRepository _conversationRepository;
         private readonly IConversationMemberRepository _conversationMemberRepository;
         private readonly IAccountRepository _accountRepository;
+        private readonly IAccountBlockRepository _accountBlockRepository;
         private readonly IRealtimeService _realtimeService;
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
@@ -42,13 +44,15 @@ namespace CloudM.Application.Services.PinnedMessageServices
             IAccountRepository accountRepository,
             IRealtimeService realtimeService,
             IMapper mapper,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IAccountBlockRepository? accountBlockRepository = null)
         {
             _pinnedMessageRepository = pinnedMessageRepository;
             _messageRepository = messageRepository;
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
             _accountRepository = accountRepository;
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
             _realtimeService = realtimeService;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
@@ -249,7 +253,16 @@ namespace CloudM.Application.Services.PinnedMessageServices
                 if (member == null || (!member.IsAdmin && !isOwner))
                     throw new ForbiddenException("Only group admins can pin or unpin messages.");
             }
-            // 1:1 chat: anyone can pin or unpin
+            else
+            {
+                var otherMemberId = (await _conversationMemberRepository.GetAllActiveMemberIdsByConversationIdAsync(conversationId))
+                    .FirstOrDefault(x => x != Guid.Empty && x != currentAccountId);
+                if (otherMemberId != Guid.Empty &&
+                    await _accountBlockRepository.IsBlockedEitherWayAsync(currentAccountId, otherMemberId))
+                {
+                    throw new BadRequestException("This conversation is unavailable.");
+                }
+            }
         }
     }
 }

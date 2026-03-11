@@ -32,6 +32,15 @@ namespace CloudM.Application.Services.NotificationServices
                 return;
             }
 
+            if (request.Action == NotificationAggregateActionEnum.Upsert &&
+                request.ActorId.HasValue &&
+                request.ActorId.Value != Guid.Empty &&
+                request.ActorId.Value != request.RecipientId &&
+                await IsBlockedEitherWayAsync(request.RecipientId, request.ActorId.Value, cancellationToken))
+            {
+                return;
+            }
+
             var payload = new NotificationAggregateChangedPayload
             {
                 Action = request.Action,
@@ -1226,6 +1235,16 @@ SET
                 FullName = actorSnapshot.FullName,
                 AvatarUrl = actorSnapshot.AvatarUrl
             };
+        }
+
+        private async Task<bool> IsBlockedEitherWayAsync(Guid currentId, Guid targetId, CancellationToken cancellationToken)
+        {
+            return await _context.AccountBlocks
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    (x.BlockerId == currentId && x.BlockedId == targetId) ||
+                    (x.BlockerId == targetId && x.BlockedId == currentId),
+                    cancellationToken);
         }
 
         private static DateTime? NormalizeUtc(DateTime? value)

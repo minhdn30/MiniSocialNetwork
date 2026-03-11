@@ -18,6 +18,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.Comments;
 using CloudM.Infrastructure.Repositories.Follows;
 using CloudM.Infrastructure.Repositories.PostMedias;
@@ -54,6 +55,7 @@ namespace CloudM.Application.Services.PostServices
         private readonly INotificationService _notificationService;
         private readonly IRealtimeService _realtimeService;
         private readonly IStoryRingStateHelper _storyRingStateHelper;
+        private readonly IAccountBlockRepository _accountBlockRepository;
         public PostService(IPostReactRepository postReactRepository,
                            IPostSaveRepository postSaveRepository,
                            IPostMediaRepository postMediaRepository,
@@ -68,7 +70,8 @@ namespace CloudM.Application.Services.PostServices
                            INotificationService notificationService,
                            IRealtimeService realtimeService,
                            IStoryViewService storyViewService,
-                           IStoryRingStateHelper? storyRingStateHelper = null)
+                           IStoryRingStateHelper? storyRingStateHelper = null,
+                           IAccountBlockRepository? accountBlockRepository = null)
         {
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
@@ -84,6 +87,7 @@ namespace CloudM.Application.Services.PostServices
             _notificationService = notificationService;
             _realtimeService = realtimeService;
             _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
         }
 
         public PostService(IPostReactRepository postReactRepository,
@@ -99,7 +103,8 @@ namespace CloudM.Application.Services.PostServices
                            IUnitOfWork unitOfWork,
                            IRealtimeService realtimeService,
                            IStoryViewService storyViewService,
-                           IStoryRingStateHelper? storyRingStateHelper = null)
+                           IStoryRingStateHelper? storyRingStateHelper = null,
+                           IAccountBlockRepository? accountBlockRepository = null)
             : this(
                 postReactRepository,
                 postSaveRepository,
@@ -115,7 +120,8 @@ namespace CloudM.Application.Services.PostServices
                 NullNotificationService.Instance,
                 realtimeService,
                 storyViewService,
-                storyRingStateHelper)
+                storyRingStateHelper,
+                accountBlockRepository)
         {
         }
 
@@ -128,7 +134,7 @@ namespace CloudM.Application.Services.PostServices
             }
             var result = _mapper.Map<PostDetailResponse>(post);
             result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
-            result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
+            result.TotalComments = await _commentRepository.CountCommentsByPostId(postId, currentId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             result.IsSavedByCurrentUser = currentId.HasValue && await _postSaveRepository.IsPostSavedByCurrentAsync(currentId.Value, postId);
             return result;
@@ -199,7 +205,7 @@ namespace CloudM.Application.Services.PostServices
             var effectiveCreatePrivacy = request.Privacy.HasValue
                 ? (PostPrivacyEnum)request.Privacy.Value
                 : PostPrivacyEnum.Public;
-            var validatedTaggedAccounts = await ValidateTaggedAccountsAsync(normalizedTagIds);
+            var validatedTaggedAccounts = await ValidateTaggedAccountsAsync(accountId, normalizedTagIds);
             await EnsureTaggedAccountsCompatibleWithPrivacyAsync(
                 accountId,
                 effectiveCreatePrivacy,
@@ -390,7 +396,7 @@ namespace CloudM.Application.Services.PostServices
             var account = await _accountRepository.GetAccountById(post.AccountId);
             var result = _mapper.Map<PostDetailResponse>(post);
             result.TotalReacts = await _postReactRepository.GetReactCountByPostId(postId);
-            result.TotalComments = await _commentRepository.CountCommentsByPostId(postId);
+            result.TotalComments = await _commentRepository.CountCommentsByPostId(postId, currentId);
             result.IsReactedByCurrentUser = await _postReactRepository.IsCurrentUserReactedOnPostAsync(postId, currentId);
             result.IsSavedByCurrentUser = await _postSaveRepository.IsPostSavedByCurrentAsync(currentId, postId);
 
@@ -480,7 +486,7 @@ namespace CloudM.Application.Services.PostServices
 
                 if (addTagIds.Count > 0)
                 {
-                    var validatedAddedAccounts = await ValidateTaggedAccountsAsync(addTagIds);
+                    var validatedAddedAccounts = await ValidateTaggedAccountsAsync(currentId, addTagIds);
                     await EnsureTaggedAccountsCompatibleWithPrivacyAsync(
                         post.AccountId,
                         effectivePrivacy,
@@ -677,7 +683,7 @@ namespace CloudM.Application.Services.PostServices
                 .ToList();
         }
 
-        private async Task<List<Account>> ValidateTaggedAccountsAsync(List<Guid> taggedAccountIds)
+        private async Task<List<Account>> ValidateTaggedAccountsAsync(Guid currentId, List<Guid> taggedAccountIds)
         {
             if (taggedAccountIds.Count == 0)
             {
@@ -693,6 +699,12 @@ namespace CloudM.Application.Services.PostServices
                 .Where(x => !activeAccountMap.ContainsKey(x))
                 .ToList();
             if (notFoundOrInactiveIds.Count > 0)
+            {
+                throw new BadRequestException("Some selected accounts are unavailable for tagging.");
+            }
+
+            var blockedTargets = await _accountBlockRepository.GetRelationsAsync(currentId, taggedAccountIds);
+            if (blockedTargets.Any(x => x.IsBlockedEitherWay))
             {
                 throw new BadRequestException("Some selected accounts are unavailable for tagging.");
             }

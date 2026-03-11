@@ -4,6 +4,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
+using CloudM.Infrastructure.Helpers;
 using CloudM.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
@@ -47,6 +48,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
         }
         public async Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId)
         {
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
             var isFollower = await _context.Follows.AnyAsync(f =>
                 f.FollowerId == currentId &&
                 _context.Posts.Any(p => p.PostId == postId && p.AccountId == f.FollowedId)
@@ -62,6 +64,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     p.PostId == postId &&
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    !hiddenAccountIds.Contains(p.AccountId) &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     (
                         p.AccountId == currentId || // owner
@@ -102,7 +105,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
 
                     TotalMedias = p.Medias.Count(),
                     TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                    TotalComments = p.Comments.Count(c =>
+                        c.ParentCommentId == null &&
+                        c.Account.Status == AccountStatusEnum.Active &&
+                        !hiddenAccountIds.Contains(c.AccountId) &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
 
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
@@ -125,6 +132,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
 
         public async Task<PostDetailModel?> GetPostDetailByPostCode(string postCode, Guid currentId)
         {
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
             var postRecord = await _context.Posts.AsNoTracking().FirstOrDefaultAsync(p => p.PostCode == postCode);
             if (postRecord == null) return null;
 
@@ -143,6 +151,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     p.PostCode == postCode &&
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    !hiddenAccountIds.Contains(p.AccountId) &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     (
                         p.AccountId == currentId || // owner
@@ -183,7 +192,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
 
                     TotalMedias = p.Medias.Count(),
                     TotalReacts = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                    TotalComments = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                    TotalComments = p.Comments.Count(c =>
+                        c.ParentCommentId == null &&
+                        c.Account.Status == AccountStatusEnum.Active &&
+                        !hiddenAccountIds.Contains(c.AccountId) &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
 
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
@@ -255,6 +268,17 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     )
                 );
 
+            var hiddenAccountIds = currentId.HasValue && currentId.Value != accountId
+                ? AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value)
+                : _context.AccountBlocks
+                    .Where(_ => false)
+                    .Select(b => b.BlockedId);
+
+            if (currentId.HasValue && currentId.Value != accountId)
+            {
+                query = query.Where(p => !hiddenAccountIds.Contains(p.AccountId));
+            }
+
             if (cursorCreatedAt.HasValue && cursorPostId.HasValue)
             {
                 query = query.Where(p =>
@@ -284,7 +308,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         .ToList(),
                     MediaCount = p.Medias.Count(),
                     ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId))
+                    CommentCount = p.Comments.Count(c =>
+                        c.ParentCommentId == null &&
+                        c.Account.Status == AccountStatusEnum.Active &&
+                        !hiddenAccountIds.Contains(c.AccountId) &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId))
                 })
                 .ToListAsync();
 
@@ -300,6 +328,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
         {
             if (limit <= 0) limit = 10;
 
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
             var followedIdsQuery = _context.Follows
                 .AsNoTracking()
                 .Where(f => f.FollowerId == currentId)
@@ -310,6 +339,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Where(p =>
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    !hiddenAccountIds.Contains(p.AccountId) &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     p.Medias.Any() &&
                     p.Tags.Any(t => t.TaggedAccountId == accountId) &&
@@ -350,7 +380,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         .ToList(),
                     MediaCount = p.Medias.Count(),
                     ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId))
+                    CommentCount = p.Comments.Count(c =>
+                        c.ParentCommentId == null &&
+                        c.Account.Status == AccountStatusEnum.Active &&
+                        !hiddenAccountIds.Contains(c.AccountId) &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId))
                 })
                 .ToListAsync();
         }
@@ -427,12 +461,14 @@ namespace CloudM.Infrastructure.Repositories.Posts
 
         public async Task<List<PostTaggedAccountModel>?> GetTaggedAccountsByPostIdAsync(Guid postId, Guid currentId)
         {
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
             var postInfo = await _context.Posts
                 .AsNoTracking()
                 .Where(p =>
                     p.PostId == postId &&
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    !hiddenAccountIds.Contains(p.AccountId) &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId))
                 .Select(p => new
                 {
@@ -475,10 +511,12 @@ namespace CloudM.Infrastructure.Repositories.Posts
             Guid currentId,
             int? take = null)
         {
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
             var taggedAccounts = await _context.PostTags
                 .AsNoTracking()
                 .Where(t =>
                     t.PostId == postId &&
+                    !hiddenAccountIds.Contains(t.TaggedAccountId) &&
                     ((t.TaggedAccount.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(t.TaggedAccount.RoleId)) || t.TaggedAccountId == currentId))
                 .Select(t => new PostTaggedAccountRawModel
                 {
@@ -556,9 +594,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
         //no use
         public async Task<List<PostFeedModel>> GetFeedByTimelineAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
             var query = _context.Posts.AsNoTracking()
                         .Where(p => !p.IsDeleted && 
                                p.Account.Status == AccountStatusEnum.Active &&
+                               !hiddenAccountIds.Contains(p.AccountId) &&
                                SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                                p.Medias.Any() &&
                                ( p.Privacy == PostPrivacyEnum.Public
@@ -606,7 +646,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
                    }).ToList(),
                    MediaCount = p.Medias.Count(),
                    ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                   CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                   CommentCount = p.Comments.Count(c =>
+                       c.ParentCommentId == null &&
+                       c.Account.Status == AccountStatusEnum.Active &&
+                       !hiddenAccountIds.Contains(c.AccountId) &&
+                       SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
                    IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                    IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                    IsOwner = p.AccountId == currentId
@@ -619,6 +663,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
             int limit)
         {
             var now = DateTime.UtcNow;
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
 
             var followedIdsQuery = _context.Follows
                 .AsNoTracking()
@@ -629,6 +674,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Where(p =>
                     !p.IsDeleted &&
                     p.Account.Status == AccountStatusEnum.Active &&
+                    !hiddenAccountIds.Contains(p.AccountId) &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
                     p.Medias.Any() &&
                     (
@@ -669,8 +715,16 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     AuthorStatus = p.Account.Status,
                     MediaCount = p.Medias.Count(),
                     ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                    CommentCount = p.Comments.Count(c => c.ParentCommentId == null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
-                    ReplyCount = p.Comments.Count(c => c.ParentCommentId != null && c.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                    CommentCount = p.Comments.Count(c =>
+                        c.ParentCommentId == null &&
+                        c.Account.Status == AccountStatusEnum.Active &&
+                        !hiddenAccountIds.Contains(c.AccountId) &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
+                    ReplyCount = p.Comments.Count(c =>
+                        c.ParentCommentId != null &&
+                        c.Account.Status == AccountStatusEnum.Active &&
+                        !hiddenAccountIds.Contains(c.AccountId) &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
                     IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
                     IsOwner = p.AccountId == currentId,

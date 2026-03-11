@@ -3,6 +3,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
+using CloudM.Infrastructure.Helpers;
 using CloudM.Infrastructure.Models;
 using System.Text.Json;
 
@@ -259,7 +260,7 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
             await Task.CompletedTask;
         }
 
-        public async Task<(List<StoryViewerBasicModel> Items, int TotalItems)> GetStoryViewersPagedAsync(Guid storyId, int page, int pageSize)
+        public async Task<(List<StoryViewerBasicModel> Items, int TotalItems)> GetStoryViewersPagedAsync(Guid storyId, Guid currentId, int page, int pageSize)
         {
             var query = _context.StoryViews
                 .AsNoTracking()
@@ -269,6 +270,9 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
                     SocialRoleRules.SocialEligibleRoleIds.Contains(v.ViewerAccount.RoleId));
 
             int totalItems = await query.CountAsync();
+
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
+            query = query.Where(v => !hiddenAccountIds.Contains(v.ViewerAccountId));
 
             var items = await query
                 .OrderByDescending(v => v.ReactType.HasValue)
@@ -296,6 +300,7 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
                 .AsNoTracking()
                 .Where(f => f.FollowerId == currentId)
                 .Select(f => f.FollowedId);
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
 
             return _context.Stories
                 .AsNoTracking()
@@ -303,6 +308,7 @@ namespace CloudM.Infrastructure.Repositories.StoryViews
                     !s.IsDeleted &&
                     s.ExpiresAt > nowUtc &&
                     s.Account.Status == AccountStatusEnum.Active &&
+                    !hiddenAccountIds.Contains(s.AccountId) &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(s.Account.RoleId) &&
                     (
                         s.AccountId == currentId ||

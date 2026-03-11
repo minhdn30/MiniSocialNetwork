@@ -4,6 +4,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
+using CloudM.Infrastructure.Helpers;
 using CloudM.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
@@ -165,8 +166,16 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         public async Task<AccountProfilePreviewModel?> GetProfilePreviewAsync(Guid targetId, Guid? currentId)
         {
-            var data = await GetSocialAccountsNoTrackingQuery()
-                .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active)
+            var query = GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active);
+
+            if (currentId.HasValue && currentId.Value != targetId)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                query = query.Where(a => !hiddenAccountIds.Contains(a.AccountId));
+            }
+
+            var data = await query
                 .Select(a => new
                 {
                     Account = new AccountBasicInfoModel
@@ -232,8 +241,16 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
         public async Task<ProfileInfoModel?> GetProfileInfoAsync(Guid targetId, Guid? currentId)
         {
-            var data = await GetSocialAccountsNoTrackingQuery()
-                .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active)
+            var query = GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.AccountId == targetId && a.Status == AccountStatusEnum.Active);
+
+            if (currentId.HasValue && currentId.Value != targetId)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                query = query.Where(a => !hiddenAccountIds.Contains(a.AccountId));
+            }
+
+            var data = await query
                 .Select(a => new
                 {
                     a.AccountId,
@@ -301,8 +318,16 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         public async Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId)
         {
             var normalizedUsername = (username ?? string.Empty).Trim().ToLower();
-            var data = await GetSocialAccountsNoTrackingQuery()
-                .Where(a => a.Username == normalizedUsername && a.Status == AccountStatusEnum.Active)
+            var query = GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.Username == normalizedUsername && a.Status == AccountStatusEnum.Active);
+
+            if (currentId.HasValue)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                query = query.Where(a => !hiddenAccountIds.Contains(a.AccountId));
+            }
+
+            var data = await query
                 .Select(a => new
                 {
                     a.AccountId,
@@ -399,6 +424,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
             var query = GetSocialAccountsNoTrackingQuery()
                 .Where(a => a.AccountId != currentId);
+
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
+            query = query.Where(a => !hiddenAccountIds.Contains(a.AccountId));
 
             if (excludeIds.Count > 0)
             {
@@ -557,8 +585,11 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var containsPattern = $"%{normalizedKeyword}%";
             var startsWithPattern = $"{normalizedKeyword}%";
 
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
+
             var preliminaryCandidates = await GetSocialAccountsNoTrackingQuery()
                 .Where(a => a.AccountId != currentId)
+                .Where(a => !hiddenAccountIds.Contains(a.AccountId))
                 .Select(a => new PreliminaryPostShareAccountCandidate
                 {
                     AccountId = a.AccountId,
@@ -688,6 +719,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
             var query = GetSocialAccountsNoTrackingQuery()
                 .Where(a => a.AccountId != currentId);
+
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
+            query = query.Where(a => !hiddenAccountIds.Contains(a.AccountId));
 
             if (excludeIds.Count > 0)
             {
@@ -873,6 +907,9 @@ namespace CloudM.Infrastructure.Repositories.Accounts
 
             var accountsQuery = GetSocialAccountsNoTrackingQuery()
                 .Where(a => recentAccountIds.Contains(a.AccountId));
+
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
+            accountsQuery = accountsQuery.Where(a => !hiddenAccountIds.Contains(a.AccountId));
 
             if (excludeIds.Count > 0)
             {

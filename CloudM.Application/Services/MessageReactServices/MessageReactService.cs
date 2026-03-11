@@ -3,7 +3,9 @@ using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
+using CloudM.Infrastructure.Repositories.Conversations;
 using CloudM.Infrastructure.Repositories.MessageReacts;
 using CloudM.Infrastructure.Repositories.Messages;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
@@ -19,6 +21,8 @@ namespace CloudM.Application.Services.MessageReactServices
         private readonly IMessageRepository _messageRepository;
         private readonly IMessageReactRepository _messageReactRepository;
         private readonly IConversationMemberRepository _conversationMemberRepository;
+        private readonly IConversationRepository _conversationRepository;
+        private readonly IAccountBlockRepository _accountBlockRepository;
         private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
 
@@ -26,12 +30,16 @@ namespace CloudM.Application.Services.MessageReactServices
             IMessageRepository messageRepository,
             IMessageReactRepository messageReactRepository,
             IConversationMemberRepository conversationMemberRepository,
+            IConversationRepository conversationRepository,
             IRealtimeService realtimeService,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IAccountBlockRepository? accountBlockRepository = null)
         {
             _messageRepository = messageRepository;
             _messageReactRepository = messageReactRepository;
             _conversationMemberRepository = conversationMemberRepository;
+            _conversationRepository = conversationRepository;
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
         }
@@ -45,6 +53,7 @@ namespace CloudM.Application.Services.MessageReactServices
         public async Task<MessageReactStateResponse> SetMessageReactAsync(Guid messageId, Guid accountId, ReactEnum reactType)
         {
             var message = await EnsureCanAccessMessageAsync(messageId, accountId);
+            await EnsurePrivateConversationInteractionAllowedAsync(message.ConversationId, accountId);
 
             var existingReact = await _messageReactRepository.GetReactAsync(messageId, accountId);
             if (existingReact == null)
@@ -76,6 +85,7 @@ namespace CloudM.Application.Services.MessageReactServices
         public async Task<MessageReactStateResponse> RemoveMessageReactAsync(Guid messageId, Guid accountId)
         {
             var message = await EnsureCanAccessMessageAsync(messageId, accountId);
+            await EnsurePrivateConversationInteractionAllowedAsync(message.ConversationId, accountId);
 
             var existingReact = await _messageReactRepository.GetReactAsync(messageId, accountId);
             if (existingReact != null)
@@ -151,6 +161,34 @@ namespace CloudM.Application.Services.MessageReactServices
             }
 
             return message;
+        }
+
+        private async Task EnsurePrivateConversationInteractionAllowedAsync(Guid conversationId, Guid accountId)
+        {
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+            {
+                throw new NotFoundException("Conversation not found.");
+            }
+
+            if (conversation.IsGroup)
+            {
+                return;
+            }
+
+            var memberIds = await _conversationMemberRepository.GetAllActiveMemberIdsByConversationIdAsync(conversationId);
+            var otherMemberId = memberIds.FirstOrDefault(x => x != Guid.Empty && x != accountId);
+            if (otherMemberId == Guid.Empty)
+            {
+                return;
+            }
+
+            if (!await _accountBlockRepository.IsBlockedEitherWayAsync(accountId, otherMemberId))
+            {
+                return;
+            }
+
+            throw new BadRequestException("This conversation is unavailable.");
         }
     }
 }

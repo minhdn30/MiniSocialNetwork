@@ -21,6 +21,10 @@ namespace CloudM.Application.Services.PresenceServices
             IReadOnlyCollection<Guid> accountIds,
             DateTime nowUtc,
             CancellationToken cancellationToken = default);
+        Task NotifyBlockedPairHiddenAsync(
+            Guid currentId,
+            Guid targetId,
+            CancellationToken cancellationToken = default);
         Task NotifyVisibilityChangedAsync(
             Guid accountId,
             OnlineStatusVisibilityEnum previousVisibility,

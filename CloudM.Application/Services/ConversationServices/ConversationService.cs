@@ -11,6 +11,7 @@ using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
 using CloudM.Infrastructure.Repositories.Follows;
@@ -47,10 +48,12 @@ namespace CloudM.Application.Services.ConversationServices
         private readonly IMapper _mapper;
         private readonly IRealtimeService _realtimeService;
         private readonly IStoryRingStateHelper _storyRingStateHelper;
+        private readonly IAccountBlockRepository _accountBlockRepository;
         public ConversationService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IMessageRepository messageRepository, IAccountRepository accountRepository, IFollowRepository followRepository,
             IUnitOfWork unitOfWork, ICloudinaryService cloudinaryService, IMapper mapper, IRealtimeService realtimeService,
-            IStoryViewService? storyViewService = null, IStoryRingStateHelper? storyRingStateHelper = null)
+            IStoryViewService? storyViewService = null, IStoryRingStateHelper? storyRingStateHelper = null,
+            IAccountBlockRepository? accountBlockRepository = null)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
@@ -62,6 +65,7 @@ namespace CloudM.Application.Services.ConversationServices
             _mapper = mapper;
             _realtimeService = realtimeService;
             _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
         }
         public async Task<ConversationResponse?> GetPrivateConversationAsync(Guid currentId, Guid otherId)
         {
@@ -72,6 +76,8 @@ namespace CloudM.Application.Services.ConversationServices
         {
             if(!await _accountRepository.IsAccountIdExist(currentId) || !await _accountRepository.IsAccountIdExist(otherId))
                 throw new NotFoundException("One or both accounts do not exist.");
+            if (await _accountBlockRepository.IsBlockedEitherWayAsync(currentId, otherId))
+                throw new BadRequestException("This user is unavailable or does not exist.");
             if(await _conversationRepository.IsPrivateConversationExistBetweenTwoAccounts(currentId, otherId))
                 throw new BadRequestException("A private conversation between these two accounts already exists.");
             var conversation = await _conversationRepository.CreatePrivateConversationAsync(currentId, otherId);
@@ -106,6 +112,9 @@ namespace CloudM.Application.Services.ConversationServices
                 .Append(currentId)
                 .Distinct()
                 .ToList();
+            var selectedRelations = await _accountBlockRepository.GetRelationsAsync(currentId, uniqueOtherMemberIds);
+            if (selectedRelations.Any(x => x.IsBlockedEitherWay))
+                throw new BadRequestException("One or more selected members are unavailable.");
 
             var allAccounts = await _accountRepository.GetAccountsByIds(allMemberIds);
             var creator = allAccounts.FirstOrDefault(a => a.AccountId == currentId);
@@ -453,6 +462,11 @@ namespace CloudM.Application.Services.ConversationServices
                 cursorConversationId,
                 limit);
 
+            var relationMap = await BuildBlockRelationMapAsync(
+                currentId,
+                items.Where(x => !x.IsGroup && x.OtherMember != null)
+                    .Select(x => x.OtherMember!.AccountId));
+
             var responseItems = items.Select(item => new ConversationListItemResponse
             {
                 ConversationId = item.ConversationId,
@@ -474,6 +488,10 @@ namespace CloudM.Application.Services.ConversationServices
                 UnreadCount = item.UnreadCount,
                 LastMessageSentAt = item.LastMessageSentAt,
                 IsMuted = item.IsMuted,
+                CanSendMessage = item.CanSendMessage,
+                IsBlockedConversation = item.IsBlockedConversation,
+                BlockedByCurrentUser = item.BlockedByCurrentUser,
+                BlockedByOtherUser = item.BlockedByOtherUser,
                 Theme = item.Theme,
                 Owner = item.Owner,
                 CurrentUserRole = item.CurrentUserRole,
@@ -483,6 +501,7 @@ namespace CloudM.Application.Services.ConversationServices
             }).ToList();
 
             await ApplyStoryRingForOtherMembersAsync(currentId, responseItems.Select(x => x.OtherMember));
+            ApplyConversationListBlockStates(responseItems, relationMap);
 
             return (responseItems, hasMore);
         }
@@ -515,6 +534,10 @@ namespace CloudM.Application.Services.ConversationServices
                         DisplayAvatar = repoMeta.DisplayAvatar,
                         Owner = repoMeta.Owner,
                         CurrentUserRole = repoMeta.CurrentUserRole,
+                        CanSendMessage = repoMeta.CanSendMessage,
+                        IsBlockedConversation = repoMeta.IsBlockedConversation,
+                        BlockedByCurrentUser = repoMeta.BlockedByCurrentUser,
+                        BlockedByOtherUser = repoMeta.BlockedByOtherUser,
                         GroupAvatars = repoMeta.GroupAvatars,
                         OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
                         {
@@ -548,6 +571,13 @@ namespace CloudM.Application.Services.ConversationServices
                         DisplayName = m.Nickname ?? m.Account.Username,
                         LastSeenMessageId = m.LastSeenMessageId
                     }).ToList();
+
+                    var metaRelationMap = await BuildBlockRelationMapAsync(
+                        currentId,
+                        metaData.IsGroup || metaData.OtherMember == null
+                            ? Enumerable.Empty<Guid>()
+                            : new[] { metaData.OtherMember.AccountId });
+                    ApplyConversationMetaBlockState(metaData, metaRelationMap);
                 }
             }
 
@@ -580,6 +610,9 @@ namespace CloudM.Application.Services.ConversationServices
             if (otherAccount == null || !SocialRoleRules.IsSocialEligible(otherAccount))
                 throw new NotFoundException("Account not found or unavailable.");
 
+            if (await _accountBlockRepository.IsBlockedEitherWayAsync(currentId, otherId))
+                throw new NotFoundException("Account not found or unavailable.");
+
             return new PrivateConversationIncludeMessagesResponse
             {
                 IsNew = true,
@@ -588,6 +621,7 @@ namespace CloudM.Application.Services.ConversationServices
                     ConversationId = Guid.Empty,
                     IsGroup = false,
                     Theme = null,
+                    CanSendMessage = true,
                     DisplayName = otherAccount.Username, // Initial display name
                     DisplayAvatar = otherAccount.AvatarUrl,
                     OtherMember = new OtherMemberInfo
@@ -780,6 +814,10 @@ namespace CloudM.Application.Services.ConversationServices
                     DisplayAvatar = repoMeta.DisplayAvatar,
                     Owner = repoMeta.Owner,
                     CurrentUserRole = repoMeta.CurrentUserRole,
+                    CanSendMessage = repoMeta.CanSendMessage,
+                    IsBlockedConversation = repoMeta.IsBlockedConversation,
+                    BlockedByCurrentUser = repoMeta.BlockedByCurrentUser,
+                    BlockedByOtherUser = repoMeta.BlockedByOtherUser,
                     GroupAvatars = repoMeta.GroupAvatars,
                     OtherMember = repoMeta.OtherMember != null ? new OtherMemberInfo
                     {
@@ -813,6 +851,13 @@ namespace CloudM.Application.Services.ConversationServices
                     DisplayName = m.Nickname ?? m.Account.Username,
                     LastSeenMessageId = m.LastSeenMessageId
                 }).ToList();
+
+                var metaRelationMap = await BuildBlockRelationMapAsync(
+                    currentId,
+                    metaData.IsGroup || metaData.OtherMember == null
+                        ? Enumerable.Empty<Guid>()
+                        : new[] { metaData.OtherMember.AccountId });
+                ApplyConversationMetaBlockState(metaData, metaRelationMap);
             }
 
             return new ConversationMessagesResponse
@@ -871,6 +916,69 @@ namespace CloudM.Application.Services.ConversationServices
         private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid currentId, Guid targetAccountId)
         {
             return await _storyRingStateHelper.ResolveAsync(currentId, targetAccountId);
+        }
+
+        private static void ApplyConversationListBlockStates(
+            List<ConversationListItemResponse> items,
+            IReadOnlyDictionary<Guid, AccountBlockRelationModel> relationMap)
+        {
+            if (items.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var item in items)
+            {
+                if (!item.IsGroup &&
+                    item.OtherMember != null &&
+                    relationMap.TryGetValue(item.OtherMember.AccountId, out var otherRelation) &&
+                    otherRelation.IsBlockedEitherWay)
+                {
+                    item.CanSendMessage = false;
+                    item.IsBlockedConversation = true;
+                    item.BlockedByCurrentUser = otherRelation.IsBlockedByCurrentUser;
+                    item.BlockedByOtherUser = otherRelation.IsBlockedByTargetUser;
+                }
+            }
+        }
+
+        private static void ApplyConversationMetaBlockState(
+            ConversationMetaData? metaData,
+            IReadOnlyDictionary<Guid, AccountBlockRelationModel> relationMap)
+        {
+            if (metaData == null)
+            {
+                return;
+            }
+
+            if (!metaData.IsGroup &&
+                metaData.OtherMember != null &&
+                relationMap.TryGetValue(metaData.OtherMember.AccountId, out var otherRelation) &&
+                otherRelation.IsBlockedEitherWay)
+            {
+                metaData.CanSendMessage = false;
+                metaData.IsBlockedConversation = true;
+                metaData.BlockedByCurrentUser = otherRelation.IsBlockedByCurrentUser;
+                metaData.BlockedByOtherUser = otherRelation.IsBlockedByTargetUser;
+            }
+        }
+
+        private async Task<IReadOnlyDictionary<Guid, AccountBlockRelationModel>> BuildBlockRelationMapAsync(
+            Guid currentId,
+            IEnumerable<Guid> targetIds)
+        {
+            var safeTargetIds = (targetIds ?? Enumerable.Empty<Guid>())
+                .Where(x => x != Guid.Empty && x != currentId)
+                .Distinct()
+                .ToList();
+
+            if (safeTargetIds.Count == 0)
+            {
+                return new Dictionary<Guid, AccountBlockRelationModel>();
+            }
+
+            var relations = await _accountBlockRepository.GetRelationsAsync(currentId, safeTargetIds);
+            return relations.ToDictionary(x => x.TargetId, x => x);
         }
 
         public async Task<PagedResponse<MessageBasicModel>> SearchMessagesAsync(Guid conversationId, Guid currentId, string keyword, int page, int pageSize)

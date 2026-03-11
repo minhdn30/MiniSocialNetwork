@@ -26,12 +26,17 @@ namespace CloudM.Infrastructure.Models
         public int CurrentUserRole { get; set; }
         // Avatars of group members (max 4, excluding current user)
         public List<string>? GroupAvatars { get; set; }
+        public List<Guid>? GroupAvatarAccountIds { get; set; }
 
         public MessageBasicModel? LastMessage { get; set; }
         public bool IsRead { get; set; }
         public int UnreadCount { get; set; }
         public DateTime? LastSeenAt { get; set; }
         public DateTime? LastMessageSentAt { get; set; }
+        public bool CanSendMessage { get; set; } = true;
+        public bool IsBlockedConversation { get; set; }
+        public bool BlockedByCurrentUser { get; set; }
+        public bool BlockedByOtherUser { get; set; }
 
         // Members who have seen the last message (only when last message is from current user)
         // Max 3 entries for sidebar display

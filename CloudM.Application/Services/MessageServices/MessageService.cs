@@ -12,6 +12,7 @@ using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
 using CloudM.Infrastructure.Repositories.MessageMedias;
@@ -55,12 +56,14 @@ namespace CloudM.Application.Services.MessageServices
         private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
         private readonly string _groupAllMentionKeyword;
+        private readonly IAccountBlockRepository _accountBlockRepository;
 
         public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository,
             IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IAccountRepository accountRepository, IPostRepository postRepository, IMapper mapper, ICloudinaryService cloudinaryService,
             IFileTypeDetector fileTypeDetector, IStoryRepository storyRepository, INotificationService notificationService, IRealtimeService realtimeService, IUnitOfWork unitOfWork,
-            IOptions<ChatMentionOptions>? chatMentionOptions = null)
+            IOptions<ChatMentionOptions>? chatMentionOptions = null,
+            IAccountBlockRepository? accountBlockRepository = null)
         {
             _messageRepository = messageRepository;
             _messageMediaRepository = messageMediaRepository;
@@ -76,6 +79,7 @@ namespace CloudM.Application.Services.MessageServices
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
             _groupAllMentionKeyword = NormalizeGroupAllKeyword(chatMentionOptions?.Value?.GroupAllKeyword);
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
         }
 
         public MessageService(IMessageRepository messageRepository, IMessageMediaRepository messageMediaRepository,
@@ -142,6 +146,8 @@ namespace CloudM.Application.Services.MessageServices
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
             if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
+            if (await _accountBlockRepository.IsBlockedEitherWayAsync(senderId, request.ReceiverId))
+                throw new BadRequestException("This user is currently unavailable.");
             
             var now = DateTime.UtcNow;
 
@@ -515,6 +521,17 @@ namespace CloudM.Application.Services.MessageServices
                 };
             }
 
+            var conversation = await _conversationRepository.GetConversationByIdAsync(message.ConversationId);
+            if (conversation == null)
+                throw new NotFoundException("Conversation not found.");
+
+            if (!conversation.IsGroup)
+            {
+                var privateRelation = await GetBlockedRelationForPrivateConversationAsync(currentId, message.ConversationId);
+                if (privateRelation?.IsBlockedEitherWay == true)
+                    throw new BadRequestException("This conversation is unavailable.");
+            }
+
             message.IsRecalled = true;
             message.RecalledAt = DateTime.UtcNow;
 
@@ -584,6 +601,8 @@ namespace CloudM.Application.Services.MessageServices
                 throw new BadRequestException($"Sender account with ID {senderId} does not exist.");
             if (!SocialRoleRules.IsSocialEligible(sender))
                 throw new ForbiddenException("You must reactivate your account to send messages.");
+            if (await _accountBlockRepository.IsBlockedEitherWayAsync(senderId, request.ReceiverId))
+                throw new BadRequestException("This user is currently unavailable.");
 
             var now = DateTime.UtcNow;
 
@@ -711,6 +730,12 @@ namespace CloudM.Application.Services.MessageServices
 
                 var recentItems = new List<PostShareTargetSearchItemResponse>();
                 var uniqueKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var recentPrivateOtherIds = recentConversations
+                    .Where(x => !x.IsGroup && x.OtherMember != null && x.OtherMember.AccountId != Guid.Empty)
+                    .Select(x => x.OtherMember!.AccountId)
+                    .Distinct()
+                    .ToList();
+                var recentPrivateRelationMap = await BuildBlockRelationMapAsync(senderId, recentPrivateOtherIds);
 
                 foreach (var conversation in recentConversations)
                 {
@@ -738,6 +763,12 @@ namespace CloudM.Application.Services.MessageServices
 
                     var otherMember = conversation.OtherMember;
                     if (otherMember == null || otherMember.AccountId == Guid.Empty)
+                    {
+                        continue;
+                    }
+
+                    if (recentPrivateRelationMap.TryGetValue(otherMember.AccountId, out var recentPrivateRelation) &&
+                        recentPrivateRelation.IsBlockedEitherWay)
                     {
                         continue;
                     }
@@ -893,10 +924,12 @@ namespace CloudM.Application.Services.MessageServices
             var processedConversationIds = new HashSet<Guid>();
             var results = new List<PostShareSendResult>();
             var receiverLookup = new Dictionary<Guid, Account>();
+            var receiverBlockRelationMap = new Dictionary<Guid, AccountBlockRelationModel>();
             if (receiverIds.Any())
             {
                 var receiverAccounts = await _accountRepository.GetAccountsByIds(receiverIds) ?? new List<Account>();
                 receiverLookup = receiverAccounts.ToDictionary(account => account.AccountId, account => account);
+                receiverBlockRelationMap = (await BuildBlockRelationMapAsync(senderId, receiverIds)).ToDictionary(x => x.Key, x => x.Value);
             }
 
             foreach (var conversationId in conversationIds)
@@ -946,6 +979,18 @@ namespace CloudM.Application.Services.MessageServices
                     }
 
                     if (!SocialRoleRules.IsSocialEligible(receiver))
+                    {
+                        results.Add(new PostShareSendResult
+                        {
+                            ReceiverId = receiverId,
+                            IsSuccess = false,
+                            ErrorMessage = "This user is currently unavailable."
+                        });
+                        continue;
+                    }
+
+                    if (receiverBlockRelationMap.TryGetValue(receiverId, out var receiverRelation) &&
+                        receiverRelation.IsBlockedEitherWay)
                     {
                         results.Add(new PostShareSendResult
                         {
@@ -1082,11 +1127,13 @@ namespace CloudM.Application.Services.MessageServices
             var processedConversationIds = new HashSet<Guid>();
             var results = new List<PostShareSendResult>();
             var receiverLookup = new Dictionary<Guid, Account>();
+            var receiverBlockRelationMap = new Dictionary<Guid, AccountBlockRelationModel>();
 
             if (receiverIds.Any())
             {
                 var receiverAccounts = await _accountRepository.GetAccountsByIds(receiverIds) ?? new List<Account>();
                 receiverLookup = receiverAccounts.ToDictionary(account => account.AccountId, account => account);
+                receiverBlockRelationMap = (await BuildBlockRelationMapAsync(senderId, receiverIds)).ToDictionary(x => x.Key, x => x.Value);
             }
 
             foreach (var conversationId in conversationIds)
@@ -1136,6 +1183,18 @@ namespace CloudM.Application.Services.MessageServices
                     }
 
                     if (!SocialRoleRules.IsSocialEligible(receiver))
+                    {
+                        results.Add(new PostShareSendResult
+                        {
+                            ReceiverId = receiverId,
+                            IsSuccess = false,
+                            ErrorMessage = "This user is currently unavailable."
+                        });
+                        continue;
+                    }
+
+                    if (receiverBlockRelationMap.TryGetValue(receiverId, out var receiverRelation) &&
+                        receiverRelation.IsBlockedEitherWay)
                     {
                         results.Add(new PostShareSendResult
                         {
@@ -1229,6 +1288,21 @@ namespace CloudM.Application.Services.MessageServices
                             ErrorMessage = "You are not a member of this conversation."
                         };
                     }
+
+                    if (!conversation.IsGroup)
+                    {
+                        var privateRelation = await GetBlockedRelationForPrivateConversationAsync(senderId, conversationId);
+                        if (privateRelation?.IsBlockedEitherWay == true)
+                        {
+                            return new PostShareSendResult
+                            {
+                                ConversationId = conversationId,
+                                ReceiverId = receiverId,
+                                IsSuccess = false,
+                                ErrorMessage = "This conversation is unavailable."
+                            };
+                        }
+                    }
                 }
 
                 var message = await _unitOfWork.ExecuteInTransactionAsync(
@@ -1316,6 +1390,21 @@ namespace CloudM.Application.Services.MessageServices
                             ErrorMessage = "You are not a member of this conversation."
                         };
                     }
+
+                    if (!conversation.IsGroup)
+                    {
+                        var privateRelation = await GetBlockedRelationForPrivateConversationAsync(senderId, conversationId);
+                        if (privateRelation?.IsBlockedEitherWay == true)
+                        {
+                            return new PostShareSendResult
+                            {
+                                ConversationId = conversationId,
+                                ReceiverId = receiverId,
+                                IsSuccess = false,
+                                ErrorMessage = "This conversation is unavailable."
+                            };
+                        }
+                    }
                 }
 
                 var message = await _unitOfWork.ExecuteInTransactionAsync(
@@ -1398,6 +1487,43 @@ namespace CloudM.Application.Services.MessageServices
                     ErrorMessage = ResolveForwardFailureMessage(ex)
                 };
             }
+        }
+
+        private async Task<IReadOnlyDictionary<Guid, AccountBlockRelationModel>> BuildBlockRelationMapAsync(
+            Guid currentId,
+            IEnumerable<Guid> targetIds)
+        {
+            var safeTargetIds = (targetIds ?? Enumerable.Empty<Guid>())
+                .Where(x => x != Guid.Empty && x != currentId)
+                .Distinct()
+                .ToList();
+
+            if (safeTargetIds.Count == 0)
+            {
+                return new Dictionary<Guid, AccountBlockRelationModel>();
+            }
+
+            var relations = await _accountBlockRepository.GetRelationsAsync(currentId, safeTargetIds);
+            return relations.ToDictionary(x => x.TargetId, x => x);
+        }
+
+        private async Task<AccountBlockRelationModel?> GetBlockedRelationForPrivateConversationAsync(Guid currentId, Guid conversationId)
+        {
+            var memberIds = await _conversationMemberRepository.GetMemberIdsByConversationIdAsync(conversationId)
+                ?? new List<Guid>();
+            if (memberIds.Count == 0)
+            {
+                return null;
+            }
+
+            var otherId = memberIds.FirstOrDefault(x => x != currentId);
+            if (otherId == Guid.Empty)
+            {
+                return null;
+            }
+
+            return (await _accountBlockRepository.GetRelationsAsync(currentId, new[] { otherId }))
+                .FirstOrDefault();
         }
 
         private static int NormalizePostShareSearchLimit(int? limit)

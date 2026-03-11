@@ -207,7 +207,7 @@ namespace CloudM.Infrastructure.Repositories.Conversations
 
             // Fetch GroupAvatars separately
             var groupConvIds = pagedData.Where(x => x.IsGroup).Select(x => x.ConversationId).ToList();
-            var groupAvatarsLookup = new Dictionary<Guid, List<string>>();
+            var groupAvatarsLookup = new Dictionary<Guid, List<GroupAvatarProjection>>();
             if (groupConvIds.Count > 0)
             {
                 List<GroupAvatarProjection> groupMembersInfo;
@@ -253,7 +253,6 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                         g => g.Key,
                         g => g.OrderBy(x => x.JoinedAt)
                               .ThenBy(x => x.AccountId)
-                              .Select(x => x.AvatarUrl)
                               .Take(4)
                               .ToList()
                     );
@@ -449,7 +448,8 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                     LastMessageSentAt = item.LastMessageSentAt,
                     LastMessageSeenBy = seenBy != null && seenBy.Count > 0 ? seenBy : null,
                     LastMessageSeenCount = seenCount,
-                    GroupAvatars = groupAvatars
+                    GroupAvatars = groupAvatars?.Select(x => x.AvatarUrl).ToList(),
+                    GroupAvatarAccountIds = groupAvatars?.Select(x => x.AccountId).ToList()
                 };
             }).ToList();
 
@@ -501,15 +501,21 @@ namespace CloudM.Infrastructure.Repositories.Conversations
 
             string? displayName = cm.Conversation.IsGroup ? cm.Conversation.ConversationName : (otherMember?.Nickname ?? otherMember?.Username);
             string? displayAvatar = cm.Conversation.IsGroup ? cm.Conversation.ConversationAvatar : otherMember?.AvatarUrl;
-            List<string>? groupAvatars = null;
+            List<GroupAvatarProjection>? groupAvatarProjections = null;
             if (cm.Conversation.IsGroup)
             {
-                groupAvatars = await _context.ConversationMembers
+                groupAvatarProjections = await _context.ConversationMembers
                     .AsNoTracking()
                     .Where(g_cm => g_cm.ConversationId == conversationId && g_cm.AccountId != currentId && !g_cm.HasLeft && g_cm.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(g_cm.Account.RoleId))
                     .OrderBy(g_cm => g_cm.JoinedAt)
                     .ThenBy(g_cm => g_cm.AccountId)
-                    .Select(g_cm => g_cm.Account.AvatarUrl ?? string.Empty)
+                    .Select(g_cm => new GroupAvatarProjection
+                    {
+                        ConversationId = g_cm.ConversationId,
+                        AccountId = g_cm.AccountId,
+                        JoinedAt = g_cm.JoinedAt,
+                        AvatarUrl = g_cm.Account.AvatarUrl ?? string.Empty
+                    })
                     .Take(4)
                     .ToListAsync();
             }
@@ -532,7 +538,8 @@ namespace CloudM.Infrastructure.Repositories.Conversations
                 UnreadCount = unreadCount,
                 IsRead = unreadCount == 0,
                 IsMuted = cm.IsMuted,
-                GroupAvatars = groupAvatars
+                GroupAvatars = groupAvatarProjections?.Select(x => x.AvatarUrl).ToList(),
+                GroupAvatarAccountIds = groupAvatarProjections?.Select(x => x.AccountId).ToList()
             };
         }
 

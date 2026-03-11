@@ -3,6 +3,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
+using CloudM.Infrastructure.Helpers;
 using CloudM.Infrastructure.Models;
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,14 @@ namespace CloudM.Infrastructure.Repositories.Comments
         {
             if (pageSize <= 0) pageSize = 10;
 
+            var applyBlockFilter = currentId.HasValue;
+            var hiddenAccountIds = applyBlockFilter
+                ? AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId!.Value)
+                : _context.AccountBlocks
+                    .AsNoTracking()
+                    .Where(x => false)
+                    .Select(x => x.BlockedId);
+
             var baseQuery = _context.Comments
                 .AsNoTracking()
                 .Where(c =>
@@ -30,6 +39,11 @@ namespace CloudM.Infrastructure.Repositories.Comments
                     c.ParentCommentId == null &&
                     c.Account.Status == AccountStatusEnum.Active &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
+
+            if (applyBlockFilter)
+            {
+                baseQuery = baseQuery.Where(c => !hiddenAccountIds.Contains(c.AccountId));
+            }
 
             var totalItems = await baseQuery.CountAsync();
 
@@ -62,7 +76,11 @@ namespace CloudM.Infrastructure.Repositories.Comments
                         CreatedAt = c.CreatedAt,
                         UpdatedAt = c.UpdatedAt,
                         ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                        ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                        ReplyCount = _context.Comments.Count(r =>
+                            r.ParentCommentId == c.CommentId &&
+                            r.Account.Status == AccountStatusEnum.Active &&
+                            SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId) &&
+                            (!applyBlockFilter || !hiddenAccountIds.Contains(r.AccountId))),
                         IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                         PostOwnerId = postOwnerId
                     })
@@ -106,7 +124,11 @@ namespace CloudM.Infrastructure.Repositories.Comments
                     Content = c.Content,
                     CreatedAt = c.CreatedAt,
                     ReactCount = _context.CommentReacts.Count(r => r.CommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                    ReplyCount = _context.Comments.Count(r => r.ParentCommentId == c.CommentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
+                    ReplyCount = _context.Comments.Count(r =>
+                        r.ParentCommentId == c.CommentId &&
+                        r.Account.Status == AccountStatusEnum.Active &&
+                        SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId) &&
+                        (!applyBlockFilter || !hiddenAccountIds.Contains(r.AccountId))),
                     IsCommentReactedByCurrentUser = currentId != null && _context.CommentReacts.Any(r => r.CommentId == c.CommentId && r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
                     PostOwnerId = postOwnerId
                 })
@@ -158,14 +180,26 @@ namespace CloudM.Infrastructure.Repositories.Comments
                 c.Account.Status == AccountStatusEnum.Active &&
                 SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
         }
-        public async Task<int> CountCommentsByPostId(Guid postId)
+        public Task<int> CountCommentsByPostId(Guid postId)
         {
-            //comment (not reply)
-            return await _context.Comments.CountAsync(c =>
+            return CountCommentsByPostId(postId, null);
+        }
+
+        public async Task<int> CountCommentsByPostId(Guid postId, Guid? currentId)
+        {
+            var query = _context.Comments.Where(c =>
                 c.PostId == postId &&
                 c.ParentCommentId == null &&
                 c.Account.Status == AccountStatusEnum.Active &&
                 SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
+
+            if (currentId.HasValue)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                query = query.Where(c => !hiddenAccountIds.Contains(c.AccountId));
+            }
+
+            return await query.CountAsync();
         }
         public async Task DeleteCommentWithReplies(Guid commentId)
         {
@@ -196,14 +230,25 @@ namespace CloudM.Infrastructure.Repositories.Comments
                 c.Account.Status == AccountStatusEnum.Active &&
                 SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
         }
-        public async Task<int> CountCommentRepliesAsync(Guid commentId)
+        public Task<int> CountCommentRepliesAsync(Guid commentId)
         {
-            int count = 0;
-            count += await _context.Comments.Where(c =>
+            return CountCommentRepliesAsync(commentId, null);
+        }
+
+        public async Task<int> CountCommentRepliesAsync(Guid commentId, Guid? currentId)
+        {
+            var query = _context.Comments.Where(c =>
                 c.ParentCommentId == commentId &&
                 c.Account.Status == AccountStatusEnum.Active &&
-                SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)).CountAsync();
-            return count;
+                SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
+
+            if (currentId.HasValue)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                query = query.Where(c => !hiddenAccountIds.Contains(c.AccountId));
+            }
+
+            return await query.CountAsync();
         }
         public async Task<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityReplyId = null)
         {
@@ -215,6 +260,12 @@ namespace CloudM.Infrastructure.Repositories.Comments
                     c.ParentCommentId == parentCommentId &&
                     c.Account.Status == AccountStatusEnum.Active &&
                     SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId));
+
+            if (currentId.HasValue)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                baseQuery = baseQuery.Where(c => !hiddenAccountIds.Contains(c.AccountId));
+            }
 
             var totalItems = await baseQuery.CountAsync();
 

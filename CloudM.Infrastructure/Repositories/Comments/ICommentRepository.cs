@@ -16,10 +16,12 @@ namespace CloudM.Infrastructure.Repositories.Comments
         Task UpdateComment(Comment comment);
         Task<bool> IsCommentExist(Guid commentId);
         Task<int> CountCommentsByPostId(Guid postId);
+        Task<int> CountCommentsByPostId(Guid postId, Guid? currentId);
         Task DeleteCommentWithReplies(Guid commentId);
         Task<List<Comment>> GetCommentThreadForDeleteAsync(Guid commentId);
         Task<bool> IsCommentCanReply(Guid commentId);
         Task<int> CountCommentRepliesAsync(Guid commentId);
+        Task<int> CountCommentRepliesAsync(Guid commentId, Guid? currentId);
         Task<(IEnumerable<ReplyCommentModel> items, int totalItems, DateTime? nextCursorCreatedAt, Guid? nextCursorCommentId)> GetRepliesByCommentIdAsync(Guid parentCommentId, Guid? currentId, DateTime? cursorCreatedAt, Guid? cursorCommentId, int pageSize, Guid? priorityReplyId = null);
 
     }

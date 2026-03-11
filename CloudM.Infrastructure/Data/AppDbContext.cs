@@ -18,6 +18,7 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<ExternalLogin> ExternalLogins { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
+        public virtual DbSet<AccountBlock> AccountBlocks { get; set; }
         public virtual DbSet<Follow> Follows { get; set; }
         public virtual DbSet<FollowRequest> FollowRequests { get; set; }
         public virtual DbSet<Post> Posts { get; set; }
@@ -102,6 +103,27 @@ namespace CloudM.Infrastructure.Data
                       .WithMany(a => a.ExternalLogins)
                       .HasForeignKey(e => e.AccountId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<AccountBlock>(entity =>
+            {
+                entity.HasKey(x => new { x.BlockerId, x.BlockedId });
+
+                entity.HasIndex(x => new { x.BlockerId, x.CreatedAt })
+                    .HasDatabaseName("IX_AccountBlocks_Blocker_CreatedAt");
+
+                entity.HasIndex(x => new { x.BlockedId, x.CreatedAt })
+                    .HasDatabaseName("IX_AccountBlocks_Blocked_CreatedAt");
+
+                entity.HasOne(x => x.Blocker)
+                    .WithMany(x => x.BlocksInitiated)
+                    .HasForeignKey(x => x.BlockerId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(x => x.Blocked)
+                    .WithMany(x => x.BlocksReceived)
+                    .HasForeignKey(x => x.BlockedId)
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             // Enable extensions

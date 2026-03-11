@@ -292,7 +292,7 @@ namespace CloudM.Application.Services.StoryViewServices
                 throw new ForbiddenException("You don't have permission to view viewers of this story.");
             }
 
-            var (items, totalItems) = await _storyViewRepository.GetStoryViewersPagedAsync(storyId, page, pageSize);
+            var (items, totalItems) = await _storyViewRepository.GetStoryViewersPagedAsync(storyId, currentId, page, pageSize);
 
             return new PagedResponse<StoryViewerBasicResponse>
             {

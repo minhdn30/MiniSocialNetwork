@@ -12,6 +12,88 @@ namespace CloudM.Tests.Services
     public class NotificationServiceTests
     {
         [Fact]
+        public async Task EnqueueAggregateEventAsync_BlockedUpsert_ShouldSkipOutbox()
+        {
+            await using var context = CreateContext();
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+
+            await context.Accounts.AddRangeAsync(recipient, actor);
+            await context.AccountBlocks.AddAsync(new AccountBlock
+            {
+                BlockerId = recipient.AccountId,
+                BlockedId = actor.AccountId,
+                CreatedAt = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            await service.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+            {
+                RecipientId = recipient.AccountId,
+                Action = NotificationAggregateActionEnum.Upsert,
+                Type = NotificationTypeEnum.Follow,
+                AggregateKey = NotificationAggregateKeys.Follow(actor.AccountId),
+                SourceType = NotificationSourceTypeEnum.FollowRelation,
+                SourceId = actor.AccountId,
+                ActorId = actor.AccountId,
+                TargetKind = NotificationTargetKindEnum.Account,
+                TargetId = actor.AccountId,
+                KeepWhenEmpty = false,
+                OccurredAt = DateTime.UtcNow
+            });
+
+            Assert.Equal(0, await context.NotificationOutboxes.CountAsync());
+        }
+
+        [Fact]
+        public async Task EnqueueAggregateEventAsync_BlockedDeactivate_ShouldStillEnqueueOutbox()
+        {
+            await using var context = CreateContext();
+            var recipient = CreateAccount("recipient");
+            var actor = CreateAccount("actor");
+
+            await context.Accounts.AddRangeAsync(recipient, actor);
+            await context.AccountBlocks.AddAsync(new AccountBlock
+            {
+                BlockerId = recipient.AccountId,
+                BlockedId = actor.AccountId,
+                CreatedAt = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+
+            var service = new NotificationService(
+                new NotificationOutboxRepository(context),
+                new NotificationRepository(context),
+                context);
+
+            await service.EnqueueAggregateEventAsync(new NotificationAggregateEvent
+            {
+                RecipientId = recipient.AccountId,
+                Action = NotificationAggregateActionEnum.Deactivate,
+                Type = NotificationTypeEnum.Follow,
+                AggregateKey = NotificationAggregateKeys.Follow(actor.AccountId),
+                SourceType = NotificationSourceTypeEnum.FollowRelation,
+                SourceId = actor.AccountId,
+                ActorId = actor.AccountId,
+                TargetKind = NotificationTargetKindEnum.Account,
+                TargetId = actor.AccountId,
+                KeepWhenEmpty = false,
+                OccurredAt = DateTime.UtcNow
+            });
+
+            await context.SaveChangesAsync();
+
+            var outbox = await context.NotificationOutboxes.SingleAsync();
+            Assert.Equal(recipient.AccountId, outbox.RecipientId);
+            Assert.Equal(NotificationOutboxEventTypes.AggregateChanged, outbox.EventType);
+        }
+
+        [Fact]
         public async Task GetNotificationsAsync_PublicStoryTarget_ShouldRemainAvailableWithoutFollow()
         {
             await using var context = CreateContext();

@@ -15,6 +15,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.Comments;
 using CloudM.Infrastructure.Repositories.Follows;
 using CloudM.Infrastructure.Repositories.PostMedias;
@@ -42,6 +43,7 @@ namespace CloudM.Tests.Services
         private readonly Mock<IUnitOfWork> _mockUnitOfWork;
         private readonly Mock<IRealtimeService> _mockRealtimeService;
         private readonly Mock<IStoryViewService> _mockStoryViewService;
+        private readonly Mock<IAccountBlockRepository> _mockAccountBlockRepo;
         private readonly PostService _postService;
 
         public PostServiceTests()
@@ -59,6 +61,14 @@ namespace CloudM.Tests.Services
             _mockUnitOfWork = new Mock<IUnitOfWork>();
             _mockRealtimeService = new Mock<IRealtimeService>();
             _mockStoryViewService = new Mock<IStoryViewService>();
+            _mockAccountBlockRepo = new Mock<IAccountBlockRepository>();
+
+            _mockAccountBlockRepo
+                .Setup(x => x.GetRelationsAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<IEnumerable<Guid>>(),
+                    It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<AccountBlockRelationModel>());
 
             _postService = new PostService(
                 _mockPostReactRepo.Object,
@@ -73,7 +83,9 @@ namespace CloudM.Tests.Services
                 _mockMapper.Object,
                 _mockUnitOfWork.Object,
                 _mockRealtimeService.Object,
-                _mockStoryViewService.Object
+                _mockStoryViewService.Object,
+                null,
+                _mockAccountBlockRepo.Object
             );
         }
 
@@ -101,7 +113,7 @@ namespace CloudM.Tests.Services
             _mockPostRepo.Setup(x => x.GetPostById(postId)).ReturnsAsync(post);
             _mockMapper.Setup(x => x.Map<PostDetailResponse>(post)).Returns(expectedResponse);
             _mockPostReactRepo.Setup(x => x.GetReactCountByPostId(postId)).ReturnsAsync(5);
-            _mockCommentRepo.Setup(x => x.CountCommentsByPostId(postId)).ReturnsAsync(10);
+            _mockCommentRepo.Setup(x => x.CountCommentsByPostId(postId, currentId)).ReturnsAsync(10);
             _mockPostReactRepo.Setup(x => x.IsCurrentUserReactedOnPostAsync(postId, currentId)).ReturnsAsync(true);
 
             // Act
@@ -514,6 +526,59 @@ namespace CloudM.Tests.Services
                 .ReturnsAsync(new List<Account> { taggedAccount });
             _mockFollowRepo.Setup(x => x.GetFollowerIdsInTargetsAsync(currentId, It.IsAny<IEnumerable<Guid>>()))
                 .ReturnsAsync(new HashSet<Guid>());
+
+            // Act & Assert
+            await Assert.ThrowsAsync<BadRequestException>(() => _postService.CreatePost(currentId, request));
+            _mockPostRepo.Verify(x => x.AddPost(It.IsAny<Post>()), Times.Never);
+            _mockUnitOfWork.Verify(x => x.CommitAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreatePost_WhenTaggedAccountIsBlocked_ThrowsBadRequestException()
+        {
+            // Arrange
+            var currentId = Guid.NewGuid();
+            var taggedId = Guid.NewGuid();
+            var currentAccount = new Account
+            {
+                AccountId = currentId,
+                Status = AccountStatusEnum.Active
+            };
+
+            var taggedAccount = new Account
+            {
+                AccountId = taggedId,
+                Status = AccountStatusEnum.Active,
+                Settings = new AccountSettings
+                {
+                    AccountId = taggedId,
+                    TagPermission = TagPermissionEnum.Anyone
+                }
+            };
+
+            var request = new PostCreateRequest
+            {
+                Privacy = (int)PostPrivacyEnum.Public,
+                TaggedAccountIds = new List<Guid> { taggedId },
+                MediaFiles = new List<IFormFile>()
+            };
+
+            _mockAccountRepo.Setup(x => x.GetAccountById(currentId)).ReturnsAsync(currentAccount);
+            _mockAccountRepo.Setup(x => x.GetAccountsByIds(It.IsAny<IEnumerable<Guid>>()))
+                .ReturnsAsync(new List<Account> { taggedAccount });
+            _mockAccountBlockRepo
+                .Setup(x => x.GetRelationsAsync(
+                    currentId,
+                    It.IsAny<IEnumerable<Guid>>(),
+                    It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<AccountBlockRelationModel>
+                {
+                    new()
+                    {
+                        TargetId = taggedId,
+                        IsBlockedByCurrentUser = true
+                    }
+                });
 
             // Act & Assert
             await Assert.ThrowsAsync<BadRequestException>(() => _postService.CreatePost(currentId, request));

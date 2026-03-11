@@ -4,6 +4,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Data;
+using CloudM.Infrastructure.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -177,6 +178,12 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
                     IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowerId && fol.FollowedId == currentId.Value)
                 });
 
+            if (currentId.HasValue)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                query = query.Where(x => !hiddenAccountIds.Contains(x.AccountId));
+            }
+
             if (!string.IsNullOrWhiteSpace(keyword))
             {
                 var words = keyword.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -237,6 +244,12 @@ ON CONFLICT (""FollowerId"", ""FollowedId"") DO NOTHING;",
                     IsFollowRequested = currentId.HasValue && _context.FollowRequests.Any(fr => fr.RequesterId == currentId.Value && fr.TargetId == f.FollowedId),
                     IsFollower = currentId.HasValue && _context.Follows.Any(fol => fol.FollowerId == f.FollowedId && fol.FollowedId == currentId.Value)
                 });
+
+            if (currentId.HasValue)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                query = query.Where(x => !hiddenAccountIds.Contains(x.AccountId));
+            }
 
             if (!string.IsNullOrWhiteSpace(keyword))
             {

@@ -8,6 +8,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Repositories.Accounts;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
 using CloudM.Infrastructure.Repositories.Follows;
@@ -30,18 +31,20 @@ namespace CloudM.Application.Services.ConversationMemberServices
         private readonly IConversationMemberRepository _conversationMemberRepository;
         private readonly IAccountRepository _accountRepository;
         private readonly IFollowRepository _followRepository;
+        private readonly IAccountBlockRepository _accountBlockRepository;
         private readonly IMessageRepository _messageRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IRealtimeService _realtimeService;
         public ConversationMemberService(IConversationRepository conversationRepository, IConversationMemberRepository conversationMemberRepository,
             IAccountRepository accountRepository, IFollowRepository followRepository, IMapper mapper, IMessageRepository messageRepository,
-            IUnitOfWork unitOfWork, IRealtimeService realtimeService)
+            IUnitOfWork unitOfWork, IRealtimeService realtimeService, IAccountBlockRepository? accountBlockRepository = null)
         {
             _conversationRepository = conversationRepository;
             _conversationMemberRepository = conversationMemberRepository;
             _accountRepository = accountRepository;
             _followRepository = followRepository;
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
             _messageRepository = messageRepository;
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -71,6 +74,8 @@ namespace CloudM.Application.Services.ConversationMemberServices
             var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
             if (conversation == null)
                 throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            await EnsurePrivateConversationInteractionAllowedAsync(conversation, currentId);
 
             var actor = await _accountRepository.GetAccountById(currentId);
             if (actor == null)
@@ -116,6 +121,12 @@ namespace CloudM.Application.Services.ConversationMemberServices
         {
             if(! await _conversationMemberRepository.IsMemberOfConversation(conversationId, currentId))
                 throw new ForbiddenException("You are not a member of this conversation.");
+
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation == null)
+                throw new NotFoundException($"Conversation with ID {conversationId} does not exist.");
+
+            await EnsurePrivateConversationInteractionAllowedAsync(conversation, currentId);
 
             var member = await _conversationMemberRepository.GetConversationMemberAsync(conversationId, request.AccountId);
             if (member == null)
@@ -293,6 +304,10 @@ namespace CloudM.Application.Services.ConversationMemberServices
 
             if (activeMemberIds.Count + requestedMemberIds.Count > MaxGroupConversationMembers)
                 throw new BadRequestException($"A group can contain at most {MaxGroupConversationMembers} members.");
+
+            var requestedRelations = await _accountBlockRepository.GetRelationsAsync(currentId, requestedMemberIds);
+            if (requestedRelations.Any(x => x.IsBlockedEitherWay))
+                throw new BadRequestException("One or more selected members are unavailable.");
 
             var allAccountIds = requestedMemberIds
                 .Append(currentId)
@@ -947,6 +962,21 @@ namespace CloudM.Application.Services.ConversationMemberServices
                 return conversation.Owner.Value;
 
             return conversation.CreatedBy != Guid.Empty ? conversation.CreatedBy : null;
+        }
+
+        private async Task EnsurePrivateConversationInteractionAllowedAsync(Conversation conversation, Guid currentId)
+        {
+            if (conversation == null || conversation.IsGroup)
+                return;
+
+            var otherMemberId = (await _conversationMemberRepository.GetAllActiveMemberIdsByConversationIdAsync(conversation.ConversationId))
+                .FirstOrDefault(x => x != Guid.Empty && x != currentId);
+
+            if (otherMemberId == Guid.Empty)
+                return;
+
+            if (await _accountBlockRepository.IsBlockedEitherWayAsync(currentId, otherMemberId))
+                throw new BadRequestException("This conversation is unavailable.");
         }
     }
 }

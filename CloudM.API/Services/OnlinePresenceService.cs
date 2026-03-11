@@ -4,6 +4,7 @@ using CloudM.API.Hubs;
 using CloudM.Application.DTOs.PresenceDTOs;
 using CloudM.Application.Services.PresenceServices;
 using CloudM.Domain.Enums;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.Presences;
 using StackExchange.Redis;
 
@@ -12,6 +13,7 @@ namespace CloudM.API.Services
     public class OnlinePresenceService : IOnlinePresenceService
     {
         private readonly IConnectionMultiplexer _redis;
+        private readonly IAccountBlockRepository _accountBlockRepository;
         private readonly IOnlinePresenceRepository _onlinePresenceRepository;
         private readonly IHubContext<UserHub> _userHubContext;
         private readonly OnlinePresenceOptions _options;
@@ -24,6 +26,7 @@ namespace CloudM.API.Services
 
         public OnlinePresenceService(
             IConnectionMultiplexer redis,
+            IAccountBlockRepository accountBlockRepository,
             IOnlinePresenceRepository onlinePresenceRepository,
             IHubContext<UserHub> userHubContext,
             IOptions<OnlinePresenceOptions> options,
@@ -31,6 +34,7 @@ namespace CloudM.API.Services
             ILogger<OnlinePresenceService> logger)
         {
             _redis = redis;
+            _accountBlockRepository = accountBlockRepository;
             _onlinePresenceRepository = onlinePresenceRepository;
             _userHubContext = userHubContext;
             _options = (options.Value ?? new OnlinePresenceOptions()).Normalize();
@@ -241,6 +245,10 @@ namespace CloudM.API.Services
                 cancellationToken);
 
             var stateMap = accountStates.ToDictionary(x => x.AccountId);
+            var blockedTargetIds = await GetBlockedTargetIdsAsync(
+                viewerAccountId,
+                normalizedAccountIds,
+                cancellationToken);
 
             var contactSet = await _onlinePresenceRepository.GetContactTargetIdsAsync(
                 viewerAccountId,
@@ -253,6 +261,18 @@ namespace CloudM.API.Services
 
             foreach (var accountId in normalizedAccountIds)
             {
+                if (blockedTargetIds.Contains(accountId))
+                {
+                    items.Add(new PresenceSnapshotItemResponse
+                    {
+                        AccountId = accountId,
+                        CanShowStatus = false,
+                        IsOnline = false,
+                        LastOnlineAt = null
+                    });
+                    continue;
+                }
+
                 if (!stateMap.TryGetValue(accountId, out var state))
                 {
                     items.Add(new PresenceSnapshotItemResponse
@@ -316,6 +336,29 @@ namespace CloudM.API.Services
             }
 
             return new PresenceSnapshotResponse { Items = items };
+        }
+
+        public async Task NotifyBlockedPairHiddenAsync(
+            Guid currentId,
+            Guid targetId,
+            CancellationToken cancellationToken = default)
+        {
+            if (currentId == Guid.Empty || targetId == Guid.Empty || currentId == targetId)
+            {
+                return;
+            }
+
+            await _userHubContext.Clients.Users(new[] { currentId.ToString("D") })
+                .SendAsync("UserPresenceHidden", new
+                {
+                    AccountId = targetId
+                }, cancellationToken);
+
+            await _userHubContext.Clients.Users(new[] { targetId.ToString("D") })
+                .SendAsync("UserPresenceHidden", new
+                {
+                    AccountId = currentId
+                }, cancellationToken);
         }
 
         public async Task NotifyVisibilityChangedAsync(
@@ -607,6 +650,53 @@ namespace CloudM.API.Services
             return result;
         }
 
+        private async Task<HashSet<Guid>> GetBlockedTargetIdsAsync(
+            Guid currentId,
+            IReadOnlyCollection<Guid> targetIds,
+            CancellationToken cancellationToken = default)
+        {
+            if (currentId == Guid.Empty || targetIds.Count == 0)
+            {
+                return new HashSet<Guid>();
+            }
+
+            var relations = await _accountBlockRepository.GetRelationsAsync(
+                currentId,
+                targetIds,
+                cancellationToken);
+
+            return relations
+                .Where(x => x.IsBlockedEitherWay)
+                .Select(x => x.TargetId)
+                .ToHashSet();
+        }
+
+        private async Task<List<Guid>> FilterAudienceByBlockAsync(
+            Guid accountId,
+            List<Guid> audienceAccountIds,
+            CancellationToken cancellationToken = default)
+        {
+            if (accountId == Guid.Empty || audienceAccountIds.Count == 0)
+            {
+                return audienceAccountIds;
+            }
+
+            var blockedTargetIds = await GetBlockedTargetIdsAsync(
+                accountId,
+                audienceAccountIds,
+                cancellationToken);
+
+            if (blockedTargetIds.Count == 0)
+            {
+                return audienceAccountIds;
+            }
+
+            return audienceAccountIds
+                .Where(x => !blockedTargetIds.Contains(x))
+                .Distinct()
+                .ToList();
+        }
+
         private async Task<long> ReadOnlineCountAsync(IDatabase database, Guid accountId)
         {
             try
@@ -688,6 +778,7 @@ namespace CloudM.API.Services
             }
 
             var audience = await _onlinePresenceRepository.GetAudienceAccountIdsAsync(accountId, cancellationToken);
+            audience = await FilterAudienceByBlockAsync(accountId, audience, cancellationToken);
             if (audience.Count == 0)
             {
                 return;
@@ -711,6 +802,7 @@ namespace CloudM.API.Services
             }
 
             var audience = await _onlinePresenceRepository.GetAudienceAccountIdsAsync(accountId, cancellationToken);
+            audience = await FilterAudienceByBlockAsync(accountId, audience, cancellationToken);
             if (audience.Count == 0)
             {
                 return;
@@ -727,6 +819,7 @@ namespace CloudM.API.Services
         private async Task BroadcastHiddenAsync(Guid accountId, CancellationToken cancellationToken)
         {
             var audience = await _onlinePresenceRepository.GetAudienceAccountIdsAsync(accountId, cancellationToken);
+            audience = await FilterAudienceByBlockAsync(accountId, audience, cancellationToken);
             if (audience.Count == 0)
             {
                 return;

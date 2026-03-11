@@ -9,11 +9,13 @@ using CloudM.Application.DTOs.MessageDTOs;
 using CloudM.Application.Helpers.FileTypeHelpers;
 using CloudM.Infrastructure.Services.Cloudinary;
 using CloudM.Application.Services.MessageServices;
+using CloudM.Application.Services.NotificationServices;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Accounts;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.ConversationMembers;
 using CloudM.Infrastructure.Repositories.Conversations;
 using CloudM.Infrastructure.Repositories.MessageMedias;
@@ -41,6 +43,7 @@ namespace CloudM.Tests.Services
         private readonly Mock<IMapper> _mapperMock;
         private readonly Mock<IRealtimeService> _realtimeServiceMock;
         private readonly Mock<IUnitOfWork> _unitOfWorkMock;
+        private readonly Mock<IAccountBlockRepository> _accountBlockRepositoryMock;
         private readonly MessageService _messageService;
 
         public MessageServiceTests()
@@ -57,6 +60,17 @@ namespace CloudM.Tests.Services
             _mapperMock = new Mock<IMapper>();
             _realtimeServiceMock = new Mock<IRealtimeService>();
             _unitOfWorkMock = new Mock<IUnitOfWork>();
+            _accountBlockRepositoryMock = new Mock<IAccountBlockRepository>();
+
+            _accountBlockRepositoryMock
+                .Setup(x => x.IsBlockedEitherWayAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+                .ReturnsAsync(false);
+            _accountBlockRepositoryMock
+                .Setup(x => x.GetRelationsAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<IEnumerable<Guid>>(),
+                    It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<AccountBlockRelationModel>());
 
             _messageService = new MessageService(
                 _messageRepositoryMock.Object,
@@ -69,8 +83,11 @@ namespace CloudM.Tests.Services
                 _cloudinaryServiceMock.Object,
                 _fileTypeDetectorMock.Object,
                 _storyRepositoryMock.Object,
+                NullNotificationService.Instance,
                 _realtimeServiceMock.Object,
-                _unitOfWorkMock.Object
+                _unitOfWorkMock.Object,
+                null,
+                _accountBlockRepositoryMock.Object
             );
         }
 
@@ -423,6 +440,120 @@ namespace CloudM.Tests.Services
             notifiedMentionIds.Should().NotBeNull();
             notifiedMentionIds!.Should().ContainSingle(id => id == mentionedId);
             notifiedMentionIds.Should().NotContain(senderId);
+        }
+
+        [Fact]
+        public async Task SendMessageInGroupAsync_WhenMentionedMemberIsBlockedByPairingRule_ShouldStillCanonicalizeMention()
+        {
+            // Arrange
+            var senderId = Guid.NewGuid();
+            var mentionedId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+
+            var sender = TestDataFactory.CreateAccount(accountId: senderId, username: "sender");
+            var mentioned = TestDataFactory.CreateAccount(accountId: mentionedId, username: "alice");
+            var conversation = TestDataFactory.CreateConversation(conversationId: conversationId, isGroup: true);
+
+            var request = new SendMessageRequest
+            {
+                Content = "hello @alice and @unknown",
+                TempId = "tmp-group-mention-blocked"
+            };
+
+            Message? createdMessage = null;
+            IEnumerable<Guid>? notifiedMentionIds = null;
+
+            _conversationRepositoryMock
+                .Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.IsMemberOfConversation(conversationId, senderId))
+                .ReturnsAsync(true);
+            _accountRepositoryMock
+                .Setup(x => x.GetAccountById(senderId))
+                .ReturnsAsync(sender);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetConversationMembersAsync(conversationId))
+                .ReturnsAsync(new List<ConversationMember>
+                {
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = senderId,
+                        Account = sender,
+                        HasLeft = false
+                    },
+                    new()
+                    {
+                        ConversationId = conversationId,
+                        AccountId = mentionedId,
+                        Account = mentioned,
+                        HasLeft = false
+                    }
+                });
+            _messageRepositoryMock
+                .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
+                .Callback<Message>(message => createdMessage = message)
+                .Returns(Task.CompletedTask);
+
+            _unitOfWorkMock
+                .Setup(x => x.ExecuteInTransactionAsync(
+                    It.IsAny<Func<Task<SendMessageResponse>>>(),
+                    It.IsAny<Func<Task>?>()))
+                .Returns((Func<Task<SendMessageResponse>> operation, Func<Task>? _) => operation());
+
+            _mapperMock
+                .Setup(x => x.Map<AccountChatInfoResponse>(sender))
+                .Returns(new AccountChatInfoResponse
+                {
+                    AccountId = senderId,
+                    Username = sender.Username,
+                    FullName = sender.FullName,
+                    AvatarUrl = sender.AvatarUrl,
+                    IsActive = true
+                });
+
+            _mapperMock
+                .Setup(x => x.Map<SendMessageResponse>(It.IsAny<Message>()))
+                .Returns<Message>(message => new SendMessageResponse
+                {
+                    MessageId = message.MessageId,
+                    ConversationId = message.ConversationId,
+                    Content = message.Content,
+                    MessageType = message.MessageType,
+                    SentAt = message.SentAt
+                });
+
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMembersWithMuteStatusAsync(conversationId))
+                .ReturnsAsync(new Dictionary<Guid, bool>
+                {
+                    { senderId, false },
+                    { mentionedId, false }
+                });
+
+            _realtimeServiceMock
+                .Setup(x => x.NotifyNewMessageAsync(
+                    conversationId,
+                    It.IsAny<Dictionary<Guid, bool>>(),
+                    It.IsAny<SendMessageResponse>(),
+                    It.IsAny<IEnumerable<Guid>?>()))
+                .Callback<Guid, Dictionary<Guid, bool>, SendMessageResponse, IEnumerable<Guid>?>((_, _, _, mentionIds) =>
+                {
+                    notifiedMentionIds = mentionIds;
+                })
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _messageService.SendMessageInGroupAsync(senderId, conversationId, request);
+
+            // Assert
+            var expectedCanonicalContent = $"hello @[alice]({mentionedId}) and @unknown";
+            result.Content.Should().Be(expectedCanonicalContent);
+            createdMessage.Should().NotBeNull();
+            createdMessage!.Content.Should().Be(expectedCanonicalContent);
+            notifiedMentionIds.Should().NotBeNull();
+            notifiedMentionIds!.Should().ContainSingle(id => id == mentionedId);
         }
 
         [Fact]
@@ -1124,6 +1255,9 @@ namespace CloudM.Tests.Services
             _conversationMemberRepositoryMock
                 .Setup(x => x.IsMemberOfConversation(conversationId, senderId))
                 .ReturnsAsync(true);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMemberIdsByConversationIdAsync(conversationId))
+                .ReturnsAsync(new List<Guid> { senderId, receiverId });
             _conversationRepositoryMock
                 .Setup(x => x.GetPrivateConversationIdAsync(senderId, receiverId))
                 .ReturnsAsync(conversationId);
@@ -1257,6 +1391,9 @@ namespace CloudM.Tests.Services
             _conversationMemberRepositoryMock
                 .Setup(x => x.IsMemberOfConversation(targetConversationId, senderId))
                 .ReturnsAsync(true);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMemberIdsByConversationIdAsync(targetConversationId))
+                .ReturnsAsync(new List<Guid> { senderId, Guid.NewGuid() });
 
             _messageRepositoryMock
                 .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
@@ -1352,6 +1489,9 @@ namespace CloudM.Tests.Services
             _conversationMemberRepositoryMock
                 .Setup(x => x.IsMemberOfConversation(targetConversationId, senderId))
                 .ReturnsAsync(true);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMemberIdsByConversationIdAsync(targetConversationId))
+                .ReturnsAsync(new List<Guid> { senderId, Guid.NewGuid() });
 
             _messageRepositoryMock
                 .Setup(x => x.AddMessageAsync(It.IsAny<Message>()))
@@ -1491,9 +1631,12 @@ namespace CloudM.Tests.Services
             var conversationId = Guid.NewGuid();
             var accountId = Guid.NewGuid();
             var message = TestDataFactory.CreateMessage(messageId: messageId, senderId: accountId, conversationId: conversationId);
+            var conversation = TestDataFactory.CreateConversation(conversationId: conversationId, isGroup: true);
 
             _messageRepositoryMock.Setup(x => x.GetMessageByIdAsync(messageId))
                 .ReturnsAsync(message);
+            _conversationRepositoryMock.Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
 
             // Act
             var result = await _messageService.RecallMessageAsync(messageId, accountId);
@@ -1511,6 +1654,55 @@ namespace CloudM.Tests.Services
                 messageId,
                 accountId,
                 It.IsAny<DateTime>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RecallMessageAsync_WhenPrivateConversationIsBlocked_ThrowsBadRequestException()
+        {
+            // Arrange
+            var messageId = Guid.NewGuid();
+            var conversationId = Guid.NewGuid();
+            var accountId = Guid.NewGuid();
+            var otherId = Guid.NewGuid();
+            var message = TestDataFactory.CreateMessage(messageId: messageId, senderId: accountId, conversationId: conversationId);
+            var conversation = TestDataFactory.CreateConversation(conversationId: conversationId, isGroup: false);
+
+            _messageRepositoryMock.Setup(x => x.GetMessageByIdAsync(messageId))
+                .ReturnsAsync(message);
+            _conversationRepositoryMock.Setup(x => x.GetConversationByIdAsync(conversationId))
+                .ReturnsAsync(conversation);
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetAllActiveMemberIdsByConversationIdAsync(conversationId))
+                .ReturnsAsync(new List<Guid> { accountId, otherId });
+            _conversationMemberRepositoryMock
+                .Setup(x => x.GetMemberIdsByConversationIdAsync(conversationId))
+                .ReturnsAsync(new List<Guid> { accountId, otherId });
+            _accountBlockRepositoryMock
+                .Setup(x => x.GetRelationsAsync(
+                    accountId,
+                    It.Is<IEnumerable<Guid>>(ids => ids.Contains(otherId)),
+                    It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<AccountBlockRelationModel>
+                {
+                    new()
+                    {
+                        TargetId = otherId,
+                        IsBlockedByCurrentUser = true
+                    }
+                });
+
+            // Act
+            var act = () => _messageService.RecallMessageAsync(messageId, accountId);
+
+            // Assert
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("This conversation is unavailable.");
+            _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Never);
+            _realtimeServiceMock.Verify(x => x.NotifyMessageRecalledAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>()), Times.Never);
         }
 
         #endregion

@@ -203,7 +203,7 @@ namespace CloudM.Tests.Services
                 .ReturnsAsync(story);
 
             _storyViewRepositoryMock
-                .Setup(x => x.GetStoryViewersPagedAsync(storyId, 1, 20))
+                .Setup(x => x.GetStoryViewersPagedAsync(storyId, currentId, 1, 20))
                 .ReturnsAsync((new List<StoryViewerBasicModel>(), 0));
 
             // Act
@@ -212,7 +212,7 @@ namespace CloudM.Tests.Services
             // Assert
             result.Page.Should().Be(1);
             result.PageSize.Should().Be(20);
-            _storyViewRepositoryMock.Verify(x => x.GetStoryViewersPagedAsync(storyId, 1, 20), Times.Once);
+            _storyViewRepositoryMock.Verify(x => x.GetStoryViewersPagedAsync(storyId, currentId, 1, 20), Times.Once);
         }
 
         [Fact]

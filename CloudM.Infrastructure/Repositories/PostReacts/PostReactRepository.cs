@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using CloudM.Domain.Entities;
 using CloudM.Infrastructure.Data;
+using CloudM.Infrastructure.Helpers;
 using CloudM.Infrastructure.Models;
 using CloudM.Domain.Enums;
 using CloudM.Domain.Helpers;
@@ -78,6 +79,12 @@ namespace CloudM.Infrastructure.Repositories.PostReacts
                 });
 
             var totalItems = await baseQuery.CountAsync();
+
+            if (currentId.HasValue)
+            {
+                var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId.Value);
+                baseQuery = baseQuery.Where(x => !hiddenAccountIds.Contains(x.AccountId));
+            }
 
             var reacts = await baseQuery
                 .OrderByDescending(x => currentId.HasValue && x.AccountId == currentId.Value)

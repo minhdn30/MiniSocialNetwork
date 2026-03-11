@@ -5,6 +5,7 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
 using CloudM.Infrastructure.Repositories.Comments;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.PostReacts;
 using CloudM.Infrastructure.Repositories.Posts;
 using CloudM.Infrastructure.Repositories.Follows;
@@ -30,10 +31,12 @@ namespace CloudM.Application.Services.PostReactServices
         private readonly IMapper _mapper;
         private readonly INotificationService _notificationService;
         private readonly IRealtimeService _realtimeService;
+        private readonly IAccountBlockRepository _accountBlockRepository;
 
         public PostReactService(IPostReactRepository postReactRepository, ICommentRepository commentRepository, 
             IPostRepository postRepository, IFollowRepository followRepository, IMapper mapper, 
-            INotificationService notificationService, IRealtimeService realtimeService, IUnitOfWork unitOfWork)
+            INotificationService notificationService, IRealtimeService realtimeService, IUnitOfWork unitOfWork,
+            IAccountBlockRepository? accountBlockRepository = null)
         {
             _postReactRepository = postReactRepository;
             _commentRepository = commentRepository;
@@ -43,6 +46,7 @@ namespace CloudM.Application.Services.PostReactServices
             _notificationService = notificationService;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
         }
 
         public PostReactService(
@@ -71,6 +75,9 @@ namespace CloudM.Application.Services.PostReactServices
             {
                 throw new BadRequestException($"Post with ID {postId} not found.");
             }
+
+            if (await _accountBlockRepository.IsBlockedEitherWayAsync(accountId, post.AccountId))
+                throw new BadRequestException("This content is no longer available.");
 
             await ValidatePostPrivacyAsync(post, accountId, "react to");
 
@@ -149,6 +156,10 @@ namespace CloudM.Application.Services.PostReactServices
             {
                 throw new BadRequestException($"Post with ID {postId} not found.");
             }
+
+            if (currentId.HasValue &&
+                await _accountBlockRepository.IsBlockedEitherWayAsync(currentId.Value, post.AccountId))
+                throw new BadRequestException("This content is no longer available.");
 
             if (currentId.HasValue)
             {

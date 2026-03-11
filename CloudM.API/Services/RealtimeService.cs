@@ -225,14 +225,14 @@ namespace CloudM.API.Services
 
         public async Task NotifyNewMessageAsync(Guid conversationId, Dictionary<Guid, bool> memberMuteMap, SendMessageResponse message, IEnumerable<Guid>? mentionedAccountIds)
         {
-            // 1. Notify the "Conversation Room" group on ChatHub
-            // For users with this specific chat window ACTIVE
+            var mentionedSet = (mentionedAccountIds ?? Enumerable.Empty<Guid>()).ToHashSet();
+
+            // 1. Notify ChatHub listeners
             await _chatHubContext.Clients.Group(conversationId.ToString())
                 .SendAsync("ReceiveNewMessage", message);
 
             // 2. Notify each member on UserHub (Global Channel)
             // For global notifications (toasts, badges, auto-open) when NOT in this chat
-            var mentionedSet = (mentionedAccountIds ?? Enumerable.Empty<Guid>()).ToHashSet();
             foreach (var (memberId, isMuted) in memberMuteMap)
             {
                 await _userHubContext.Clients.User(memberId.ToString())

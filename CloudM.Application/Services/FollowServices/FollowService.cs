@@ -8,6 +8,7 @@ using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.Follows;
 using CloudM.Infrastructure.Repositories.FollowRequests;
 using CloudM.Infrastructure.Repositories.AccountSettingRepos;
+using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
 using CloudM.Application.Services.NotificationServices;
 using CloudM.Application.Services.RealtimeServices;
@@ -30,6 +31,7 @@ namespace CloudM.Application.Services.FollowServices
         private readonly INotificationService _notificationService;
         private readonly IRealtimeService _realtimeService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IAccountBlockRepository _accountBlockRepository;
 
         public FollowService(
             IFollowRepository followRepository,
@@ -39,7 +41,8 @@ namespace CloudM.Application.Services.FollowServices
             IAccountSettingRepository accountSettingRepository,
             INotificationService notificationService,
             IRealtimeService realtimeService,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IAccountBlockRepository? accountBlockRepository = null)
         {
             _followRepository = followRepository;
             _followRequestRepository = followRequestRepository;
@@ -49,6 +52,7 @@ namespace CloudM.Application.Services.FollowServices
             _notificationService = notificationService;
             _realtimeService = realtimeService;
             _unitOfWork = unitOfWork;
+            _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
         }
 
         public FollowService(
@@ -82,6 +86,9 @@ namespace CloudM.Application.Services.FollowServices
 
             if (!await _accountRepository.IsAccountIdExist(followerId))
                 throw new ForbiddenException("You must reactivate your account to follow users.");
+
+            if (await _accountBlockRepository.IsBlockedEitherWayAsync(followerId, targetId))
+                throw new BadRequestException("This user is unavailable or does not exist.");
 
             var recordExists = await _followRepository.IsFollowRecordExistAsync(followerId, targetId);
             if (recordExists)

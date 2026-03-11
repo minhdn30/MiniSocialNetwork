@@ -25,6 +25,10 @@ namespace CloudM.Application.DTOs.ConversationDTOs
         public Guid? Owner { get; set; }
         public int CurrentUserRole { get; set; }
         public int MemberCount { get; set; }
+        public bool CanSendMessage { get; set; } = true;
+        public bool IsBlockedConversation { get; set; }
+        public bool BlockedByCurrentUser { get; set; }
+        public bool BlockedByOtherUser { get; set; }
         public OtherMemberInfo? OtherMember { get; set; }
         public List<string>? SampleMembers { get; set; } 
         public List<string>? GroupAvatars { get; set; }
