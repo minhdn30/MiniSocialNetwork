@@ -869,7 +869,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 .ToListAsync();
         }
 
-        public async Task<(List<FollowSuggestionModel> Items, int TotalItems)> GetFollowSuggestionsAsync(
+        public async Task<(List<FollowSuggestionCandidateModel> Items, int TotalItems)> GetFollowSuggestionsAsync(
             Guid currentId,
             int page,
             int pageSize,
@@ -941,6 +941,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 .Where(a => !myPendingRequestTargetIdsQuery.Contains(a.AccountId));
 
             var eligibleAccountsQuery = eligibleAccountsBaseQuery;
+            List<Guid>? prefetchedHomeCandidateIds = null;
             if (prioritizeDiscovery)
             {
                 var homeSignalTake = Math.Max(normalizedPageSize * 6, 24);
@@ -983,14 +984,23 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                     .Union(homePopularCandidateIdsQuery)
                     .Union(homeFreshCandidateIdsQuery);
 
+                prefetchedHomeCandidateIds = await homeCandidateIdsQuery
+                    .Distinct()
+                    .ToListAsync();
+
+                if (prefetchedHomeCandidateIds.Count == 0)
+                {
+                    return (new List<FollowSuggestionCandidateModel>(), 0);
+                }
+
                 eligibleAccountsQuery = eligibleAccountsBaseQuery
-                    .Where(a => homeCandidateIdsQuery.Contains(a.AccountId));
+                    .Where(a => prefetchedHomeCandidateIds.Contains(a.AccountId));
             }
 
-            var totalItems = await eligibleAccountsQuery.CountAsync();
+            var totalItems = prefetchedHomeCandidateIds?.Count ?? await eligibleAccountsQuery.CountAsync();
             if (totalItems == 0)
             {
-                return (new List<FollowSuggestionModel>(), 0);
+                return (new List<FollowSuggestionCandidateModel>(), 0);
             }
 
             var jitterSeed = CreateFollowSuggestionJitterSeed(currentId, prioritizeDiscovery, DateTime.UtcNow);
@@ -998,7 +1008,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 ? HomeFollowSuggestionJitterBucketCount
                 : PageFollowSuggestionJitterBucketCount;
 
-            if (ShouldUseInMemorySuggestionFallback())
+            if (prioritizeDiscovery || ShouldUseInMemorySuggestionFallback())
             {
                 var candidateAccounts = await eligibleAccountsQuery
                     .Select(a => new
@@ -1062,7 +1072,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                         IsFollower = followerSet.Contains(a.AccountId),
                         MutualConnectionCount = mutualCounts.GetValueOrDefault(a.AccountId, 0),
                         FollowersCount = followerCounts.GetValueOrDefault(a.AccountId, 0),
-                        RawJitterHash = 0
+                        RawJitterHash = ComputeInMemoryFollowSuggestionJitterHash(a.Username, jitterSeed)
                     })
                     .ToList();
 
@@ -1074,39 +1084,41 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 var inMemoryItems = orderedCandidates
                     .Skip((normalizedPage - 1) * normalizedPageSize)
                     .Take(normalizedPageSize)
-                    .Select(x => new FollowSuggestionModel
+                    .Select(x => new FollowSuggestionCandidateModel
                     {
                         AccountId = x.AccountId,
                         Username = x.Username,
                         FullName = x.FullName,
-                        AvatarUrl = x.AvatarUrl
+                        AvatarUrl = x.AvatarUrl,
+                        IsContact = x.IsContact,
+                        IsFollower = x.IsFollower,
+                        MutualFollowCount = x.MutualConnectionCount
                     })
                     .ToList();
 
                 return (inMemoryItems, totalItems);
             }
 
-            var rankedCandidatesQuery =
-                from a in eligibleAccountsQuery
-                join contactAccountId in contactTargetIdsQuery on a.AccountId equals contactAccountId into contactJoin
-                join followerAccountId in followerIdsQuery on a.AccountId equals followerAccountId into followerJoin
-                join mutual in mutualConnectionCountsQuery on a.AccountId equals mutual.AccountId into mutualJoin
-                from mutual in mutualJoin.DefaultIfEmpty()
-                join followers in followerCountsQuery on a.AccountId equals followers.AccountId into followerCountJoin
-                from followers in followerCountJoin.DefaultIfEmpty()
-                select new FollowSuggestionCandidateProjection
+            var rankedCandidatesQuery = eligibleAccountsQuery
+                .Select(a => new FollowSuggestionCandidateProjection
                 {
                     AccountId = a.AccountId,
                     Username = a.Username,
                     FullName = a.FullName,
                     AvatarUrl = a.AvatarUrl,
                     CreatedAt = a.CreatedAt,
-                    IsContact = contactJoin.Any(),
-                    IsFollower = followerJoin.Any(),
-                    MutualConnectionCount = mutual != null ? mutual.Count : 0,
-                    FollowersCount = followers != null ? followers.Count : 0,
+                    IsContact = contactTargetIdsQuery.Contains(a.AccountId),
+                    IsFollower = followerIdsQuery.Contains(a.AccountId),
+                    MutualConnectionCount = mutualConnectionCountsQuery
+                        .Where(x => x.AccountId == a.AccountId)
+                        .Select(x => x.Count)
+                        .FirstOrDefault(),
+                    FollowersCount = followerCountsQuery
+                        .Where(x => x.AccountId == a.AccountId)
+                        .Select(x => x.Count)
+                        .FirstOrDefault(),
                     RawJitterHash = AppDbContext.HashTextExtended(a.Username, jitterSeed)
-                };
+                });
 
             var orderedQuery = ApplyFollowSuggestionOrdering(
                 rankedCandidatesQuery,
@@ -1116,16 +1128,69 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var items = await orderedQuery
                 .Skip((normalizedPage - 1) * normalizedPageSize)
                 .Take(normalizedPageSize)
-                .Select(x => new FollowSuggestionModel
+                .Select(x => new FollowSuggestionCandidateModel
                 {
                     AccountId = x.AccountId,
                     Username = x.Username,
                     FullName = x.FullName,
-                    AvatarUrl = x.AvatarUrl
+                    AvatarUrl = x.AvatarUrl,
+                    IsContact = x.IsContact,
+                    IsFollower = x.IsFollower,
+                    MutualFollowCount = x.MutualConnectionCount
                 })
                 .ToListAsync();
 
             return (items, totalItems);
+        }
+
+        public async Task<Dictionary<Guid, List<string>>> GetMutualFollowPreviewUsernamesAsync(
+            Guid currentId,
+            IEnumerable<Guid> targetIds,
+            int perTargetLimit)
+        {
+            var normalizedTargetIds = targetIds
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (normalizedTargetIds.Count == 0 || perTargetLimit <= 0)
+            {
+                return new Dictionary<Guid, List<string>>();
+            }
+
+            var myFollowingIdsQuery = _context.Follows
+                .AsNoTracking()
+                .Where(f => f.FollowerId == currentId)
+                .Select(f => f.FollowedId);
+
+            var previewRows = await _context.Follows
+                .AsNoTracking()
+                .Where(f =>
+                    normalizedTargetIds.Contains(f.FollowedId) &&
+                    myFollowingIdsQuery.Contains(f.FollowerId) &&
+                    f.Follower.Status == AccountStatusEnum.Active &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(f.Follower.RoleId))
+                .Select(f => new
+                {
+                    TargetId = f.FollowedId,
+                    PreviewUsername = f.Follower.Username,
+                    f.CreatedAt
+                })
+                .OrderBy(x => x.TargetId)
+                .ThenByDescending(x => x.CreatedAt)
+                .ThenBy(x => x.PreviewUsername)
+                .ToListAsync();
+
+            return previewRows
+                .GroupBy(x => x.TargetId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .Select(x => x.PreviewUsername)
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(perTargetLimit)
+                        .ToList());
         }
 
         private async Task<List<GroupInviteAccountSearchModel>> GetRecentDirectChatInviteCandidatesAsync(
@@ -1566,6 +1631,29 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             var surfaceSeed = prioritizeDiscovery ? 0x484F4D45L : 0x50414745L;
 
             return primary ^ secondary ^ dayBucket ^ surfaceSeed;
+        }
+
+        private static long ComputeInMemoryFollowSuggestionJitterHash(string? username, long seed)
+        {
+            var normalizedUsername = (username ?? string.Empty).Trim();
+
+            unchecked
+            {
+                const ulong fnvOffsetBasis = 14695981039346656037UL;
+                const ulong fnvPrime = 1099511628211UL;
+
+                var hash = fnvOffsetBasis ^ (ulong)seed;
+                for (var i = 0; i < normalizedUsername.Length; i++)
+                {
+                    hash ^= normalizedUsername[i];
+                    hash *= fnvPrime;
+                }
+
+                hash ^= (ulong)normalizedUsername.Length;
+                hash *= fnvPrime;
+
+                return (long)hash;
+            }
         }
 
         private bool ShouldUseInMemorySuggestionFallback()

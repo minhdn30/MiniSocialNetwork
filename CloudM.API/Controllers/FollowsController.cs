@@ -174,8 +174,16 @@ namespace CloudM.API.Controllers
             var currentId = User.GetAccountId();
             if (currentId == null) return Unauthorized(new { message = "Invalid token: no AccountId found." });
 
-            var result = await _followService.GetSuggestionsAsync(currentId.Value, request ?? new FollowSuggestionPagingRequest());
-            return Ok(result);
+            var safeRequest = request ?? new FollowSuggestionPagingRequest();
+            var normalizedSurface = (safeRequest.Surface ?? "page").Trim().ToLowerInvariant();
+            if (normalizedSurface == "home")
+            {
+                var homeResult = await _followService.GetSuggestionsAsync(currentId.Value, safeRequest);
+                return Ok(homeResult);
+            }
+
+            var pageResult = await _followService.GetSuggestionPageAsync(currentId.Value, safeRequest);
+            return Ok(pageResult);
         }
     }
 }

@@ -891,14 +891,17 @@ namespace CloudM.Tests.Services
         {
             // Arrange
             var currentId = Guid.NewGuid();
-            var items = new List<FollowSuggestionModel>
+            var items = new List<FollowSuggestionCandidateModel>
             {
                 new()
                 {
                     AccountId = Guid.NewGuid(),
                     Username = "home-user",
                     FullName = "Home User",
-                    AvatarUrl = "/avatars/home-user.png"
+                    AvatarUrl = "/avatars/home-user.png",
+                    IsContact = true,
+                    IsFollower = false,
+                    MutualFollowCount = 2
                 }
             };
 
@@ -926,25 +929,39 @@ namespace CloudM.Tests.Services
         }
 
         [Fact]
-        public async Task GetSuggestionsAsync_WhenPageSurfaceRequested_CapsPageSizeAtTwenty()
+        public async Task GetSuggestionPageAsync_WhenPageSurfaceRequested_CapsPageSizeAtTwentyAndMapsPageSignals()
         {
             // Arrange
             var currentId = Guid.NewGuid();
-            var items = new List<FollowSuggestionModel>
+            var candidateId = Guid.NewGuid();
+            var items = new List<FollowSuggestionCandidateModel>
             {
                 new()
                 {
-                    AccountId = Guid.NewGuid(),
+                    AccountId = candidateId,
                     Username = "page-user",
                     FullName = "Page User",
-                    AvatarUrl = "/avatars/page-user.png"
+                    AvatarUrl = "/avatars/page-user.png",
+                    IsContact = true,
+                    IsFollower = true,
+                    MutualFollowCount = 4
                 }
+            };
+            var previewUsernames = new Dictionary<Guid, List<string>>
+            {
+                [candidateId] = new() { "user-a", "user-b" }
             };
 
             _mockAccountRepo.Setup(x => x.IsAccountIdExist(currentId)).ReturnsAsync(true);
             _mockAccountRepo
                 .Setup(x => x.GetFollowSuggestionsAsync(currentId, 2, 20, false))
                 .ReturnsAsync((items, 25));
+            _mockAccountRepo
+                .Setup(x => x.GetMutualFollowPreviewUsernamesAsync(
+                    currentId,
+                    It.Is<IEnumerable<Guid>>(ids => ids.Single() == candidateId),
+                    2))
+                .ReturnsAsync(previewUsernames);
 
             var request = new FollowSuggestionPagingRequest
             {
@@ -954,14 +971,24 @@ namespace CloudM.Tests.Services
             };
 
             // Act
-            var result = await _followService.GetSuggestionsAsync(currentId, request);
+            var result = await _followService.GetSuggestionPageAsync(currentId, request);
 
             // Assert
             result.Page.Should().Be(2);
             result.PageSize.Should().Be(20);
             result.TotalItems.Should().Be(25);
             result.Items.Should().ContainSingle();
+            result.Items.Single().IsFollower.Should().BeTrue();
+            result.Items.Single().IsContact.Should().BeTrue();
+            result.Items.Single().MutualFollowCount.Should().Be(4);
+            result.Items.Single().MutualFollowPreviewUsernames.Should().Equal("user-a", "user-b");
             _mockAccountRepo.Verify(x => x.GetFollowSuggestionsAsync(currentId, 2, 20, false), Times.Once);
+            _mockAccountRepo.Verify(
+                x => x.GetMutualFollowPreviewUsernamesAsync(
+                    currentId,
+                    It.Is<IEnumerable<Guid>>(ids => ids.Single() == candidateId),
+                    2),
+                Times.Once);
         }
 
         #endregion

@@ -801,14 +801,8 @@ namespace CloudM.Application.Services.FollowServices
             if (!await _accountRepository.IsAccountIdExist(currentId))
                 throw new ForbiddenException("You must reactivate your account to view follow suggestions.");
 
-            var safeRequest = request ?? new FollowSuggestionPagingRequest();
-            var normalizedPage = safeRequest.Page <= 0 ? 1 : safeRequest.Page;
-            var normalizedSurface = (safeRequest.Surface ?? "page").Trim().ToLowerInvariant();
-            var prioritizeDiscovery = normalizedSurface == "home";
-            var maxPageSize = prioritizeDiscovery ? 12 : 20;
-            var normalizedPageSize = safeRequest.PageSize <= 0
-                ? (prioritizeDiscovery ? 5 : 12)
-                : Math.Min(safeRequest.PageSize, maxPageSize);
+            var (normalizedPage, normalizedPageSize, prioritizeDiscovery) =
+                NormalizeSuggestionRequest(request, true);
 
             var (items, total) = await _accountRepository.GetFollowSuggestionsAsync(
                 currentId,
@@ -818,7 +812,51 @@ namespace CloudM.Application.Services.FollowServices
 
             return new PagedResponse<FollowSuggestionModel>
             {
-                Items = items,
+                Items = items.Select(x => new FollowSuggestionModel
+                {
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl
+                }),
+                TotalItems = total,
+                Page = normalizedPage,
+                PageSize = normalizedPageSize
+            };
+        }
+
+        public async Task<PagedResponse<FollowSuggestionPageModel>> GetSuggestionPageAsync(Guid currentId, FollowSuggestionPagingRequest request)
+        {
+            if (!await _accountRepository.IsAccountIdExist(currentId))
+                throw new ForbiddenException("You must reactivate your account to view follow suggestions.");
+
+            var (normalizedPage, normalizedPageSize, prioritizeDiscovery) =
+                NormalizeSuggestionRequest(request, false);
+
+            var (items, total) = await _accountRepository.GetFollowSuggestionsAsync(
+                currentId,
+                normalizedPage,
+                normalizedPageSize,
+                prioritizeDiscovery);
+
+            var previewUsernames = await _accountRepository.GetMutualFollowPreviewUsernamesAsync(
+                currentId,
+                items.Select(x => x.AccountId),
+                2);
+
+            return new PagedResponse<FollowSuggestionPageModel>
+            {
+                Items = items.Select(x => new FollowSuggestionPageModel
+                {
+                    AccountId = x.AccountId,
+                    Username = x.Username,
+                    FullName = x.FullName,
+                    AvatarUrl = x.AvatarUrl,
+                    IsContact = x.IsContact,
+                    IsFollower = x.IsFollower,
+                    MutualFollowCount = x.MutualFollowCount,
+                    MutualFollowPreviewUsernames = previewUsernames.GetValueOrDefault(x.AccountId, new List<string>())
+                }),
                 TotalItems = total,
                 Page = normalizedPage,
                 PageSize = normalizedPageSize
@@ -858,6 +896,20 @@ namespace CloudM.Application.Services.FollowServices
                 RelationStatus = ResolveRelationStatus(isFollowing, normalizedIsRequested),
                 TargetFollowPrivacy = targetFollowPrivacy
             };
+        }
+
+        private static (int Page, int PageSize, bool PrioritizeDiscovery) NormalizeSuggestionRequest(
+            FollowSuggestionPagingRequest? request,
+            bool prioritizeDiscovery)
+        {
+            var safeRequest = request ?? new FollowSuggestionPagingRequest();
+            var normalizedPage = safeRequest.Page <= 0 ? 1 : safeRequest.Page;
+            var maxPageSize = prioritizeDiscovery ? 12 : 20;
+            var normalizedPageSize = safeRequest.PageSize <= 0
+                ? (prioritizeDiscovery ? 5 : 12)
+                : Math.Min(safeRequest.PageSize, maxPageSize);
+
+            return (normalizedPage, normalizedPageSize, prioritizeDiscovery);
         }
 
         private static FollowRelationStatusEnum ResolveRelationStatus(bool isFollowing, bool isFollowRequestPending)

@@ -249,6 +249,84 @@ namespace CloudM.Tests.Repositories
                 contactCandidateId,
                 followerCandidateId,
                 mutualCandidateId);
+            result.Items[0].IsContact.Should().BeTrue();
+            result.Items[0].IsFollower.Should().BeFalse();
+            result.Items[0].MutualFollowCount.Should().Be(0);
+            result.Items[1].IsFollower.Should().BeTrue();
+            result.Items[2].MutualFollowCount.Should().Be(1);
+        }
+
+        [Fact]
+        public async Task GetMutualFollowPreviewUsernamesAsync_ReturnsDistinctPreviewUsernamesPerTarget()
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase($"account-repo-follow-suggestions-preview-{Guid.NewGuid()}")
+                .Options;
+
+            await using var context = new AppDbContext(options);
+            var now = new DateTime(2026, 3, 12, 11, 0, 0, DateTimeKind.Utc);
+            var currentId = Guid.NewGuid();
+            var candidateId = Guid.NewGuid();
+            var previewSourceA = Guid.NewGuid();
+            var previewSourceB = Guid.NewGuid();
+            var previewSourceC = Guid.NewGuid();
+
+            context.Accounts.AddRange(
+                BuildAccount(currentId, "current-user", now.AddMinutes(-20)),
+                BuildAccount(candidateId, "target-user", now.AddMinutes(-19)),
+                BuildAccount(previewSourceA, "alice", now.AddMinutes(-18)),
+                BuildAccount(previewSourceB, "bob", now.AddMinutes(-17)),
+                BuildAccount(previewSourceC, "carol", now.AddMinutes(-16)));
+
+            context.Follows.AddRange(
+                new Follow
+                {
+                    FollowerId = currentId,
+                    FollowedId = previewSourceA,
+                    CreatedAt = now.AddMinutes(-15)
+                },
+                new Follow
+                {
+                    FollowerId = currentId,
+                    FollowedId = previewSourceB,
+                    CreatedAt = now.AddMinutes(-14)
+                },
+                new Follow
+                {
+                    FollowerId = currentId,
+                    FollowedId = previewSourceC,
+                    CreatedAt = now.AddMinutes(-13)
+                },
+                new Follow
+                {
+                    FollowerId = previewSourceA,
+                    FollowedId = candidateId,
+                    CreatedAt = now.AddMinutes(-12)
+                },
+                new Follow
+                {
+                    FollowerId = previewSourceB,
+                    FollowedId = candidateId,
+                    CreatedAt = now.AddMinutes(-11)
+                },
+                new Follow
+                {
+                    FollowerId = previewSourceC,
+                    FollowedId = candidateId,
+                    CreatedAt = now.AddMinutes(-10)
+                });
+
+            await context.SaveChangesAsync();
+
+            var repository = new AccountRepository(context);
+
+            var result = await repository.GetMutualFollowPreviewUsernamesAsync(
+                currentId,
+                new[] { candidateId },
+                2);
+
+            result.Should().ContainKey(candidateId);
+            result[candidateId].Should().Equal("carol", "bob");
         }
 
         private static Account BuildAccount(Guid accountId, string username, DateTime? createdAt = null)
