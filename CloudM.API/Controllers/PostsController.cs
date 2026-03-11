@@ -247,12 +247,32 @@ namespace CloudM.API.Controllers
 
         [Authorize]
         [HttpGet("feed")]
-        public async Task<IActionResult> GetFeedPostsByScore([FromQuery] int limit = 10, 
-            [FromQuery] DateTime? cursorCreatedAt = null, [FromQuery] Guid? cursorPostId = null)
+        public async Task<IActionResult> GetFeedPostsByScore(
+            [FromQuery] int limit = 10,
+            [FromQuery] string? cursorMode = null,
+            [FromQuery] string? cursorToken = null,
+            [FromQuery] DateTime? cursorCreatedAt = null,
+            [FromQuery] Guid? cursorPostId = null)
         {
             var currentId = User.GetAccountId();
             if (currentId == null)
                 return Unauthorized(new { message = "Invalid token: no AccountId found." });
+
+            var useTokenCursor = string.Equals(cursorMode, "token", StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(cursorToken);
+
+            if (useTokenCursor)
+            {
+                if (cursorCreatedAt.HasValue || cursorPostId.HasValue)
+                    return BadRequest(new { message = "cursorCreatedAt and cursorPostId are not supported when cursorToken flow is active." });
+
+                var result = await _postService.GetFeedPageAsync(currentId.Value, cursorToken, limit);
+                return Ok(result);
+            }
+
+            if (cursorCreatedAt.HasValue != cursorPostId.HasValue)
+                return BadRequest(new { message = "cursorCreatedAt and cursorPostId must be provided together." });
+
             var feed = await _postService.GetFeedByScoreAsync(currentId.Value, cursorCreatedAt, cursorPostId, limit);
             DateTime? nextCursorCreatedAt = null;
             Guid? nextCursorPostId = null;
@@ -262,6 +282,7 @@ namespace CloudM.API.Controllers
                 nextCursorCreatedAt = lastItem.CreatedAt;
                 nextCursorPostId = lastItem.PostId;
             }
+
             return Ok(new
             {
                 Items = feed,

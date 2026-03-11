@@ -162,6 +162,8 @@ namespace CloudM.API
                 builder.Configuration.GetSection("NotificationOptions"));
             builder.Services.Configure<FollowAutoAcceptOptions>(
                 builder.Configuration.GetSection("FollowAutoAccept"));
+            builder.Services.Configure<FeedRankingOptions>(
+                builder.Configuration.GetSection("FeedRanking"));
             builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
             {
                 var redisConnectionString = BuildRedisConnectionString(builder.Configuration);
@@ -219,6 +221,13 @@ namespace CloudM.API
             builder.Services.AddScoped<IFileTypeDetector, FileTypeDetector>();
             var jwtSettings = builder.Configuration.GetSection("Jwt");
             var jwtKey = RequireConfiguredValue(jwtSettings["Key"], "Jwt:Key");
+            builder.Services.PostConfigure<FeedRankingOptions>(options =>
+            {
+                options.CursorSigningKey = string.IsNullOrWhiteSpace(options.CursorSigningKey)
+                    ? jwtKey
+                    : options.CursorSigningKey;
+                options.Normalize();
+            });
 
             // JWT
             builder.Services.AddAuthentication(options =>

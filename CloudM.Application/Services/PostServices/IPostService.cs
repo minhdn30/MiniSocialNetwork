@@ -33,6 +33,7 @@ namespace CloudM.Application.Services.PostServices
             DateTime? cursorCreatedAt,
             Guid? cursorPostId,
             int limit);
+        Task<PostFeedCursorResponse> GetFeedPageAsync(Guid currentId, string? cursorToken, int limit);
         Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit);
 
     }

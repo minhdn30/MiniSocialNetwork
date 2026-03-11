@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using CloudM.Application.DTOs.AccountDTOs;
 using CloudM.Application.DTOs.CommonDTOs;
 using CloudM.Application.DTOs.PostDTOs;
@@ -26,6 +27,7 @@ using CloudM.Infrastructure.Repositories.PostReacts;
 using CloudM.Infrastructure.Repositories.PostSaves;
 using CloudM.Infrastructure.Repositories.Posts;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
+using System.Security.Cryptography;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -56,6 +58,7 @@ namespace CloudM.Application.Services.PostServices
         private readonly IRealtimeService _realtimeService;
         private readonly IStoryRingStateHelper _storyRingStateHelper;
         private readonly IAccountBlockRepository _accountBlockRepository;
+        private readonly FeedRankingOptions _feedRankingOptions;
         public PostService(IPostReactRepository postReactRepository,
                            IPostSaveRepository postSaveRepository,
                            IPostMediaRepository postMediaRepository,
@@ -71,7 +74,8 @@ namespace CloudM.Application.Services.PostServices
                            IRealtimeService realtimeService,
                            IStoryViewService storyViewService,
                            IStoryRingStateHelper? storyRingStateHelper = null,
-                           IAccountBlockRepository? accountBlockRepository = null)
+                           IAccountBlockRepository? accountBlockRepository = null,
+                           IOptions<FeedRankingOptions>? feedRankingOptions = null)
         {
             _postRepository = postRepository;
             _postMediaRepository = postMediaRepository;
@@ -88,6 +92,7 @@ namespace CloudM.Application.Services.PostServices
             _realtimeService = realtimeService;
             _storyRingStateHelper = storyRingStateHelper ?? new StoryRingStateHelper(storyViewService);
             _accountBlockRepository = accountBlockRepository ?? NullAccountBlockRepository.Instance;
+            _feedRankingOptions = (feedRankingOptions?.Value ?? new FeedRankingOptions()).Normalize();
         }
 
         public PostService(IPostReactRepository postReactRepository,
@@ -104,7 +109,8 @@ namespace CloudM.Application.Services.PostServices
                            IRealtimeService realtimeService,
                            IStoryViewService storyViewService,
                            IStoryRingStateHelper? storyRingStateHelper = null,
-                           IAccountBlockRepository? accountBlockRepository = null)
+                           IAccountBlockRepository? accountBlockRepository = null,
+                           IOptions<FeedRankingOptions>? feedRankingOptions = null)
             : this(
                 postReactRepository,
                 postSaveRepository,
@@ -121,7 +127,8 @@ namespace CloudM.Application.Services.PostServices
                 realtimeService,
                 storyViewService,
                 storyRingStateHelper,
-                accountBlockRepository)
+                accountBlockRepository,
+                feedRankingOptions)
         {
         }
 
@@ -633,8 +640,7 @@ namespace CloudM.Application.Services.PostServices
         }
         public async Task<List<PostFeedModel>> GetFeedByScoreAsync(Guid currentId, DateTime? cursorCreatedAt, Guid? cursorPostId, int limit)
         {
-            if (limit <= 0) limit = 10;
-            if (limit > 50) limit = 50;
+            limit = NormalizeFeedLimit(limit);
 
             var feed = await _postRepository.GetFeedByScoreAsync(
                 currentId,
@@ -642,27 +648,83 @@ namespace CloudM.Application.Services.PostServices
                 cursorPostId,
                 limit);
 
-            if (feed.Count == 0)
-            {
-                return feed;
-            }
-
-            var authorIds = feed
-                .Select(x => x.Author.AccountId)
-                .Where(id => id != Guid.Empty)
-                .Distinct()
-                .ToList();
-
-            var storyRingStateMap = await _storyRingStateHelper.ResolveManyAsync(currentId, authorIds);
-
-            foreach (var post in feed)
-            {
-                post.Author.StoryRingState = storyRingStateMap.TryGetValue(post.Author.AccountId, out var ringState)
-                    ? ringState
-                    : StoryRingStateEnum.None;
-            }
-
+            await ApplyFeedStoryRingStateAsync(currentId, feed);
             return feed;
+        }
+
+        public async Task<PostFeedCursorResponse> GetFeedPageAsync(Guid currentId, string? cursorToken, int limit)
+        {
+            limit = NormalizeFeedLimit(limit);
+
+            FeedRankingProfileModel rankingProfile;
+            PostFeedCursorModel? requestCursor = null;
+
+            if (!string.IsNullOrWhiteSpace(cursorToken))
+            {
+                requestCursor = PostFeedCursorTokenSerializer.Deserialize(cursorToken, _feedRankingOptions.CursorSigningKey);
+                if (!_feedRankingOptions.TryResolveProfile(requestCursor.ProfileKey, out rankingProfile))
+                {
+                    throw new BadRequestException("Invalid feed cursor.");
+                }
+            }
+            else
+            {
+                rankingProfile = _feedRankingOptions.ResolveActiveProfile();
+            }
+
+            var activeCursor = requestCursor ?? new PostFeedCursorModel
+            {
+                SnapshotAt = DateTime.UtcNow,
+                ProfileKey = rankingProfile.ProfileKey,
+                SessionSeed = RandomNumberGenerator.GetInt32(1, int.MaxValue)
+            };
+
+            if (requestCursor != null)
+            {
+                activeCursor.ProfileKey = rankingProfile.ProfileKey;
+            }
+
+            var candidates = await _postRepository.GetFeedPageAsync(
+                currentId,
+                activeCursor,
+                rankingProfile,
+                limit + 1);
+
+            var hasMore = candidates.Count > limit;
+            var items = hasMore ? candidates.Take(limit).ToList() : candidates;
+
+            await ApplyFeedStoryRingStateAsync(currentId, items);
+
+            PostFeedNextCursorResponse? nextCursor = null;
+            if (hasMore && items.Count > 0)
+            {
+                var lastItem = items.Last();
+                var nextCursorModel = new PostFeedCursorModel
+                {
+                    SnapshotAt = activeCursor.SnapshotAt,
+                    ProfileKey = rankingProfile.ProfileKey,
+                    SessionSeed = activeCursor.SessionSeed,
+                    Score = lastItem.RankingScore,
+                    JitterRank = lastItem.RankingJitterRank,
+                    CreatedAt = lastItem.CreatedAt,
+                    PostId = lastItem.PostId,
+                    WindowCursorCreatedAt = lastItem.RankingWindowCursorCreatedAt,
+                    WindowCursorPostId = lastItem.RankingWindowCursorPostId
+                };
+
+                nextCursor = new PostFeedNextCursorResponse
+                {
+                    Token = PostFeedCursorTokenSerializer.Serialize(nextCursorModel, _feedRankingOptions.CursorSigningKey),
+                    CreatedAt = lastItem.CreatedAt,
+                    PostId = lastItem.PostId
+                };
+            }
+
+            return new PostFeedCursorResponse
+            {
+                Items = items,
+                NextCursor = nextCursor
+            };
         }
 
         private async Task ApplyStoryRingStateForOwnerAsync(Guid currentId, AccountBasicInfoModel? owner)
@@ -673,6 +735,44 @@ namespace CloudM.Application.Services.PostServices
             }
 
             owner.StoryRingState = await _storyRingStateHelper.ResolveAsync(currentId, owner.AccountId);
+        }
+
+        private static int NormalizeFeedLimit(int limit)
+        {
+            if (limit <= 0)
+            {
+                return 10;
+            }
+
+            return limit > 50 ? 50 : limit;
+        }
+
+        private async Task ApplyFeedStoryRingStateAsync(Guid currentId, List<PostFeedModel> feed)
+        {
+            if (feed.Count == 0)
+            {
+                return;
+            }
+
+            var authorIds = feed
+                .Select(x => x.Author.AccountId)
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+            if (authorIds.Count == 0)
+            {
+                return;
+            }
+
+            var storyRingStateMap = await _storyRingStateHelper.ResolveManyAsync(currentId, authorIds);
+
+            foreach (var post in feed)
+            {
+                post.Author.StoryRingState = storyRingStateMap.TryGetValue(post.Author.AccountId, out var ringState)
+                    ? ringState
+                    : StoryRingStateEnum.None;
+            }
         }
 
         private static List<Guid> NormalizePostTagIds(IEnumerable<Guid>? tagIds, Guid currentId)

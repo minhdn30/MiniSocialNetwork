@@ -14,6 +14,7 @@ namespace CloudM.Infrastructure.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
         public static string Unaccent(string text) => throw new NotSupportedException();
         public static double Similarity(string source, string target) => throw new NotSupportedException();
+        public static long HashTextExtended(string text, long seed) => throw new NotSupportedException();
         public virtual DbSet<Account> Accounts { get; set; }
         public virtual DbSet<Role> Roles { get; set; }
         public virtual DbSet<ExternalLogin> ExternalLogins { get; set; }
@@ -136,6 +137,8 @@ namespace CloudM.Infrastructure.Data
                 .HasName("immutable_unaccent");
             modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(Similarity), new[] { typeof(string), typeof(string) })!)
                 .HasName("similarity");
+            modelBuilder.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(HashTextExtended), new[] { typeof(string), typeof(long) })!)
+                .HasName("hashtextextended");
 
 
 
@@ -373,6 +376,14 @@ namespace CloudM.Infrastructure.Data
             // =====================
             modelBuilder.Entity<PostReact>()
                 .HasKey(r => new { r.PostId, r.AccountId });
+
+            modelBuilder.Entity<PostReact>()
+                .HasIndex(r => new { r.AccountId, r.CreatedAt, r.PostId })
+                .HasDatabaseName("IX_PostReacts_Account_CreatedAt_PostId");
+
+            modelBuilder.Entity<PostReact>()
+                .HasIndex(r => new { r.PostId, r.CreatedAt })
+                .HasDatabaseName("IX_PostReacts_Post_CreatedAt");
 
             // PostReact → Account
             modelBuilder.Entity<PostReact>()
@@ -623,6 +634,10 @@ namespace CloudM.Infrastructure.Data
             modelBuilder.Entity<Comment>()
                 .HasIndex(c => c.AccountId)
                 .HasDatabaseName("IX_Comment_AccountId");
+
+            modelBuilder.Entity<Comment>()
+                .HasIndex(c => new { c.AccountId, c.CreatedAt, c.PostId })
+                .HasDatabaseName("IX_Comment_Account_CreatedAt_PostId");
 
             // Comment → Account
             modelBuilder.Entity<Comment>()

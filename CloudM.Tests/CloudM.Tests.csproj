@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CloudM.API\CloudM.API.csproj" />
     <ProjectReference Include="..\CloudM.Application\CloudM.Application.csproj" />
     <ProjectReference Include="..\CloudM.Domain\CloudM.Domain.csproj" />
     <ProjectReference Include="..\CloudM.Infrastructure\CloudM.Infrastructure.csproj" />

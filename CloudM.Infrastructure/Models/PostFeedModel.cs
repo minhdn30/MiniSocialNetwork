@@ -26,6 +26,14 @@ namespace CloudM.Infrastructure.Models
         public int ReplyCount { get; set; }
         [JsonIgnore]
         public bool IsFollowedAuthor { get; set; }
+        [JsonIgnore]
+        public decimal RankingScore { get; set; }
+        [JsonIgnore]
+        public long RankingJitterRank { get; set; }
+        [JsonIgnore]
+        public DateTime? RankingWindowCursorCreatedAt { get; set; }
+        [JsonIgnore]
+        public Guid? RankingWindowCursorPostId { get; set; }
 
     }
 }
