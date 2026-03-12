@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace CloudM.Infrastructure.Services.Cloudinary
 {
@@ -16,10 +17,12 @@ namespace CloudM.Infrastructure.Services.Cloudinary
         private readonly CloudinaryDotNet.Cloudinary _cloudinary;
         private readonly ICloudinaryDeleteBackgroundQueue _deleteQueue;
         private readonly string _folderName;
+        private readonly ILogger<CloudinaryService> _logger;
 
         public CloudinaryService(
             IConfiguration config,
-            ICloudinaryDeleteBackgroundQueue deleteQueue)
+            ICloudinaryDeleteBackgroundQueue deleteQueue,
+            ILogger<CloudinaryService> logger)
         {
             var account = new CloudinaryDotNet.Account(
                 config["Cloudinary:CloudName"],
@@ -30,6 +33,7 @@ namespace CloudM.Infrastructure.Services.Cloudinary
             _cloudinary = new CloudinaryDotNet.Cloudinary(account);
             _deleteQueue = deleteQueue;
             _folderName = config["Cloudinary:FolderName"] ?? "CloudM";
+            _logger = logger;
         }
         public async Task<string?> UploadImageAsync(IFormFile file)
         {
@@ -159,7 +163,7 @@ namespace CloudM.Infrastructure.Services.Cloudinary
                 return false;
             }
 
-            if (_deleteQueue.Enqueue(normalizedPublicId, type))
+            if (TryEnqueueDeleteMedia(normalizedPublicId, type))
             {
                 return true;
             }
@@ -177,6 +181,28 @@ namespace CloudM.Infrastructure.Services.Cloudinary
             }
         }
 
+        public bool TryQueueDeleteMedia(string publicId, MediaTypeEnum type)
+        {
+            var normalizedPublicId = (publicId ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedPublicId))
+            {
+                return false;
+            }
+
+            return TryEnqueueDeleteMedia(normalizedPublicId, type, logFailure: true);
+        }
+
+        public bool TryQueueDeleteMediaByUrl(string? mediaUrl, MediaTypeEnum type)
+        {
+            var publicId = GetPublicIdFromUrl(mediaUrl ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(publicId))
+            {
+                return false;
+            }
+
+            return TryQueueDeleteMedia(publicId, type);
+        }
+
         internal static DeletionParams BuildDeletionParams(string publicId, MediaTypeEnum type)
         {
             var deletionParams = new DeletionParams(publicId);
@@ -191,6 +217,24 @@ namespace CloudM.Infrastructure.Services.Cloudinary
             }
 
             return deletionParams;
+        }
+
+        private bool TryEnqueueDeleteMedia(string normalizedPublicId, MediaTypeEnum type, bool logFailure = false)
+        {
+            if (_deleteQueue.Enqueue(normalizedPublicId, type))
+            {
+                return true;
+            }
+
+            if (logFailure)
+            {
+                _logger.LogWarning(
+                    "Failed to enqueue Cloudinary delete request for PublicId {PublicId} with MediaType {MediaType}",
+                    normalizedPublicId,
+                    type);
+            }
+
+            return false;
         }
 
     }

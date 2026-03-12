@@ -4,6 +4,7 @@ using CloudM.Application.DTOs.CommonDTOs;
 using CloudM.Application.DTOs.ConversationDTOs;
 using CloudM.Application.DTOs.ConversationMemberDTOs;
 using CloudM.Application.DTOs.MessageDTOs;
+using CloudM.Application.Helpers.CloudinaryHelpers;
 using CloudM.Application.Helpers.StoryHelpers;
 using CloudM.Application.Services.RealtimeServices;
 using CloudM.Domain.Entities;
@@ -178,6 +179,8 @@ namespace CloudM.Application.Services.ConversationServices
                 if (string.IsNullOrWhiteSpace(uploadedGroupAvatarUrl))
                     throw new InternalServerException("Group avatar upload failed.");
             }
+            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+            cleanupPlan.AddRollbackDeleteByUrl(uploadedGroupAvatarUrl, MediaTypeEnum.Image);
 
             var nowUtc = DateTime.UtcNow;
             var conversation = new Conversation
@@ -240,14 +243,7 @@ namespace CloudM.Application.Services.ConversationServices
                 },
                 async () =>
                 {
-                    if (string.IsNullOrWhiteSpace(uploadedGroupAvatarUrl))
-                        return;
-
-                    var publicId = _cloudinaryService.GetPublicIdFromUrl(uploadedGroupAvatarUrl);
-                    if (!string.IsNullOrWhiteSpace(publicId))
-                    {
-                        await _cloudinaryService.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
-                    }
+                    await cleanupPlan.ExecuteRollbackAsync();
                 });
 
             var accountMap = allAccounts.ToDictionary(a => a.AccountId, a => a);
@@ -344,6 +340,8 @@ namespace CloudM.Application.Services.ConversationServices
             {
                 nextConversationAvatar = null;
             }
+            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+            cleanupPlan.AddRollbackDeleteByUrl(uploadedConversationAvatarUrl, MediaTypeEnum.Image);
 
             var hasConversationAvatarChanged =
                 !string.Equals(conversation.ConversationAvatar, nextConversationAvatar, StringComparison.Ordinal);
@@ -402,32 +400,15 @@ namespace CloudM.Application.Services.ConversationServices
                 },
                 async () =>
                 {
-                    if (string.IsNullOrWhiteSpace(uploadedConversationAvatarUrl))
-                        return;
-
-                    var newAvatarPublicId = _cloudinaryService.GetPublicIdFromUrl(uploadedConversationAvatarUrl);
-                    if (!string.IsNullOrWhiteSpace(newAvatarPublicId))
-                    {
-                        await _cloudinaryService.DeleteMediaAsync(newAvatarPublicId, MediaTypeEnum.Image);
-                    }
+                    await cleanupPlan.ExecuteRollbackAsync();
                 });
 
             if (hasConversationAvatarChanged &&
                 !string.IsNullOrWhiteSpace(oldConversationAvatar) &&
                 !string.Equals(oldConversationAvatar, conversation.ConversationAvatar, StringComparison.Ordinal))
             {
-                try
-                {
-                    var oldAvatarPublicId = _cloudinaryService.GetPublicIdFromUrl(oldConversationAvatar);
-                    if (!string.IsNullOrWhiteSpace(oldAvatarPublicId))
-                    {
-                        await _cloudinaryService.DeleteMediaAsync(oldAvatarPublicId, MediaTypeEnum.Image);
-                    }
-                }
-                catch
-                {
-                    // Database transaction is already committed; old avatar cleanup should not break the API response.
-                }
+                cleanupPlan.AddPostCommitDeleteByUrl(oldConversationAvatar, MediaTypeEnum.Image);
+                await cleanupPlan.ExecutePostCommitAsync();
             }
 
             var muteMap = await _conversationMemberRepository.GetMembersWithMuteStatusAsync(conversation.ConversationId);

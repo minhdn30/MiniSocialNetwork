@@ -1630,13 +1630,35 @@ namespace CloudM.Tests.Services
             var messageId = Guid.NewGuid();
             var conversationId = Guid.NewGuid();
             var accountId = Guid.NewGuid();
+            var mediaUrl = "https://res.cloudinary.com/demo/image/upload/v1/message-media.jpg";
+            var thumbnailUrl = "https://res.cloudinary.com/demo/image/upload/v1/message-thumb.jpg";
             var message = TestDataFactory.CreateMessage(messageId: messageId, senderId: accountId, conversationId: conversationId);
             var conversation = TestDataFactory.CreateConversation(conversationId: conversationId, isGroup: true);
+            var messageMedias = new List<MessageMedia>
+            {
+                new()
+                {
+                    MessageId = messageId,
+                    MediaUrl = mediaUrl,
+                    MediaType = MediaTypeEnum.Image,
+                    ThumbnailUrl = thumbnailUrl
+                }
+            };
 
             _messageRepositoryMock.Setup(x => x.GetMessageByIdAsync(messageId))
                 .ReturnsAsync(message);
             _conversationRepositoryMock.Setup(x => x.GetConversationByIdAsync(conversationId))
                 .ReturnsAsync(conversation);
+            _messageMediaRepositoryMock.Setup(x => x.GetByMessageIdAsync(messageId))
+                .ReturnsAsync(messageMedias);
+            _cloudinaryServiceMock.Setup(x => x.GetPublicIdFromUrl(mediaUrl))
+                .Returns("message-media");
+            _cloudinaryServiceMock.Setup(x => x.GetPublicIdFromUrl(thumbnailUrl))
+                .Returns("message-thumb");
+            _cloudinaryServiceMock.Setup(x => x.TryQueueDeleteMedia("message-media", MediaTypeEnum.Image))
+                .Returns(true);
+            _cloudinaryServiceMock.Setup(x => x.TryQueueDeleteMedia("message-thumb", MediaTypeEnum.Image))
+                .Returns(true);
 
             // Act
             var result = await _messageService.RecallMessageAsync(messageId, accountId);
@@ -1649,6 +1671,8 @@ namespace CloudM.Tests.Services
             message.RecalledAt.Should().NotBeNull();
 
             _unitOfWorkMock.Verify(x => x.CommitAsync(), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.TryQueueDeleteMedia("message-media", MediaTypeEnum.Image), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.TryQueueDeleteMedia("message-thumb", MediaTypeEnum.Image), Times.Once);
             _realtimeServiceMock.Verify(x => x.NotifyMessageRecalledAsync(
                 conversationId,
                 messageId,

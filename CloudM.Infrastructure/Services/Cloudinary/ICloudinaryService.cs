@@ -11,6 +11,8 @@ namespace CloudM.Infrastructure.Services.Cloudinary
         Task<string?> UploadRawFileAsync(IFormFile file);
         string? GetPublicIdFromUrl(string imageUrl);
         string? GetDownloadUrl(string mediaUrl, MediaTypeEnum type, string? fileName = null);
+        bool TryQueueDeleteMedia(string publicId, MediaTypeEnum type);
+        bool TryQueueDeleteMediaByUrl(string? mediaUrl, MediaTypeEnum type);
         Task<bool> DeleteMediaAsync(string publicId, MediaTypeEnum type);
     }
 }

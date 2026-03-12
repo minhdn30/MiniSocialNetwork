@@ -1,5 +1,6 @@
 using AutoMapper;
 using CloudM.Application.DTOs.CommonDTOs;
+using CloudM.Application.Helpers.CloudinaryHelpers;
 using CloudM.Application.DTOs.StoryDTOs;
 using CloudM.Application.Helpers.FileTypeHelpers;
 using CloudM.Domain.Entities;
@@ -415,6 +416,11 @@ namespace CloudM.Application.Services.StoryServices
             var normalizedTextContent = string.IsNullOrWhiteSpace(request.TextContent)
                 ? null
                 : request.TextContent.Trim();
+            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+            if (!string.IsNullOrWhiteSpace(uploadedMediaUrl) && uploadedMediaType.HasValue)
+            {
+                cleanupPlan.AddRollbackDeleteByUrl(uploadedMediaUrl, uploadedMediaType.Value);
+            }
 
             return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
@@ -437,21 +443,7 @@ namespace CloudM.Application.Services.StoryServices
 
                 await _storyRepository.AddStoryAsync(story);
                 return _mapper.Map<StoryDetailResponse>(story);
-            }, async () =>
-            {
-                if (string.IsNullOrWhiteSpace(uploadedMediaUrl) || !uploadedMediaType.HasValue)
-                {
-                    return;
-                }
-
-                var publicId = _cloudinaryService.GetPublicIdFromUrl(uploadedMediaUrl);
-                if (string.IsNullOrWhiteSpace(publicId))
-                {
-                    return;
-                }
-
-                await _cloudinaryService.DeleteMediaAsync(publicId, uploadedMediaType.Value);
-            });
+            }, cleanupPlan.ExecuteRollbackAsync);
         }
 
         public async Task<StoryDetailResponse> UpdateStoryPrivacyAsync(Guid storyId, Guid currentId, StoryPrivacyUpdateRequest request)
@@ -504,6 +496,7 @@ namespace CloudM.Application.Services.StoryServices
             }
 
             var deletedGroupCoverUrls = new List<string?>();
+            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
 
             await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
@@ -524,7 +517,7 @@ namespace CloudM.Application.Services.StoryServices
                 await _unitOfWork.CommitAsync();
 
                 var candidateGroups = await _storyHighlightRepository
-                    .GetGroupsByOwnerContainingStoryAsync(currentId, storyId);
+                    .GetGroupsByOwnerContainingStoryAsync(currentId, storyId) ?? new List<StoryHighlightGroup>();
 
                 foreach (var group in candidateGroups)
                 {
@@ -541,29 +534,12 @@ namespace CloudM.Application.Services.StoryServices
                 return true;
             });
 
-            var groupCoverPublicIds = deletedGroupCoverUrls
-                .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Select(url => _cloudinaryService.GetPublicIdFromUrl(url!))
-                .Where(publicId => !string.IsNullOrWhiteSpace(publicId))
-                .Distinct()
-                .ToList();
-
-            if (groupCoverPublicIds.Count == 0)
+            foreach (var coverUrl in deletedGroupCoverUrls)
             {
-                return;
+                cleanupPlan.AddPostCommitDeleteByUrl(coverUrl, MediaTypeEnum.Image);
             }
 
-            foreach (var publicId in groupCoverPublicIds)
-            {
-                try
-                {
-                    await _cloudinaryService.DeleteMediaAsync(publicId!, MediaTypeEnum.Image);
-                }
-                catch
-                {
-                    // Best-effort cleanup for orphaned group cover images.
-                }
-            }
+            await cleanupPlan.ExecutePostCommitAsync();
         }
     }
 }

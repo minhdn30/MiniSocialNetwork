@@ -212,8 +212,8 @@ namespace CloudM.Tests.Services
                 .Setup(x => x.GetPublicIdFromUrl(group.CoverImageUrl!))
                 .Returns("old-cover");
             _cloudinaryServiceMock
-                .Setup(x => x.DeleteMediaAsync("old-cover", MediaTypeEnum.Image))
-                .ReturnsAsync(true);
+                .Setup(x => x.TryQueueDeleteMedia("old-cover", MediaTypeEnum.Image))
+                .Returns(true);
 
             // Act
             await _service.RemoveItemAsync(currentId, groupId, storyId);
@@ -222,7 +222,7 @@ namespace CloudM.Tests.Services
             _storyHighlightRepositoryMock.Verify(x => x.RemoveItemAsync(groupId, storyId), Times.Once);
             _storyHighlightRepositoryMock.Verify(x => x.TryRemoveGroupIfEffectivelyEmptyAsync(groupId, currentId), Times.Once);
             _storyHighlightRepositoryMock.Verify(x => x.UpdateGroupAsync(It.IsAny<StoryHighlightGroup>()), Times.Never);
-            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync("old-cover", MediaTypeEnum.Image), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.TryQueueDeleteMedia("old-cover", MediaTypeEnum.Image), Times.Once);
         }
 
         [Fact]

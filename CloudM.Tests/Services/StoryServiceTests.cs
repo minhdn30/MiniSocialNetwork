@@ -593,7 +593,9 @@ namespace CloudM.Tests.Services
             {
                 StoryId = storyId,
                 AccountId = currentId,
-                IsDeleted = false
+                IsDeleted = false,
+                ContentType = StoryContentTypeEnum.Image,
+                MediaUrl = "https://res.cloudinary.com/demo/image/upload/v1/story-media.jpg"
             };
 
             _storyRepositoryMock
@@ -633,7 +635,9 @@ namespace CloudM.Tests.Services
             {
                 StoryId = storyId,
                 AccountId = currentId,
-                IsDeleted = false
+                IsDeleted = false,
+                ContentType = StoryContentTypeEnum.Image,
+                MediaUrl = "https://res.cloudinary.com/demo/image/upload/v1/story-media.jpg"
             };
 
             var group = new StoryHighlightGroup
@@ -661,8 +665,8 @@ namespace CloudM.Tests.Services
                 .Setup(x => x.GetPublicIdFromUrl(group.CoverImageUrl!))
                 .Returns("group-cover");
             _cloudinaryServiceMock
-                .Setup(x => x.DeleteMediaAsync("group-cover", MediaTypeEnum.Image))
-                .ReturnsAsync(true);
+                .Setup(x => x.TryQueueDeleteMedia("group-cover", MediaTypeEnum.Image))
+                .Returns(true);
 
             _unitOfWorkMock
                 .Setup(x => x.ExecuteInTransactionAsync(
@@ -679,7 +683,7 @@ namespace CloudM.Tests.Services
             _storyHighlightRepositoryMock.Verify(
                 x => x.TryRemoveGroupIfEffectivelyEmptyAsync(group.StoryHighlightGroupId, currentId),
                 Times.Once);
-            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync("group-cover", MediaTypeEnum.Image), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.TryQueueDeleteMedia("group-cover", MediaTypeEnum.Image), Times.Once);
         }
 
         [Fact]

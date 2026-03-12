@@ -4,6 +4,7 @@ using CloudM.Application.DTOs.CommonDTOs;
 using CloudM.Application.DTOs.MessageDTOs;
 using CloudM.Application.DTOs.MessageMediaDTOs;
 using CloudM.Application.Helpers.FileTypeHelpers;
+using CloudM.Application.Helpers.CloudinaryHelpers;
 using CloudM.Application.Helpers.ValidationHelpers;
 using CloudM.Infrastructure.Services.Cloudinary;
 using CloudM.Application.Services.ConversationServices;
@@ -149,49 +150,59 @@ namespace CloudM.Application.Services.MessageServices
             if (await _accountBlockRepository.IsBlockedEitherWayAsync(senderId, request.ReceiverId))
                 throw new BadRequestException("This user is currently unavailable.");
             
-            var now = DateTime.UtcNow;
+	            var now = DateTime.UtcNow;
 
-            // === media upload phase (before transaction) ===, track uploaded URLs for cleanup) ===
-            var uploadedMedia = new List<(string url, MediaTypeEnum type)>();
-            var mediaEntities = new List<MessageMedia>();
-            
-            if (request.MediaFiles != null && request.MediaFiles.Any())
-            {
-                foreach (var file in request.MediaFiles)
-                {
-                    var detectedType = await _fileTypeDetector.GetMediaTypeAsync(file);
-                    if (detectedType == null) continue;
-                    
-                    string? url = null;
-                    switch(detectedType.Value)
-                    {
-                        case MediaTypeEnum.Image:
-                            url = await _cloudinaryService.UploadImageAsync(file);
-                            break;
-                        case MediaTypeEnum.Video:
-                            url = await _cloudinaryService.UploadVideoAsync(file);
-                            break;
-                        case MediaTypeEnum.Document:
-                            url = await _cloudinaryService.UploadRawFileAsync(file);
-                            break;
-                        default:
-                            continue; 
-                    };
-                    
-                    if (!string.IsNullOrEmpty(url))
-                    {
-                        uploadedMedia.Add((url, detectedType.Value));
-                        mediaEntities.Add(new MessageMedia
-                        {
-                            MediaUrl = url,
-                            MediaType = detectedType.Value,
-                            FileName = file.FileName,
-                            FileSize = file.Length,
-                            CreatedAt = now
-                        });
-                    }
-                }
-            }
+	            // === media upload phase (before transaction) ===, track uploaded URLs for cleanup) ===
+	            var uploadedMedia = new List<(string url, MediaTypeEnum type)>();
+	            var mediaEntities = new List<MessageMedia>();
+	            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+
+	            try
+	            {
+	                if (request.MediaFiles != null && request.MediaFiles.Any())
+	                {
+	                    foreach (var file in request.MediaFiles)
+	                    {
+	                        var detectedType = await _fileTypeDetector.GetMediaTypeAsync(file);
+	                        if (detectedType == null) continue;
+
+	                        string? url = null;
+	                        switch(detectedType.Value)
+	                        {
+	                            case MediaTypeEnum.Image:
+	                                url = await _cloudinaryService.UploadImageAsync(file);
+	                                break;
+	                            case MediaTypeEnum.Video:
+	                                url = await _cloudinaryService.UploadVideoAsync(file);
+	                                break;
+	                            case MediaTypeEnum.Document:
+	                                url = await _cloudinaryService.UploadRawFileAsync(file);
+	                                break;
+	                            default:
+	                                continue;
+	                        };
+
+	                        if (!string.IsNullOrEmpty(url))
+	                        {
+	                            cleanupPlan.AddRollbackDeleteByUrl(url, detectedType.Value);
+	                            uploadedMedia.Add((url, detectedType.Value));
+	                            mediaEntities.Add(new MessageMedia
+	                            {
+	                                MediaUrl = url,
+	                                MediaType = detectedType.Value,
+	                                FileName = file.FileName,
+	                                FileSize = file.Length,
+	                                CreatedAt = now
+	                            });
+	                        }
+	                    }
+	                }
+	            }
+	            catch
+	            {
+	                await cleanupPlan.ExecuteRollbackAsync();
+	                throw;
+	            }
             
             // === database transaction phase ===
             return await _unitOfWork.ExecuteInTransactionAsync(
@@ -285,17 +296,7 @@ namespace CloudM.Application.Services.MessageServices
                     return result;
                 },
                 // Cleanup callback: delete orphaned cloud media if DB transaction fails
-                async () =>
-                {
-                    var cleanupTasks = uploadedMedia.Select(m =>
-                    {
-                        var publicId = _cloudinaryService.GetPublicIdFromUrl(m.url);
-                        return !string.IsNullOrEmpty(publicId) 
-                            ? _cloudinaryService.DeleteMediaAsync(publicId, m.type)
-                            : Task.CompletedTask;
-                    });
-                    await Task.WhenAll(cleanupTasks);
-                }
+                cleanupPlan.ExecuteRollbackAsync
             );
         }
 
@@ -346,50 +347,60 @@ namespace CloudM.Application.Services.MessageServices
                 mentionedAccountIds = mentionSanitizeResult.MentionedAccountIds;
             }
             
-            var now = DateTime.UtcNow;
+	            var now = DateTime.UtcNow;
 
-            // === media upload phase (before transaction) ===
-            var uploadedMedia = new List<(string url, MediaTypeEnum type)>();
-            var mediaEntities = new List<MessageMedia>();
-            
-            if (request.MediaFiles != null && request.MediaFiles.Any())
-            {
-                foreach (var file in request.MediaFiles)
-                {
-                    var detectedType = await _fileTypeDetector.GetMediaTypeAsync(file);
-                    if (detectedType == null)
-                        continue;
-                    
-                    string? url = null;
-                    switch(detectedType.Value)
-                    {
-                        case MediaTypeEnum.Image:
-                            url = await _cloudinaryService.UploadImageAsync(file);
-                            break;
-                        case MediaTypeEnum.Video:
-                            url = await _cloudinaryService.UploadVideoAsync(file);
-                            break;
-                        case MediaTypeEnum.Document:
-                            url = await _cloudinaryService.UploadRawFileAsync(file);
-                            break;
-                        default:
-                            continue; 
-                    };
-                    
-                    if (!string.IsNullOrEmpty(url))
-                    {
-                        uploadedMedia.Add((url, detectedType.Value));
-                        mediaEntities.Add(new MessageMedia
-                        {
-                            MediaUrl = url,
-                            MediaType = detectedType.Value,
-                            FileName = file.FileName,
-                            FileSize = file.Length,
-                            CreatedAt = now
-                        });
-                    }
-                }
-            }
+	            // === media upload phase (before transaction) ===
+	            var uploadedMedia = new List<(string url, MediaTypeEnum type)>();
+	            var mediaEntities = new List<MessageMedia>();
+	            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+
+	            try
+	            {
+	                if (request.MediaFiles != null && request.MediaFiles.Any())
+	                {
+	                    foreach (var file in request.MediaFiles)
+	                    {
+	                        var detectedType = await _fileTypeDetector.GetMediaTypeAsync(file);
+	                        if (detectedType == null)
+	                            continue;
+
+	                        string? url = null;
+	                        switch(detectedType.Value)
+	                        {
+	                            case MediaTypeEnum.Image:
+	                                url = await _cloudinaryService.UploadImageAsync(file);
+	                                break;
+	                            case MediaTypeEnum.Video:
+	                                url = await _cloudinaryService.UploadVideoAsync(file);
+	                                break;
+	                            case MediaTypeEnum.Document:
+	                                url = await _cloudinaryService.UploadRawFileAsync(file);
+	                                break;
+	                            default:
+	                                continue;
+	                        };
+
+	                        if (!string.IsNullOrEmpty(url))
+	                        {
+	                            cleanupPlan.AddRollbackDeleteByUrl(url, detectedType.Value);
+	                            uploadedMedia.Add((url, detectedType.Value));
+	                            mediaEntities.Add(new MessageMedia
+	                            {
+	                                MediaUrl = url,
+	                                MediaType = detectedType.Value,
+	                                FileName = file.FileName,
+	                                FileSize = file.Length,
+	                                CreatedAt = now
+	                            });
+	                        }
+	                    }
+	                }
+	            }
+	            catch
+	            {
+	                await cleanupPlan.ExecuteRollbackAsync();
+	                throw;
+	            }
             
             // === database transaction phase ===
             return await _unitOfWork.ExecuteInTransactionAsync(
@@ -467,17 +478,7 @@ namespace CloudM.Application.Services.MessageServices
                     return result;
                 },
                 // cleanup callback: delete orphaned cloud media if db transaction fails
-                async () =>
-                {
-                    var cleanupTasks = uploadedMedia.Select(m =>
-                    {
-                        var publicId = _cloudinaryService.GetPublicIdFromUrl(m.url);
-                        return !string.IsNullOrEmpty(publicId) 
-                            ? _cloudinaryService.DeleteMediaAsync(publicId, m.type)
-                            : Task.CompletedTask;
-                    });
-                    await Task.WhenAll(cleanupTasks);
-                }
+                cleanupPlan.ExecuteRollbackAsync
             );
         }
 
@@ -532,6 +533,14 @@ namespace CloudM.Application.Services.MessageServices
                     throw new BadRequestException("This conversation is unavailable.");
             }
 
+            var messageMedias = await _messageMediaRepository.GetByMessageIdAsync(messageId) ?? new List<MessageMedia>();
+            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+            foreach (var media in messageMedias)
+            {
+                cleanupPlan.AddPostCommitDeleteByUrl(media.MediaUrl, media.MediaType);
+                cleanupPlan.AddPostCommitDeleteByUrl(media.ThumbnailUrl, MediaTypeEnum.Image);
+            }
+
             message.IsRecalled = true;
             message.RecalledAt = DateTime.UtcNow;
 
@@ -568,6 +577,7 @@ namespace CloudM.Application.Services.MessageServices
             }
 
             await _unitOfWork.CommitAsync();
+            await cleanupPlan.ExecutePostCommitAsync();
 
             await _realtimeService.NotifyMessageRecalledAsync(
                 message.ConversationId,

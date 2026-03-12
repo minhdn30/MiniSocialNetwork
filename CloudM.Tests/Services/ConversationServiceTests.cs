@@ -817,6 +817,9 @@ namespace CloudM.Tests.Services
             _cloudinaryServiceMock
                 .Setup(x => x.GetPublicIdFromUrl(oldAvatarUrl))
                 .Returns(oldPublicId);
+            _cloudinaryServiceMock
+                .Setup(x => x.TryQueueDeleteMedia(oldPublicId, MediaTypeEnum.Image))
+                .Returns(true);
 
             _unitOfWorkMock.Setup(x => x.ExecuteInTransactionAsync(
                     It.IsAny<Func<Task<bool>>>(),
@@ -837,7 +840,7 @@ namespace CloudM.Tests.Services
             conversation.ConversationAvatar.Should().Be(newAvatarUrl);
             _conversationRepositoryMock.Verify(x => x.UpdateConversationAsync(It.IsAny<Conversation>()), Times.Once);
             _messageRepositoryMock.Verify(x => x.AddMessageAsync(It.IsAny<Message>()), Times.Once);
-            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync(oldPublicId, MediaTypeEnum.Image), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.TryQueueDeleteMedia(oldPublicId, MediaTypeEnum.Image), Times.Once);
             _realtimeServiceMock.Verify(x => x.NotifyGroupConversationInfoUpdatedAsync(
                 conversationId,
                 "New Name",
@@ -901,6 +904,9 @@ namespace CloudM.Tests.Services
             _cloudinaryServiceMock
                 .Setup(x => x.GetPublicIdFromUrl(newAvatarUrl))
                 .Returns(newPublicId);
+            _cloudinaryServiceMock
+                .Setup(x => x.DeleteMediaAsync(newPublicId, MediaTypeEnum.Image))
+                .ReturnsAsync(true);
 
             _conversationRepositoryMock
                 .Setup(x => x.UpdateConversationAsync(It.IsAny<Conversation>()))
@@ -991,6 +997,9 @@ namespace CloudM.Tests.Services
             _cloudinaryServiceMock
                 .Setup(x => x.GetPublicIdFromUrl(oldAvatarUrl))
                 .Returns(oldPublicId);
+            _cloudinaryServiceMock
+                .Setup(x => x.TryQueueDeleteMedia(oldPublicId, MediaTypeEnum.Image))
+                .Returns(true);
             _unitOfWorkMock.Setup(x => x.ExecuteInTransactionAsync(
                     It.IsAny<Func<Task<bool>>>(),
                     It.IsAny<Func<Task>?>()))
@@ -1007,7 +1016,7 @@ namespace CloudM.Tests.Services
             // Assert
             conversation.ConversationAvatar.Should().BeNull();
             _conversationRepositoryMock.Verify(x => x.UpdateConversationAsync(It.IsAny<Conversation>()), Times.Once);
-            _cloudinaryServiceMock.Verify(x => x.DeleteMediaAsync(oldPublicId, MediaTypeEnum.Image), Times.Once);
+            _cloudinaryServiceMock.Verify(x => x.TryQueueDeleteMedia(oldPublicId, MediaTypeEnum.Image), Times.Once);
             _realtimeServiceMock.Verify(x => x.NotifyGroupConversationInfoUpdatedAsync(
                 conversationId,
                 "Old Name",

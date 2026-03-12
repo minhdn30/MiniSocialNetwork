@@ -10,6 +10,7 @@ using CloudM.Domain.Exceptions;
 using CloudM.Application.Helpers.FileTypeHelpers;
 using CloudM.Application.Helpers.StoryHelpers;
 using CloudM.Application.Helpers.SwaggerHelpers;
+using CloudM.Application.Helpers.CloudinaryHelpers;
 using CloudM.Domain.Helpers;
 using CloudM.Infrastructure.Services.Cloudinary;
 using CloudM.Application.Services.NotificationServices;
@@ -230,6 +231,7 @@ namespace CloudM.Application.Services.PostServices
 
             if (request.MediaFiles != null && request.MediaFiles.Any())
             {
+                var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
                 // First, validate all file types synchronously (fast operation)
                 var mediaWithTypes = new List<(Microsoft.AspNetCore.Http.IFormFile File, MediaTypeEnum Type, int Index)>();
                 for (int i = 0; i < request.MediaFiles.Count; i++)
@@ -247,23 +249,33 @@ namespace CloudM.Application.Services.PostServices
                 var uploadTasks = mediaWithTypes.Select(async item =>
                 {
                     var url = await _cloudinaryService.UploadImageAsync(item.File);
+                    cleanupPlan.AddRollbackDeleteByUrl(url, MediaTypeEnum.Image);
                     return (Url: url, Type: item.Type, Index: item.Index);
                 });
 
-                var results = await Task.WhenAll(uploadTasks);
-
-                // Validate all uploads succeeded
-                foreach (var result in results)
+                (string? Url, MediaTypeEnum Type, int Index)[] results;
+                try
                 {
-                    if (string.IsNullOrEmpty(result.Url))
-                    {
-                        throw new BadRequestException($"Failed to upload image at position {result.Index + 1}.");
-                    }
-                    validResults.Add((result.Url!, result.Type, result.Index));
-                }
+                    results = await Task.WhenAll(uploadTasks);
 
-                if (validResults.Count != request.MediaFiles.Count)
-                    throw new BadRequestException("Some images failed to upload or are invalid. Videos are not supported.");
+                    // Validate all uploads succeeded
+                    foreach (var result in results)
+                    {
+                        if (string.IsNullOrEmpty(result.Url))
+                        {
+                            throw new BadRequestException($"Failed to upload image at position {result.Index + 1}.");
+                        }
+                        validResults.Add((result.Url!, result.Type, result.Index));
+                    }
+
+                    if (validResults.Count != request.MediaFiles.Count)
+                        throw new BadRequestException("Some images failed to upload or are invalid. Videos are not supported.");
+                }
+                catch
+                {
+                    await cleanupPlan.ExecuteRollbackAsync();
+                    throw;
+                }
 
                 // Map to domain entities (ordered by original index)
                 var now = DateTime.UtcNow;
@@ -344,15 +356,7 @@ namespace CloudM.Application.Services.PostServices
                         return result;
                     },
                     // Cleanup callback: delete orphaned images from Cloudinary if DB fail
-                    async () =>
-                    {
-                        var cleanupTasks = uploadedUrls.Select(url =>
-                        {
-                            var pid = _cloudinaryService.GetPublicIdFromUrl(url);
-                            return !string.IsNullOrEmpty(pid) ? _cloudinaryService.DeleteMediaAsync(pid, MediaTypeEnum.Image) : Task.CompletedTask;
-                        });
-                        await Task.WhenAll(cleanupTasks);
-                    }
+                    cleanupPlan.ExecuteRollbackAsync
                 );
             }
 

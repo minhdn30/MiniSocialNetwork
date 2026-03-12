@@ -13,6 +13,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
     {
         Task<Post?> GetPostById(Guid postId);
         Task<Post?> GetPostBasicInfoById(Guid postId);
+        Task<List<PostMedia>> GetPostMediasByPostIdAsync(Guid postId);
         Task<Post?> GetPostForUpdateContent(Guid postId);
         //main detail
         Task<PostDetailModel?> GetPostDetailByPostId(Guid postId, Guid currentId);

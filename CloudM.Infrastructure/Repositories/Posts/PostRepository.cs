@@ -40,6 +40,23 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.PostId == postId && !p.IsDeleted && p.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId));
         }
+        public async Task<List<PostMedia>> GetPostMediasByPostIdAsync(Guid postId)
+        {
+            return await _context.PostMedias
+                .AsNoTracking()
+                .Where(m => m.PostId == postId)
+                .OrderBy(m => m.CreatedAt)
+                .ThenBy(m => m.MediaId)
+                .Select(m => new PostMedia
+                {
+                    MediaId = m.MediaId,
+                    PostId = m.PostId,
+                    MediaUrl = m.MediaUrl,
+                    Type = m.Type,
+                    CreatedAt = m.CreatedAt
+                })
+                .ToListAsync();
+        }
         public async Task<Post?> GetPostForUpdateContent(Guid postId)
         {
              return await _context.Posts

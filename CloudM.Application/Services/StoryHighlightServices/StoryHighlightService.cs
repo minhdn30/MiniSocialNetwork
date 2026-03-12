@@ -1,5 +1,6 @@
 using CloudM.Application.DTOs.CommonDTOs;
 using CloudM.Application.DTOs.StoryHighlightDTOs;
+using CloudM.Application.Helpers.CloudinaryHelpers;
 using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
@@ -173,6 +174,8 @@ namespace CloudM.Application.Services.StoryHighlightServices
                     throw new BadRequestException("Failed to upload highlight cover image.");
                 }
             }
+            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+            cleanupPlan.AddRollbackDeleteByUrl(uploadedCoverUrl, MediaTypeEnum.Image);
 
             return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
@@ -210,21 +213,7 @@ namespace CloudM.Application.Services.StoryHighlightServices
                     CreatedAt = group.CreatedAt,
                     UpdatedAt = group.UpdatedAt
                 };
-            }, async () =>
-            {
-                if (string.IsNullOrWhiteSpace(uploadedCoverUrl))
-                {
-                    return;
-                }
-
-                var publicId = _cloudinaryService.GetPublicIdFromUrl(uploadedCoverUrl);
-                if (string.IsNullOrWhiteSpace(publicId))
-                {
-                    return;
-                }
-
-                await _cloudinaryService.DeleteMediaAsync(publicId, MediaTypeEnum.Image);
-            });
+            }, cleanupPlan.ExecuteRollbackAsync);
         }
 
         public async Task<StoryHighlightGroupMutationResponse> AddItemsAsync(Guid currentId, Guid groupId, StoryHighlightAddItemsRequest request)
@@ -355,9 +344,6 @@ namespace CloudM.Application.Services.StoryHighlightServices
             }
 
             var oldCoverUrl = group.CoverImageUrl;
-            var oldCoverPublicId = string.IsNullOrWhiteSpace(oldCoverUrl)
-                ? null
-                : _cloudinaryService.GetPublicIdFromUrl(oldCoverUrl);
 
             string? uploadedCoverUrl = null;
             if (hasCoverUpload)
@@ -368,6 +354,8 @@ namespace CloudM.Application.Services.StoryHighlightServices
                     throw new BadRequestException("Failed to upload highlight cover image.");
                 }
             }
+            var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+            cleanupPlan.AddRollbackDeleteByUrl(uploadedCoverUrl, MediaTypeEnum.Image);
 
             var nowUtc = DateTime.UtcNow;
             var response = await _unitOfWork.ExecuteInTransactionAsync(async () =>
@@ -399,26 +387,13 @@ namespace CloudM.Application.Services.StoryHighlightServices
                     CreatedAt = group.CreatedAt,
                     UpdatedAt = group.UpdatedAt
                 };
-            }, async () =>
-            {
-                if (string.IsNullOrWhiteSpace(uploadedCoverUrl))
-                {
-                    return;
-                }
-
-                var uploadedPublicId = _cloudinaryService.GetPublicIdFromUrl(uploadedCoverUrl);
-                if (string.IsNullOrWhiteSpace(uploadedPublicId))
-                {
-                    return;
-                }
-
-                await _cloudinaryService.DeleteMediaAsync(uploadedPublicId, MediaTypeEnum.Image);
-            });
+            }, cleanupPlan.ExecuteRollbackAsync);
 
             var coverChanged = hasCoverUpload || removeCover;
-            if (coverChanged && !string.IsNullOrWhiteSpace(oldCoverPublicId))
+            if (coverChanged && !string.IsNullOrWhiteSpace(oldCoverUrl))
             {
-                await _cloudinaryService.DeleteMediaAsync(oldCoverPublicId, MediaTypeEnum.Image);
+                cleanupPlan.AddPostCommitDeleteByUrl(oldCoverUrl, MediaTypeEnum.Image);
+                await cleanupPlan.ExecutePostCommitAsync();
             }
 
             return response;
@@ -449,9 +424,7 @@ namespace CloudM.Application.Services.StoryHighlightServices
                 throw new NotFoundException("Highlight story item not found.");
             }
 
-            var coverPublicId = !string.IsNullOrWhiteSpace(group.CoverImageUrl)
-                ? _cloudinaryService.GetPublicIdFromUrl(group.CoverImageUrl)
-                : null;
+            var coverImageUrl = group.CoverImageUrl;
             var deletedGroup = false;
 
             await _unitOfWork.ExecuteInTransactionAsync(async () =>
@@ -471,9 +444,11 @@ namespace CloudM.Application.Services.StoryHighlightServices
                 return true;
             });
 
-            if (deletedGroup && !string.IsNullOrWhiteSpace(coverPublicId))
+            if (deletedGroup && !string.IsNullOrWhiteSpace(coverImageUrl))
             {
-                await _cloudinaryService.DeleteMediaAsync(coverPublicId, MediaTypeEnum.Image);
+                var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+                cleanupPlan.AddPostCommitDeleteByUrl(coverImageUrl, MediaTypeEnum.Image);
+                await cleanupPlan.ExecutePostCommitAsync();
             }
         }
 
@@ -496,9 +471,7 @@ namespace CloudM.Application.Services.StoryHighlightServices
                 throw new NotFoundException("Highlight group not found.");
             }
 
-            var coverPublicId = string.IsNullOrWhiteSpace(group.CoverImageUrl)
-                ? null
-                : _cloudinaryService.GetPublicIdFromUrl(group.CoverImageUrl);
+            var coverImageUrl = group.CoverImageUrl;
 
             await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
@@ -506,9 +479,11 @@ namespace CloudM.Application.Services.StoryHighlightServices
                 return true;
             });
 
-            if (!string.IsNullOrWhiteSpace(coverPublicId))
+            if (!string.IsNullOrWhiteSpace(coverImageUrl))
             {
-                await _cloudinaryService.DeleteMediaAsync(coverPublicId, MediaTypeEnum.Image);
+                var cleanupPlan = new CloudinaryCleanupPlan(_cloudinaryService);
+                cleanupPlan.AddPostCommitDeleteByUrl(coverImageUrl, MediaTypeEnum.Image);
+                await cleanupPlan.ExecutePostCommitAsync();
             }
         }
 
