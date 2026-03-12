@@ -944,6 +944,8 @@ namespace CloudM.Tests.Services
                     AvatarUrl = "/avatars/page-user.png",
                     IsContact = true,
                     IsFollower = true,
+                    HasDirectConversation = true,
+                    LastContactedAt = new DateTime(2026, 3, 10, 8, 30, 0, DateTimeKind.Utc),
                     MutualFollowCount = 4
                 }
             };
@@ -980,6 +982,8 @@ namespace CloudM.Tests.Services
             result.Items.Should().ContainSingle();
             result.Items.Single().IsFollower.Should().BeTrue();
             result.Items.Single().IsContact.Should().BeTrue();
+            result.Items.Single().HasDirectConversation.Should().BeTrue();
+            result.Items.Single().LastContactedAt.Should().Be(new DateTime(2026, 3, 10, 8, 30, 0, DateTimeKind.Utc));
             result.Items.Single().MutualFollowCount.Should().Be(4);
             result.Items.Single().MutualFollowPreviewUsernames.Should().Equal("user-a", "user-b");
             _mockAccountRepo.Verify(x => x.GetFollowSuggestionsAsync(currentId, 2, 20, false), Times.Once);

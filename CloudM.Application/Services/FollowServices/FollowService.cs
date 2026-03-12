@@ -854,6 +854,8 @@ namespace CloudM.Application.Services.FollowServices
                     AvatarUrl = x.AvatarUrl,
                     IsContact = x.IsContact,
                     IsFollower = x.IsFollower,
+                    HasDirectConversation = x.HasDirectConversation,
+                    LastContactedAt = x.LastContactedAt,
                     MutualFollowCount = x.MutualFollowCount,
                     MutualFollowPreviewUsernames = previewUsernames.GetValueOrDefault(x.AccountId, new List<string>())
                 }),

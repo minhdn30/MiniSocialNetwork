@@ -14,6 +14,7 @@ using CloudM.Application.Helpers.StoryHelpers;
 using CloudM.Application.Helpers.SwaggerHelpers;
 using CloudM.Application.Mapping;
 using CloudM.Application.Services.AccountServices;
+using CloudM.Application.Services.AccountSearchHistoryServices;
 using CloudM.Application.Services.AccountSettingServices;
 using CloudM.Application.Services.AuthServices;
 using CloudM.Application.Services.BlockServices;
@@ -46,6 +47,7 @@ using CloudM.Infrastructure.Data;
 using CloudM.Domain.Exceptions;
 using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.AccountBlocks;
+using CloudM.Infrastructure.Repositories.AccountSearchHistories;
 using CloudM.Infrastructure.Repositories.AccountSettingRepos;
 using CloudM.Infrastructure.Repositories.CommentReacts;
 using CloudM.Infrastructure.Repositories.Comments;
@@ -120,6 +122,7 @@ namespace CloudM.API
             // Repositories
             builder.Services.AddScoped<IAccountRepository, AccountRepository>();
             builder.Services.AddScoped<IAccountBlockRepository, AccountBlockRepository>();
+            builder.Services.AddScoped<IAccountSearchHistoryRepository, AccountSearchHistoryRepository>();
             builder.Services.AddScoped<IAccountSettingRepository, AccountSettingRepository>();
             builder.Services.AddScoped<IEmailVerificationRepository, EmailVerificationRepository>();
             builder.Services.AddScoped<IExternalLoginRepository, ExternalLoginRepository>();
@@ -175,6 +178,7 @@ namespace CloudM.API
             builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
             builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
             builder.Services.AddScoped<IAccountService, AccountService>();
+            builder.Services.AddScoped<IAccountSearchHistoryService, AccountSearchHistoryService>();
             builder.Services.AddScoped<IBlockService, BlockService>();
             builder.Services.AddScoped<IAccountSettingService, AccountSettingService>();
             builder.Services.AddSingleton<ICloudinaryDeleteBackgroundQueue, CloudinaryDeleteBackgroundQueue>();

@@ -20,6 +20,7 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<ExternalLogin> ExternalLogins { get; set; }
         public virtual DbSet<EmailVerification> EmailVerifications { get; set; }
         public virtual DbSet<AccountBlock> AccountBlocks { get; set; }
+        public virtual DbSet<AccountSearchHistory> AccountSearchHistories { get; set; }
         public virtual DbSet<Follow> Follows { get; set; }
         public virtual DbSet<FollowRequest> FollowRequests { get; set; }
         public virtual DbSet<Post> Posts { get; set; }
@@ -124,6 +125,24 @@ namespace CloudM.Infrastructure.Data
                 entity.HasOne(x => x.Blocked)
                     .WithMany(x => x.BlocksReceived)
                     .HasForeignKey(x => x.BlockedId)
+                    .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            modelBuilder.Entity<AccountSearchHistory>(entity =>
+            {
+                entity.HasKey(x => new { x.CurrentId, x.TargetId });
+
+                entity.HasIndex(x => new { x.CurrentId, x.LastSearchedAt })
+                    .HasDatabaseName("IX_AccountSearchHistories_Current_LastSearchedAt");
+
+                entity.HasOne(x => x.Current)
+                    .WithMany()
+                    .HasForeignKey(x => x.CurrentId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(x => x.Target)
+                    .WithMany()
+                    .HasForeignKey(x => x.TargetId)
                     .OnDelete(DeleteBehavior.NoAction);
             });
 

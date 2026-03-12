@@ -6,6 +6,8 @@ namespace CloudM.Infrastructure.Models
     {
         public bool IsContact { get; set; }
         public bool IsFollower { get; set; }
+        public bool HasDirectConversation { get; set; }
+        public DateTime? LastContactedAt { get; set; }
         public int MutualFollowCount { get; set; }
         public List<string> MutualFollowPreviewUsernames { get; set; } = new();
     }

@@ -329,7 +329,12 @@ namespace CloudM.Tests.Repositories
             result[candidateId].Should().Equal("carol", "bob");
         }
 
-        private static Account BuildAccount(Guid accountId, string username, DateTime? createdAt = null)
+        private static Account BuildAccount(
+            Guid accountId,
+            string username,
+            DateTime? createdAt = null,
+            AccountStatusEnum status = AccountStatusEnum.Active,
+            RoleEnum role = RoleEnum.User)
         {
             return new Account
             {
@@ -338,8 +343,8 @@ namespace CloudM.Tests.Repositories
                 Email = $"{username}@test.local",
                 FullName = username,
                 PasswordHash = "hash",
-                Status = AccountStatusEnum.Active,
-                RoleId = (int)RoleEnum.User,
+                Status = status,
+                RoleId = (int)role,
                 CreatedAt = createdAt ?? DateTime.UtcNow
             };
         }

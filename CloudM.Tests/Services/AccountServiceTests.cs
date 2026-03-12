@@ -309,6 +309,62 @@ namespace CloudM.Tests.Services
 
         #endregion
 
+        #region Sidebar Search Tests
+
+        [Fact]
+        public async Task SearchSidebarAccountsAsync_WhenKeywordIsEmpty_ReturnsEmptyWithoutCallingRepository()
+        {
+            var currentId = Guid.NewGuid();
+
+            var result = await _accountService.SearchSidebarAccountsAsync(currentId, "   ", 20);
+
+            result.Should().BeEmpty();
+            _mockAccountRepo.Verify(
+                x => x.SearchSidebarAccountsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task SearchSidebarAccountsAsync_WhenKeywordHasOneCharacter_ReturnsMappedResults()
+        {
+            var currentId = Guid.NewGuid();
+            var searchedAt = new DateTime(2026, 3, 12, 9, 0, 0, DateTimeKind.Utc);
+            var repositoryResult = new List<SidebarAccountSearchModel>
+            {
+                new SidebarAccountSearchModel
+                {
+                    AccountId = Guid.NewGuid(),
+                    Username = "minh",
+                    FullName = "Minh Tran",
+                    AvatarUrl = "avatar.jpg",
+                    IsFollowing = true,
+                    IsFollower = false,
+                    HasDirectConversation = true,
+                    LastContactedAt = searchedAt.AddHours(-2),
+                    LastSearchedAt = searchedAt
+                }
+            };
+
+            _mockAccountRepo
+                .Setup(x => x.SearchSidebarAccountsAsync(currentId, "m", 15))
+                .ReturnsAsync(repositoryResult);
+
+            var result = await _accountService.SearchSidebarAccountsAsync(currentId, "  m  ", 15);
+
+            result.Should().ContainSingle();
+            result[0].AccountId.Should().Be(repositoryResult[0].AccountId);
+            result[0].Username.Should().Be("minh");
+            result[0].FullName.Should().Be("Minh Tran");
+            result[0].AvatarUrl.Should().Be("avatar.jpg");
+            result[0].IsFollowing.Should().BeTrue();
+            result[0].IsFollower.Should().BeFalse();
+            result[0].HasDirectConversation.Should().BeTrue();
+            result[0].LastContactedAt.Should().Be(searchedAt.AddHours(-2));
+            result[0].LastSearchedAt.Should().Be(searchedAt);
+        }
+
+        #endregion
+
         #region ReactivateAccountAsync Tests
 
         [Fact]
