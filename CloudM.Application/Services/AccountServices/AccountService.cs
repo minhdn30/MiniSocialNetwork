@@ -6,6 +6,7 @@ using CloudM.Application.DTOs.AccountSettingDTOs;
 using CloudM.Application.DTOs.AuthDTOs;
 using CloudM.Application.DTOs.CommonDTOs;
 using CloudM.Application.DTOs.FollowDTOs;
+using CloudM.Application.DTOs.SearchDTOs;
 using CloudM.Application.Helpers.StoryHelpers;
 using CloudM.Application.Services.AuthServices;
 using CloudM.Infrastructure.Services.Cloudinary;
@@ -507,6 +508,25 @@ namespace CloudM.Application.Services.AccountServices
             return result;
         }
 
+        public async Task<List<SidebarAccountSearchResponse>> SearchSidebarAccountsAsync(
+            Guid currentId,
+            string keyword,
+            int limit = 20)
+        {
+            var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+            if (normalizedKeyword.Length == 0)
+            {
+                return new List<SidebarAccountSearchResponse>();
+            }
+
+            var results = await _accountRepository.SearchSidebarAccountsAsync(
+                currentId,
+                normalizedKeyword,
+                limit);
+
+            return results.Select(MapSidebarAccountSearchResponse).ToList();
+        }
+
         public async Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
             Guid currentId,
             Guid? visibilityOwnerId,
@@ -544,6 +564,19 @@ namespace CloudM.Application.Services.AccountServices
                 RecentChatScore = x.RecentChatScore,
                 TotalScore = x.TotalScore
             }).ToList();
+        }
+
+        private static SidebarAccountSearchResponse MapSidebarAccountSearchResponse(
+            SidebarAccountSearchModel item)
+        {
+            return new SidebarAccountSearchResponse
+            {
+                AccountId = item.AccountId,
+                Username = item.Username,
+                FullName = item.FullName,
+                AvatarUrl = item.AvatarUrl,
+                LastSearchedAt = item.LastSearchedAt
+            };
         }
 
         private async Task<StoryRingStateEnum> ResolveStoryRingStateAsync(Guid targetId, Guid? currentId)

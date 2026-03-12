@@ -27,6 +27,10 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         Task<ProfileInfoModel?> GetProfileInfoByUsernameAsync(string username, Guid? currentId);
         Task<List<Account>> GetAccountsByIds(IEnumerable<Guid> accountIds);
         Task<List<Account>> GetAccountsByUsernames(IEnumerable<string> usernames);
+        Task<List<SidebarAccountSearchModel>> SearchSidebarAccountsAsync(
+            Guid currentId,
+            string keyword,
+            int limit = 20);
         Task<List<GroupInviteAccountSearchModel>> SearchAccountsForGroupInviteAsync(
             Guid currentId,
             string keyword,

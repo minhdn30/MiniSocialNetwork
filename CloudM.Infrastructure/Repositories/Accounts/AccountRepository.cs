@@ -29,6 +29,15 @@ namespace CloudM.Infrastructure.Repositories.Accounts
         private const int DefaultPostShareSearchLimit = 20;
         private const int MaxPostShareSearchLimit = 50;
         private const int MaxPostShareSearchPrefetch = 300;
+        private const int MinSidebarSearchKeywordLength = 1;
+        private const int DefaultSidebarSearchLimit = 20;
+        private const int MaxSidebarSearchLimit = 30;
+        private const int SidebarSearchPrefetchMultiplier = 6;
+        private const int MinSidebarSearchPrefetch = 60;
+        private const int MaxSidebarSearchPrefetch = 240;
+        private const int ShortSidebarSearchPrefetchMultiplier = 2;
+        private const int MinShortSidebarSearchPrefetch = 20;
+        private const int MaxShortSidebarSearchPrefetch = 60;
         private const int DefaultPostTagSearchLimit = 10;
         private const int MaxPostTagSearchLimit = 30;
         private const int PostTagSearchPrefetchMultiplier = 6;
@@ -869,6 +878,170 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 .ToListAsync();
         }
 
+        public async Task<List<SidebarAccountSearchModel>> SearchSidebarAccountsAsync(
+            Guid currentId,
+            string keyword,
+            int limit = 20)
+        {
+            var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+            if (normalizedKeyword.Length < MinSidebarSearchKeywordLength)
+            {
+                return new List<SidebarAccountSearchModel>();
+            }
+
+            var safeLimit = NormalizeSidebarSearchLimit(limit);
+            var prefetchLimit = NormalizeSidebarSearchPrefetchLimit(safeLimit, normalizedKeyword.Length);
+
+            var normalizedUsernameKeyword = normalizedKeyword.ToLowerInvariant();
+            var containsPattern = $"%{normalizedKeyword}%";
+            var startsWithPattern = $"{normalizedKeyword}%";
+            var fullNameWordStartsWithPattern = $"% {normalizedKeyword}%";
+            var useBroadContains = normalizedKeyword.Length >= 2;
+            var useFuzzySimilarity = SidebarSearchRankingHelper.ShouldUseFuzzySimilarity(normalizedKeyword);
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
+
+            var preliminaryCandidates = await GetSocialAccountsNoTrackingQuery()
+                .Where(a => a.AccountId != currentId)
+                .Where(a => !hiddenAccountIds.Contains(a.AccountId))
+                .Select(a => new PreliminarySidebarSearchCandidate
+                {
+                    AccountId = a.AccountId,
+                    Username = a.Username,
+                    FullName = a.FullName,
+                    AvatarUrl = a.AvatarUrl,
+                    IsFollowing = _context.Follows.Any(f => f.FollowerId == currentId && f.FollowedId == a.AccountId),
+                    IsFollower = _context.Follows.Any(f => f.FollowerId == a.AccountId && f.FollowedId == currentId),
+                    HasSearchHistory = _context.AccountSearchHistories.Any(
+                        h => h.CurrentId == currentId && h.TargetId == a.AccountId),
+                    UsernameExact = a.Username == normalizedUsernameKeyword,
+                    UsernameStartsWith = EF.Functions.ILike(a.Username, startsWithPattern),
+                    FullNameStartsWith = EF.Functions.ILike(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(startsWithPattern)),
+                    FullNameWordStartsWith = EF.Functions.ILike(
+                        AppDbContext.Unaccent(a.FullName),
+                        AppDbContext.Unaccent(fullNameWordStartsWithPattern)),
+                    UsernameContains = useBroadContains && EF.Functions.ILike(a.Username, containsPattern),
+                    FullNameContains = useBroadContains && EF.Functions.ILike(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(containsPattern)),
+                    UsernameSimilarity = useFuzzySimilarity
+                        ? AppDbContext.Similarity(a.Username, normalizedKeyword)
+                        : 0d,
+                    FullNameSimilarity = useFuzzySimilarity
+                        ? AppDbContext.Similarity(AppDbContext.Unaccent(a.FullName), AppDbContext.Unaccent(normalizedKeyword))
+                        : 0d
+                })
+                .Where(x =>
+                    x.UsernameStartsWith ||
+                    x.FullNameStartsWith ||
+                    x.FullNameWordStartsWith ||
+                    (useBroadContains && x.UsernameContains) ||
+                    (useBroadContains && x.FullNameContains) ||
+                    (useFuzzySimilarity && x.UsernameSimilarity >= SidebarSearchRankingHelper.FuzzySimilarityThreshold) ||
+                    (useFuzzySimilarity && x.FullNameSimilarity >= SidebarSearchRankingHelper.FuzzySimilarityThreshold))
+                .OrderByDescending(x => x.UsernameExact)
+                .ThenByDescending(x => x.UsernameStartsWith)
+                .ThenByDescending(x => x.FullNameStartsWith)
+                .ThenByDescending(x => x.FullNameWordStartsWith)
+                .ThenByDescending(x => x.UsernameContains)
+                .ThenByDescending(x => x.FullNameContains)
+                .ThenByDescending(x => x.IsFollowing)
+                .ThenByDescending(x => x.HasSearchHistory)
+                .ThenByDescending(x => x.IsFollower)
+                .ThenByDescending(x => x.UsernameSimilarity)
+                .ThenByDescending(x => x.FullNameSimilarity)
+                .ThenBy(x => x.Username)
+                .Take(prefetchLimit)
+                .ToListAsync();
+
+            var hasStrongMatches = preliminaryCandidates.Any(IsSidebarStrongMatch);
+            preliminaryCandidates = preliminaryCandidates
+                .Where(x => hasStrongMatches
+                    ? IsSidebarStrongMatch(x)
+                    : IsSidebarCandidateEligible(x, normalizedKeyword.Length))
+                .ToList();
+
+            if (preliminaryCandidates.Count == 0)
+            {
+                return new List<SidebarAccountSearchModel>();
+            }
+
+            var candidateIds = preliminaryCandidates
+                .Select(x => x.AccountId)
+                .Distinct()
+                .ToList();
+
+            var directChatRows = await _context.Conversations
+                .AsNoTracking()
+                .Where(c => !c.IsDeleted && !c.IsGroup)
+                .Where(c => c.Members.Any(m => m.AccountId == currentId && !m.HasLeft))
+                .Where(c => c.Members.Any(m => candidateIds.Contains(m.AccountId) && !m.HasLeft))
+                .Select(c => new
+                {
+                    OtherAccountId = c.Members
+                        .Where(m => m.AccountId != currentId && candidateIds.Contains(m.AccountId) && !m.HasLeft)
+                        .OrderBy(m => m.JoinedAt)
+                        .ThenBy(m => m.AccountId)
+                        .Select(m => m.AccountId)
+                        .FirstOrDefault(),
+                    LastMessageAt = c.Messages.Select(m => (DateTime?)m.SentAt).Max()
+                })
+                .Where(x => x.OtherAccountId != Guid.Empty)
+                .ToListAsync();
+
+            var directChatMap = directChatRows
+                .GroupBy(x => x.OtherAccountId)
+                .ToDictionary(g => g.Key, g => g.Max(x => x.LastMessageAt));
+
+            var historyRows = await _context.AccountSearchHistories
+                .AsNoTracking()
+                .Where(x => x.CurrentId == currentId && candidateIds.Contains(x.TargetId))
+                .Select(x => new
+                {
+                    x.TargetId,
+                    x.LastSearchedAt
+                })
+                .ToListAsync();
+
+            var historyMap = historyRows.ToDictionary(x => x.TargetId, x => x.LastSearchedAt);
+            var nowUtc = DateTime.UtcNow;
+
+            return preliminaryCandidates
+                .Select(candidate =>
+                {
+                    directChatMap.TryGetValue(candidate.AccountId, out var lastContactedAt);
+                    historyMap.TryGetValue(candidate.AccountId, out var lastSearchedAt);
+
+                    var matchScore = ComputeSidebarMatchScore(candidate);
+                    var followingScore = candidate.IsFollowing ? 420d : 0d;
+                    var followerScore = candidate.IsFollower ? 180d : 0d;
+                    var recentChatScore = ComputeRecentChatScore(lastContactedAt, nowUtc);
+                    var historyScore = ComputeSidebarHistoryScore(lastSearchedAt, nowUtc);
+                    var totalScore = matchScore + followingScore + followerScore + recentChatScore + historyScore;
+
+                    return new
+                    {
+                        Item = new SidebarAccountSearchModel
+                        {
+                            AccountId = candidate.AccountId,
+                            Username = candidate.Username,
+                            FullName = candidate.FullName,
+                            AvatarUrl = candidate.AvatarUrl,
+                            LastSearchedAt = lastSearchedAt
+                        },
+                        TotalScore = totalScore,
+                        MatchScore = matchScore,
+                        RecentChatScore = recentChatScore,
+                        lastContactedAt
+                    };
+                })
+                .OrderByDescending(x => x.TotalScore)
+                .ThenByDescending(x => x.MatchScore)
+                .ThenByDescending(x => x.RecentChatScore)
+                .ThenByDescending(x => x.lastContactedAt)
+                .ThenBy(x => x.Item.Username)
+                .Select(x => x.Item)
+                .Take(safeLimit)
+                .ToList();
+        }
+
         public async Task<(List<FollowSuggestionCandidateModel> Items, int TotalItems)> GetFollowSuggestionsAsync(
             Guid currentId,
             int page,
@@ -1459,6 +1632,34 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             return Math.Min(limit, MaxPostShareSearchLimit);
         }
 
+        private static int NormalizeSidebarSearchLimit(int limit)
+        {
+            if (limit <= 0)
+            {
+                return DefaultSidebarSearchLimit;
+            }
+
+            return Math.Min(limit, MaxSidebarSearchLimit);
+        }
+
+        private static int NormalizeSidebarSearchPrefetchLimit(int safeLimit, int keywordLength)
+        {
+            var multiplier = SidebarSearchPrefetchMultiplier;
+            var minPrefetch = MinSidebarSearchPrefetch;
+            var maxPrefetch = MaxSidebarSearchPrefetch;
+
+            if (keywordLength <= 1)
+            {
+                multiplier = ShortSidebarSearchPrefetchMultiplier;
+                minPrefetch = MinShortSidebarSearchPrefetch;
+                maxPrefetch = MaxShortSidebarSearchPrefetch;
+            }
+
+            return Math.Min(
+                Math.Max(safeLimit * multiplier, minPrefetch),
+                maxPrefetch);
+        }
+
         private static int NormalizePostTagSearchLimit(int limit)
         {
             if (limit <= 0)
@@ -1508,6 +1709,90 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             }
 
             return Math.Max(usernameScore, fullNameScore);
+        }
+
+        private static double ComputeSidebarMatchScore(PreliminarySidebarSearchCandidate candidate)
+        {
+            double usernameScore;
+            if (candidate.UsernameExact)
+            {
+                usernameScore = 5200d;
+            }
+            else if (candidate.UsernameStartsWith)
+            {
+                usernameScore = 4100d;
+            }
+            else if (candidate.UsernameContains)
+            {
+                usernameScore = 2500d;
+            }
+            else if (candidate.UsernameSimilarity >= SidebarSearchRankingHelper.FuzzySimilarityThreshold)
+            {
+                usernameScore = 700d + ((candidate.UsernameSimilarity - SidebarSearchRankingHelper.FuzzySimilarityThreshold) * 1000d);
+            }
+            else
+            {
+                usernameScore = 0d;
+            }
+
+            double fullNameScore;
+            if (candidate.FullNameStartsWith)
+            {
+                fullNameScore = 3200d;
+            }
+            else if (candidate.FullNameWordStartsWith)
+            {
+                fullNameScore = 2800d;
+            }
+            else if (candidate.FullNameContains)
+            {
+                fullNameScore = 1900d;
+            }
+            else if (candidate.FullNameSimilarity >= SidebarSearchRankingHelper.FuzzySimilarityThreshold)
+            {
+                fullNameScore = 550d + ((candidate.FullNameSimilarity - SidebarSearchRankingHelper.FuzzySimilarityThreshold) * 900d);
+            }
+            else
+            {
+                fullNameScore = 0d;
+            }
+
+            return Math.Max(usernameScore, fullNameScore);
+        }
+
+        private static bool IsSidebarCandidateEligible(
+            PreliminarySidebarSearchCandidate candidate,
+            int keywordLength)
+        {
+            if (IsSidebarStrongMatch(candidate))
+            {
+                return true;
+            }
+
+            return IsSidebarFuzzyMatchEligible(candidate.Username, keywordLength, candidate.UsernameSimilarity) ||
+                IsSidebarFuzzyMatchEligible(candidate.FullName, keywordLength, candidate.FullNameSimilarity);
+        }
+
+        private static bool IsSidebarStrongMatch(PreliminarySidebarSearchCandidate candidate)
+        {
+            return SidebarSearchRankingHelper.IsStrongMatch(
+                candidate.UsernameExact,
+                candidate.UsernameStartsWith,
+                candidate.FullNameStartsWith,
+                candidate.FullNameWordStartsWith,
+                candidate.UsernameContains,
+                candidate.FullNameContains);
+        }
+
+        private static bool IsSidebarFuzzyMatchEligible(
+            string? candidateValue,
+            int keywordLength,
+            double similarity)
+        {
+            return SidebarSearchRankingHelper.IsFuzzyMatchEligible(
+                candidateValue,
+                keywordLength,
+                similarity);
         }
 
         private static double ComputeMatchScore(PreliminaryInviteSearchCandidate candidate)
@@ -1615,6 +1900,31 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             }
 
             return 150d;
+        }
+
+        private static double ComputeSidebarHistoryScore(DateTime? lastSearchedAt, DateTime nowUtc)
+        {
+            if (!lastSearchedAt.HasValue)
+            {
+                return 0d;
+            }
+
+            if (lastSearchedAt.Value >= nowUtc.AddDays(-7))
+            {
+                return 320d;
+            }
+
+            if (lastSearchedAt.Value >= nowUtc.AddDays(-30))
+            {
+                return 220d;
+            }
+
+            if (lastSearchedAt.Value >= nowUtc.AddDays(-90))
+            {
+                return 120d;
+            }
+
+            return 60d;
         }
 
         private static double ComputeMutualGroupScore(int mutualGroupCount)
@@ -1751,6 +2061,25 @@ namespace CloudM.Infrastructure.Repositories.Accounts
             public string? AvatarUrl { get; set; }
             public bool UsernameStartsWith { get; set; }
             public bool FullNameStartsWith { get; set; }
+            public bool UsernameContains { get; set; }
+            public bool FullNameContains { get; set; }
+            public double UsernameSimilarity { get; set; }
+            public double FullNameSimilarity { get; set; }
+        }
+
+        private sealed class PreliminarySidebarSearchCandidate
+        {
+            public Guid AccountId { get; set; }
+            public string Username { get; set; } = null!;
+            public string FullName { get; set; } = null!;
+            public string? AvatarUrl { get; set; }
+            public bool IsFollowing { get; set; }
+            public bool IsFollower { get; set; }
+            public bool HasSearchHistory { get; set; }
+            public bool UsernameExact { get; set; }
+            public bool UsernameStartsWith { get; set; }
+            public bool FullNameStartsWith { get; set; }
+            public bool FullNameWordStartsWith { get; set; }
             public bool UsernameContains { get; set; }
             public bool FullNameContains { get; set; }
             public double UsernameSimilarity { get; set; }

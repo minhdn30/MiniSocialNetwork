@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using CloudM.Application.DTOs.AccountDTOs;
 using CloudM.Application.DTOs.CommonDTOs;
+using CloudM.Application.DTOs.SearchDTOs;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Models;
 using System;
@@ -21,6 +22,10 @@ namespace CloudM.Application.Services.AccountServices
         Task<ProfileInfoResponse?> GetAccountProfileByGuid(Guid accountId, Guid? currentId);
         Task<ProfileInfoResponse?> GetAccountProfileByUsername(string username, Guid? currentId);
         Task<AccountProfilePreviewModel?> GetAccountProfilePreview(Guid targetId, Guid? currentId);
+        Task<List<SidebarAccountSearchResponse>> SearchSidebarAccountsAsync(
+            Guid currentId,
+            string keyword,
+            int limit = 20);
         Task<List<PostTagAccountSearchResponse>> SearchAccountsForPostTagAsync(
             Guid currentId,
             Guid? visibilityOwnerId,
