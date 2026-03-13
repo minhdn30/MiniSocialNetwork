@@ -81,26 +81,23 @@ RETURNING outbox.*")
             }
 
             var currentOutboxIdText = currentOutboxId.ToString();
-            var olderOutboxId = await _context.NotificationOutboxes
-                .FromSqlInterpolated($@"
-SELECT *
-FROM ""NotificationOutboxes""
-WHERE ""EventType"" = {AggregateChangedEventType}
-  AND ""RecipientId"" = {recipientId}
-  AND (""Status"" = {(int)NotificationOutboxStatusEnum.Pending} OR ""Status"" = {(int)NotificationOutboxStatusEnum.Processing})
-  AND (""PayloadJson""::jsonb ->> 'Type')::int = {(int)type}
-  AND (""PayloadJson""::jsonb ->> 'AggregateKey') = {safeAggregateKey}
-  AND ""OutboxId"" <> {currentOutboxId}
-  AND (
-      ""OccurredAt"" < {occurredAt}
-      OR (""OccurredAt"" = {occurredAt} AND ""OutboxId""::text < {currentOutboxIdText})
-  )
-LIMIT 1")
-                .AsNoTracking()
-                .Select(x => x.OutboxId)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            return olderOutboxId != Guid.Empty;
+            return await _context.Database
+                .SqlQuery<bool>($@"
+SELECT EXISTS (
+    SELECT 1
+    FROM ""NotificationOutboxes""
+    WHERE ""EventType"" = {AggregateChangedEventType}
+      AND ""RecipientId"" = {recipientId}
+      AND (""Status"" = {(int)NotificationOutboxStatusEnum.Pending} OR ""Status"" = {(int)NotificationOutboxStatusEnum.Processing})
+      AND (""PayloadJson""::jsonb ->> 'Type')::int = {(int)type}
+      AND (""PayloadJson""::jsonb ->> 'AggregateKey') = {safeAggregateKey}
+      AND ""OutboxId"" <> {currentOutboxId}
+      AND (
+          ""OccurredAt"" < {occurredAt}
+          OR (""OccurredAt"" = {occurredAt} AND ""OutboxId""::text < {currentOutboxIdText})
+      )
+) AS ""Value""")
+                .SingleAsync(cancellationToken);
         }
 
         public Task DeferAsync(

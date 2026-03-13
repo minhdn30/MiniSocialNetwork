@@ -236,11 +236,16 @@ namespace CloudM.API.Services
                     : windowSeconds;
                 return (false, retryAfterSeconds);
             }
-            catch (RedisException ex)
+            catch (Exception ex) when (IsRedisRateLimitFailure(ex))
             {
                 _logger.LogWarning(ex, "Presence snapshot rate-limit check fell back to memory for {AccountId}.", viewerAccountId);
                 return _memorySnapshotRateLimiter.TryConsume(viewerAccountId, nowUtc);
             }
+        }
+
+        private static bool IsRedisRateLimitFailure(Exception ex)
+        {
+            return ex is RedisException || ex is RedisTimeoutException;
         }
 
         public async Task<PresenceSnapshotResponse> GetSnapshotAsync(

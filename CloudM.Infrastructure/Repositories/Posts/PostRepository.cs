@@ -687,19 +687,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Where(f => f.FollowerId == currentId)
                 .Select(f => f.FollowedId);
 
-            var baseQuery = _context.Posts.AsNoTracking()
-                .Where(p =>
-                    !p.IsDeleted &&
-                    p.Account.Status == AccountStatusEnum.Active &&
-                    !hiddenAccountIds.Contains(p.AccountId) &&
-                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
-                    p.Medias.Any() &&
-                    (
-                        p.Privacy == PostPrivacyEnum.Public ||
-                        (p.Privacy == PostPrivacyEnum.FollowOnly && followedIdsQuery.Contains(p.AccountId)) ||
-                        p.AccountId == currentId
-                    )
-                );
+            var baseQuery = BuildVisibleFeedPostsQuery(currentId, hiddenAccountIds, followedIdsQuery);
 
             if (cursorCreatedAt.HasValue && cursorPostId.HasValue)
             {
@@ -843,7 +831,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Take(limit)
                 .ToList();
 
-            return await HydrateFeedPostsAsync(topScoredPosts, currentId);
+            return await HydrateFeedPostsAsync(topScoredPosts, currentId, snapshotAt: null);
         }
 
         public async Task<List<PostFeedModel>> GetFeedPageAsync(
@@ -856,11 +844,6 @@ namespace CloudM.Infrastructure.Repositories.Posts
             var normalizedProfile = rankingProfile.Copy().Normalize(rankingProfile.ProfileKey);
             var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
 
-            var followedIdsQuery = _context.Follows
-                .AsNoTracking()
-                .Where(f => f.FollowerId == currentId)
-                .Select(f => f.FollowedId);
-
             var recentEngagementThreshold = snapshotAt.AddDays(-normalizedProfile.RecentEngagementWindowDays);
             var hotAffinityThreshold = snapshotAt.AddDays(-normalizedProfile.AffinityHotWindowDays);
             var warmAffinityThreshold = snapshotAt.AddDays(-normalizedProfile.AffinityWarmWindowDays);
@@ -871,20 +854,11 @@ namespace CloudM.Infrastructure.Repositories.Posts
             var freshnessDay30Threshold = snapshotAt.AddHours(-normalizedProfile.FreshnessDay30Hours);
             var candidateLimit = normalizedProfile.ResolveCandidateLimit(limit);
 
-            var visiblePostsQuery = _context.Posts
+            var followedIdsQuery = _context.Follows
                 .AsNoTracking()
-                .Where(p =>
-                    !p.IsDeleted &&
-                    p.CreatedAt <= snapshotAt &&
-                    p.Account.Status == AccountStatusEnum.Active &&
-                    !hiddenAccountIds.Contains(p.AccountId) &&
-                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
-                    p.Medias.Any() &&
-                    (
-                        p.Privacy == PostPrivacyEnum.Public ||
-                        (p.Privacy == PostPrivacyEnum.FollowOnly && followedIdsQuery.Contains(p.AccountId)) ||
-                        p.AccountId == currentId
-                    ));
+                .Where(f => f.FollowerId == currentId)
+                .Select(f => f.FollowedId);
+            var visiblePostsQuery = BuildVisibleFeedPostsQuery(currentId, hiddenAccountIds, followedIdsQuery, snapshotAt);
             var rankedPosts = new List<RankedFeedPostRow>();
             var remainingLimit = limit;
             var activeWindowCursorCreatedAt = cursor.WindowCursorCreatedAt;
@@ -911,182 +885,196 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     .OrderByDescending(p => p.CreatedAt)
                     .ThenByDescending(p => p.PostId)
                     .Take(candidateLimit)
-                    .Select(p => new
+                    .Select(p => new FeedCandidatePostRow
                     {
-                        p.PostId,
-                        p.PostCode,
-                        p.Content,
-                        p.Privacy,
-                        p.FeedAspectRatio,
-                        p.CreatedAt,
+                        PostId = p.PostId,
+                        PostCode = p.PostCode,
+                        Privacy = p.Privacy,
+                        CreatedAt = p.CreatedAt,
                         AuthorAccountId = p.Account.AccountId,
-                        AuthorUsername = p.Account.Username,
-                        AuthorFullName = p.Account.FullName,
-                        AuthorAvatarUrl = p.Account.AvatarUrl,
-                        AuthorStatus = p.Account.Status,
-                        MediaCount = p.Medias.Count(),
-                        ReactCount = p.Reacts.Count(r => r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                        CommentCount = p.Comments.Count(c =>
-                            c.ParentCommentId == null &&
-                            c.Account.Status == AccountStatusEnum.Active &&
-                            !hiddenAccountIds.Contains(c.AccountId) &&
-                            SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
-                        ReplyCount = p.Comments.Count(c =>
-                            c.ParentCommentId != null &&
-                            c.Account.Status == AccountStatusEnum.Active &&
-                            !hiddenAccountIds.Contains(c.AccountId) &&
-                            SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
-                        RecentReactCount = p.Reacts.Count(r =>
-                            r.CreatedAt >= recentEngagementThreshold &&
-                            r.Account.Status == AccountStatusEnum.Active &&
-                            SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                        RecentRootCommentCount = p.Comments.Count(c =>
-                            c.ParentCommentId == null &&
-                            c.CreatedAt >= recentEngagementThreshold &&
-                            c.Account.Status == AccountStatusEnum.Active &&
-                            !hiddenAccountIds.Contains(c.AccountId) &&
-                            SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
-                        RecentReplyCount = p.Comments.Count(c =>
-                            c.ParentCommentId != null &&
-                            c.CreatedAt >= recentEngagementThreshold &&
-                            c.Account.Status == AccountStatusEnum.Active &&
-                            !hiddenAccountIds.Contains(c.AccountId) &&
-                            SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId)),
-                        IsReactedByCurrentUser = p.Reacts.Any(r => r.AccountId == currentId && r.Account.Status == AccountStatusEnum.Active && SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId)),
-                        IsSavedByCurrentUser = _context.PostSaves.Any(s => s.PostId == p.PostId && s.AccountId == currentId),
-                        IsOwner = p.AccountId == currentId,
-                        IsFollowedAuthor = followedIdsQuery.Contains(p.AccountId),
-                        IsFollowRequestPendingAuthor = _context.FollowRequests.Any(fr => fr.RequesterId == currentId && fr.TargetId == p.AccountId),
-                        HasHotAffinity =
-                            p.AccountId != currentId &&
-                            (
-                                _context.PostReacts.Any(r =>
-                                    r.AccountId == currentId &&
-                                    r.CreatedAt >= hotAffinityThreshold &&
-                                    r.Post.AccountId == p.AccountId) ||
-                                _context.Comments.Any(c =>
-                                    c.AccountId == currentId &&
-                                    c.CreatedAt >= hotAffinityThreshold &&
-                                    c.Post.AccountId == p.AccountId)
-                            ),
-                        HasWarmAffinity =
-                            p.AccountId != currentId &&
-                            (
-                                _context.PostReacts.Any(r =>
-                                    r.AccountId == currentId &&
-                                    r.CreatedAt >= warmAffinityThreshold &&
-                                    r.Post.AccountId == p.AccountId) ||
-                                _context.Comments.Any(c =>
-                                    c.AccountId == currentId &&
-                                    c.CreatedAt >= warmAffinityThreshold &&
-                                    c.Post.AccountId == p.AccountId)
-                            ),
                         RawJitterHash = normalizedProfile.JitterBucketCount == 1
                             ? 0
                             : AppDbContext.HashTextExtended(p.PostCode, cursor.SessionSeed)
                     });
 
-                var windowTail = await candidateQuery
-                    .OrderBy(x => x.CreatedAt)
-                    .ThenBy(x => x.PostId)
-                    .Select(x => new
-                    {
-                        x.CreatedAt,
-                        x.PostId
-                    })
-                    .FirstOrDefaultAsync();
-
-                if (windowTail == null)
+                var candidatePosts = await candidateQuery.ToListAsync();
+                if (candidatePosts.Count == 0)
                 {
                     break;
                 }
 
-                var scoredQuery = candidateQuery
-                    .Select(x => new RankedFeedPostRow
+                var windowTail = candidatePosts[^1];
+                var candidatePostIds = candidatePosts
+                    .Select(x => x.PostId)
+                    .ToList();
+                var candidateAuthorIds = candidatePosts
+                    .Select(x => x.AuthorAccountId)
+                    .Distinct()
+                    .ToList();
+
+                var followedAuthorIdSet = candidateAuthorIds.Count == 0
+                    ? new HashSet<Guid>()
+                    : (await _context.Follows
+                        .AsNoTracking()
+                        .Where(f =>
+                            f.FollowerId == currentId &&
+                            candidateAuthorIds.Contains(f.FollowedId))
+                        .Select(f => f.FollowedId)
+                        .ToListAsync())
+                    .ToHashSet();
+
+                var reactAggregateLookup = candidatePostIds.Count == 0
+                    ? new Dictionary<Guid, FeedPostReactAggregateRow>()
+                    : (await _context.PostReacts
+                        .AsNoTracking()
+                        .Where(r =>
+                            candidatePostIds.Contains(r.PostId) &&
+                            r.Account.Status == AccountStatusEnum.Active &&
+                            SocialRoleRules.SocialEligibleRoleIds.Contains(r.Account.RoleId))
+                        .GroupBy(r => r.PostId)
+                        .Select(g => new FeedPostReactAggregateRow
+                        {
+                            PostId = g.Key,
+                            TotalCount = g.Count(),
+                            RecentCount = g.Count(x => x.CreatedAt >= recentEngagementThreshold),
+                            IsCurrentUserReacted = g.Any(x => x.AccountId == currentId)
+                        })
+                        .ToListAsync())
+                    .ToDictionary(x => x.PostId);
+
+                var commentAggregateLookup = candidatePostIds.Count == 0
+                    ? new Dictionary<Guid, FeedPostCommentAggregateRow>()
+                    : (await _context.Comments
+                        .AsNoTracking()
+                        .Where(c =>
+                            candidatePostIds.Contains(c.PostId) &&
+                            c.Account.Status == AccountStatusEnum.Active &&
+                            !hiddenAccountIds.Contains(c.AccountId) &&
+                            SocialRoleRules.SocialEligibleRoleIds.Contains(c.Account.RoleId))
+                        .GroupBy(c => c.PostId)
+                        .Select(g => new FeedPostCommentAggregateRow
+                        {
+                            PostId = g.Key,
+                            RootCount = g.Count(x => x.ParentCommentId == null),
+                            ReplyCount = g.Count(x => x.ParentCommentId != null),
+                            RecentRootCount = g.Count(x =>
+                                x.ParentCommentId == null &&
+                                x.CreatedAt >= recentEngagementThreshold),
+                            RecentReplyCount = g.Count(x =>
+                                x.ParentCommentId != null &&
+                                x.CreatedAt >= recentEngagementThreshold)
+                        })
+                        .ToListAsync())
+                    .ToDictionary(x => x.PostId);
+
+                var authorInteractionLookup = candidateAuthorIds.Count == 0
+                    ? new Dictionary<Guid, DateTime>()
+                    : (await _context.PostReacts
+                        .AsNoTracking()
+                        .Where(r =>
+                            r.AccountId == currentId &&
+                            r.CreatedAt >= warmAffinityThreshold &&
+                            candidateAuthorIds.Contains(r.Post.AccountId))
+                        .Select(r => new FeedAuthorInteractionSnapshotRow
+                        {
+                            AuthorAccountId = r.Post.AccountId,
+                            LastInteractionAt = r.CreatedAt
+                        })
+                        .Concat(
+                            _context.Comments
+                                .AsNoTracking()
+                                .Where(c =>
+                                    c.AccountId == currentId &&
+                                    c.CreatedAt >= warmAffinityThreshold &&
+                                    candidateAuthorIds.Contains(c.Post.AccountId))
+                                .Select(c => new FeedAuthorInteractionSnapshotRow
+                                {
+                                    AuthorAccountId = c.Post.AccountId,
+                                    LastInteractionAt = c.CreatedAt
+                                }))
+                        .GroupBy(x => x.AuthorAccountId)
+                        .Select(g => new FeedAuthorInteractionSnapshotRow
+                        {
+                            AuthorAccountId = g.Key,
+                            LastInteractionAt = g.Max(x => x.LastInteractionAt)
+                        })
+                        .ToListAsync())
+                    .ToDictionary(x => x.AuthorAccountId, x => x.LastInteractionAt);
+
+                IEnumerable<RankedFeedPostRow> scoredPosts = candidatePosts
+                    .Select(x =>
                     {
+                        var isOwner = x.AuthorAccountId == currentId;
+                        var isFollowedAuthor = followedAuthorIdSet.Contains(x.AuthorAccountId);
+                        reactAggregateLookup.TryGetValue(x.PostId, out var reactStats);
+                        commentAggregateLookup.TryGetValue(x.PostId, out var commentStats);
+                        authorInteractionLookup.TryGetValue(x.AuthorAccountId, out var lastInteractionAt);
+                        var hasHotAffinity =
+                            !isOwner &&
+                            lastInteractionAt >= hotAffinityThreshold;
+                        var hasWarmAffinity =
+                            !isOwner &&
+                            lastInteractionAt >= warmAffinityThreshold;
+
+                        return new RankedFeedPostRow
+                        {
                         PostId = x.PostId,
                         PostCode = x.PostCode,
-                        Content = x.Content,
+                        Content = null,
                         Privacy = x.Privacy,
-                        FeedAspectRatio = x.FeedAspectRatio,
+                        FeedAspectRatio = AspectRatioEnum.Original,
                         CreatedAt = x.CreatedAt,
                         AuthorAccountId = x.AuthorAccountId,
-                        AuthorUsername = x.AuthorUsername,
-                        AuthorFullName = x.AuthorFullName,
-                        AuthorAvatarUrl = x.AuthorAvatarUrl,
-                        AuthorStatus = x.AuthorStatus,
-                        MediaCount = x.MediaCount,
-                        ReactCount = x.ReactCount,
-                        CommentCount = x.CommentCount,
-                        ReplyCount = x.ReplyCount,
-                        IsReactedByCurrentUser = x.IsReactedByCurrentUser,
-                        IsSavedByCurrentUser = x.IsSavedByCurrentUser,
-                        IsOwner = x.IsOwner,
-                        IsFollowedAuthor = x.IsFollowedAuthor,
-                        IsFollowRequestPendingAuthor = x.IsFollowRequestPendingAuthor,
+                        AuthorUsername = string.Empty,
+                        AuthorFullName = string.Empty,
+                        AuthorAvatarUrl = null,
+                        AuthorStatus = AccountStatusEnum.Active,
+                        MediaCount = 0,
+                        ReactCount = reactStats?.TotalCount ?? 0,
+                        CommentCount = commentStats?.RootCount ?? 0,
+                        ReplyCount = commentStats?.ReplyCount ?? 0,
+                        IsReactedByCurrentUser = reactStats?.IsCurrentUserReacted ?? false,
+                        IsSavedByCurrentUser = false,
+                        IsOwner = isOwner,
+                        IsFollowedAuthor = isFollowedAuthor,
+                        IsFollowRequestPendingAuthor = false,
                         RankingWindowCursorCreatedAt = windowCursorCreatedAt,
                         RankingWindowCursorPostId = windowCursorPostId,
                         RankingJitterRank = normalizedProfile.JitterBucketCount == 1
                             ? 0
                             : Math.Abs(x.RawJitterHash % normalizedProfile.JitterBucketCount),
-                        RankingScore =
-                            (x.CreatedAt >= freshnessDay1Threshold
-                                ? normalizedProfile.FreshnessDay1Score
-                                : x.CreatedAt >= freshnessDay3Threshold
-                                    ? normalizedProfile.FreshnessDay3Score
-                                    : x.CreatedAt >= freshnessDay7Threshold
-                                        ? normalizedProfile.FreshnessDay7Score
-                                        : x.CreatedAt >= freshnessDay14Threshold
-                                            ? normalizedProfile.FreshnessDay14Score
-                                            : x.CreatedAt >= freshnessDay30Threshold
-                                                ? normalizedProfile.FreshnessDay30Score
-                                                : normalizedProfile.FreshnessOlderScore)
-                            + (x.IsFollowedAuthor ? normalizedProfile.FollowBonus : 0m)
-                            + (x.IsOwner ? normalizedProfile.SelfFallbackBonus : 0m)
-                            + (!x.IsOwner && !x.IsFollowedAuthor && x.Privacy == PostPrivacyEnum.Public
-                                ? normalizedProfile.DiscoverBonus
-                                : 0m)
-                            + (x.HasHotAffinity
-                                ? normalizedProfile.AffinityHotBonus
-                                : x.HasWarmAffinity
-                                    ? normalizedProfile.AffinityWarmBonus
-                                    : 0m)
-                            + (x.RecentReactCount > normalizedProfile.ReactCountCap
-                                ? normalizedProfile.ReactCountCap
-                                : x.RecentReactCount) * normalizedProfile.ReactWeight
-                            + (x.RecentRootCommentCount > normalizedProfile.RootCommentCountCap
-                                ? normalizedProfile.RootCommentCountCap
-                                : x.RecentRootCommentCount) * normalizedProfile.RootCommentWeight
-                            + (x.RecentReplyCount > normalizedProfile.ReplyCountCap
-                                ? normalizedProfile.ReplyCountCap
-                                : x.RecentReplyCount) * normalizedProfile.ReplyWeight,
+                        RankingScore = ComputeFeedRankingScore(
+                            x.CreatedAt,
+                            x.Privacy,
+                            isOwner,
+                            isFollowedAuthor,
+                            hasHotAffinity,
+                            hasWarmAffinity,
+                            reactStats?.RecentCount ?? 0,
+                            commentStats?.RecentRootCount ?? 0,
+                            commentStats?.RecentReplyCount ?? 0,
+                            normalizedProfile,
+                            freshnessDay1Threshold,
+                            freshnessDay3Threshold,
+                            freshnessDay7Threshold,
+                            freshnessDay14Threshold,
+                            freshnessDay30Threshold),
                         LegacyScore = 0
+                        };
                     });
 
                 if (activeRankingCursor?.HasPosition == true)
                 {
-                    var cursorScore = activeRankingCursor.Score!.Value;
-                    var cursorJitterRank = activeRankingCursor.JitterRank!.Value;
-                    var cursorCreatedAtValue = activeRankingCursor.CreatedAt!.Value;
-                    var cursorPostIdValue = activeRankingCursor.PostId!.Value;
-
-                    scoredQuery = scoredQuery.Where(x =>
-                        x.RankingScore < cursorScore ||
-                        (x.RankingScore == cursorScore &&
-                         (x.RankingJitterRank < cursorJitterRank ||
-                          (x.RankingJitterRank == cursorJitterRank &&
-                           (x.CreatedAt < cursorCreatedAtValue ||
-                            (x.CreatedAt == cursorCreatedAtValue &&
-                             x.PostId.CompareTo(cursorPostIdValue) < 0))))));
+                    scoredPosts = scoredPosts.Where(x => IsBehindRankingCursor(x, activeRankingCursor));
                 }
 
-                var windowItems = await scoredQuery
+                var windowItems = scoredPosts
                     .OrderByDescending(x => x.RankingScore)
                     .ThenByDescending(x => x.RankingJitterRank)
                     .ThenByDescending(x => x.CreatedAt)
                     .ThenByDescending(x => x.PostId)
                     .Take(remainingLimit)
-                    .ToListAsync();
+                    .ToList();
 
                 if (windowItems.Count > 0)
                 {
@@ -1099,18 +1087,66 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 activeWindowCursorPostId = windowTail.PostId;
             }
 
-            return await HydrateFeedPostsAsync(rankedPosts, currentId);
+            return await HydrateFeedPostsAsync(rankedPosts, currentId, snapshotAt);
         }
 
-        private async Task<List<PostFeedModel>> HydrateFeedPostsAsync(List<RankedFeedPostRow> rankedPosts, Guid currentId)
+        private async Task<List<PostFeedModel>> HydrateFeedPostsAsync(
+            List<RankedFeedPostRow> rankedPosts,
+            Guid currentId,
+            DateTime? snapshotAt)
         {
             if (rankedPosts.Count == 0)
             {
                 return new List<PostFeedModel>();
             }
 
-            var topPostIds = rankedPosts
+            var rankedPostIds = rankedPosts
                 .Select(x => x.PostId)
+                .ToList();
+
+            var hiddenAccountIds = AccountBlockQueryHelper.CreateHiddenAccountIdsQuery(_context, currentId);
+            var followedIdsQuery = _context.Follows
+                .AsNoTracking()
+                .Where(f => f.FollowerId == currentId)
+                .Select(f => f.FollowedId);
+
+            var postBaseLookup = await BuildVisibleFeedPostsQuery(currentId, hiddenAccountIds, followedIdsQuery, snapshotAt)
+                .Where(p => rankedPostIds.Contains(p.PostId))
+                .Select(p => new FeedHydratedPostRow
+                {
+                    PostId = p.PostId,
+                    PostCode = p.PostCode,
+                    Content = p.Content,
+                    Privacy = p.Privacy,
+                    FeedAspectRatio = p.FeedAspectRatio,
+                    CreatedAt = p.CreatedAt,
+                    AuthorAccountId = p.Account.AccountId,
+                    AuthorUsername = p.Account.Username,
+                    AuthorFullName = p.Account.FullName,
+                    AuthorAvatarUrl = p.Account.AvatarUrl,
+                    AuthorStatus = p.Account.Status
+                })
+                .ToDictionaryAsync(x => x.PostId);
+
+            if (postBaseLookup.Count == 0)
+            {
+                return new List<PostFeedModel>();
+            }
+
+            var visibleRankedPosts = rankedPosts
+                .Where(x => postBaseLookup.ContainsKey(x.PostId))
+                .ToList();
+            if (visibleRankedPosts.Count == 0)
+            {
+                return new List<PostFeedModel>();
+            }
+
+            var topPostIds = visibleRankedPosts
+                .Select(x => x.PostId)
+                .ToList();
+            var topAuthorIds = postBaseLookup.Values
+                .Select(x => x.AuthorAccountId)
+                .Distinct()
                 .ToList();
 
             var medias = await _context.PostMedias
@@ -1135,6 +1171,17 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     g => g.Key,
                     g => g.Select(x => x.Media).ToList());
 
+            var savedPostIdSet = topPostIds.Count == 0
+                ? new HashSet<Guid>()
+                : (await _context.PostSaves
+                    .AsNoTracking()
+                    .Where(s =>
+                        s.AccountId == currentId &&
+                        topPostIds.Contains(s.PostId))
+                    .Select(s => s.PostId)
+                    .ToListAsync())
+                .ToHashSet();
+
             var taggedAccounts = await _context.PostTags
                 .AsNoTracking()
                 .Where(t =>
@@ -1156,6 +1203,10 @@ namespace CloudM.Infrastructure.Repositories.Posts
                 .Select(x => x.TaggedAccountId)
                 .Distinct()
                 .ToList();
+            var accountIdsForFollowRequest = taggedAccountIds
+                .Concat(topAuthorIds)
+                .Distinct()
+                .ToList();
 
             var followingIdSet = taggedAccountIds.Count == 0
                 ? new HashSet<Guid>()
@@ -1168,13 +1219,13 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     .ToListAsync())
                 .ToHashSet();
 
-            var followRequestIdSet = taggedAccountIds.Count == 0
+            var authorAndTaggedFollowRequestIdSet = accountIdsForFollowRequest.Count == 0
                 ? new HashSet<Guid>()
                 : (await _context.FollowRequests
                     .AsNoTracking()
                     .Where(fr =>
                         fr.RequesterId == currentId &&
-                        taggedAccountIds.Contains(fr.TargetId))
+                        accountIdsForFollowRequest.Contains(fr.TargetId))
                     .Select(fr => fr.TargetId)
                     .ToListAsync())
                 .ToHashSet();
@@ -1201,7 +1252,7 @@ namespace CloudM.Infrastructure.Repositories.Posts
                         Preview = g
                             .OrderByDescending(x => x.TaggedAccountId == currentId)
                             .ThenByDescending(x => followingIdSet.Contains(x.TaggedAccountId))
-                            .ThenByDescending(x => followRequestIdSet.Contains(x.TaggedAccountId))
+                            .ThenByDescending(x => authorAndTaggedFollowRequestIdSet.Contains(x.TaggedAccountId))
                             .ThenByDescending(x => followerIdSet.Contains(x.TaggedAccountId))
                             .ThenBy(x => x.CreatedAt)
                             .Select(x => new PostTaggedAccountModel
@@ -1211,16 +1262,19 @@ namespace CloudM.Infrastructure.Repositories.Posts
                                 FullName = x.FullName,
                                 AvatarUrl = x.AvatarUrl,
                                 IsFollowing = followingIdSet.Contains(x.TaggedAccountId),
-                                IsFollowRequested = followRequestIdSet.Contains(x.TaggedAccountId),
+                                IsFollowRequested = authorAndTaggedFollowRequestIdSet.Contains(x.TaggedAccountId),
                                 IsFollower = followerIdSet.Contains(x.TaggedAccountId)
                             })
                             .Take(2)
                             .ToList()
                     });
 
-            return rankedPosts
+            return visibleRankedPosts
                 .Select(x =>
                 {
+                    var hydratedPost = postBaseLookup.TryGetValue(x.PostId, out var postBase)
+                        ? postBase
+                        : null;
                     var postMedias = mediaLookup.TryGetValue(x.PostId, out var mediaItems)
                         ? mediaItems
                         : new List<MediaPostPersonalListModel>();
@@ -1232,33 +1286,33 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     return new PostFeedModel
                     {
                         PostId = x.PostId,
-                        PostCode = x.PostCode,
-                        Content = x.Content,
-                        Privacy = x.Privacy,
-                        FeedAspectRatio = x.FeedAspectRatio,
-                        CreatedAt = x.CreatedAt,
+                        PostCode = hydratedPost?.PostCode ?? x.PostCode,
+                        Content = hydratedPost?.Content,
+                        Privacy = hydratedPost?.Privacy ?? x.Privacy,
+                        FeedAspectRatio = hydratedPost?.FeedAspectRatio ?? x.FeedAspectRatio,
+                        CreatedAt = hydratedPost?.CreatedAt ?? x.CreatedAt,
                         Author = new AccountOnFeedModel
                         {
-                            AccountId = x.AuthorAccountId,
-                            Username = x.AuthorUsername,
-                            FullName = x.AuthorFullName,
-                            AvatarUrl = x.AuthorAvatarUrl,
-                            Status = x.AuthorStatus,
+                            AccountId = hydratedPost?.AuthorAccountId ?? x.AuthorAccountId,
+                            Username = hydratedPost?.AuthorUsername ?? x.AuthorUsername,
+                            FullName = hydratedPost?.AuthorFullName ?? x.AuthorFullName,
+                            AvatarUrl = hydratedPost?.AuthorAvatarUrl ?? x.AuthorAvatarUrl,
+                            Status = hydratedPost?.AuthorStatus ?? x.AuthorStatus,
                             IsFollowedByCurrentUser = x.IsOwner || x.IsFollowedAuthor,
-                            IsFollowRequestPendingByCurrentUser = !x.IsOwner && !x.IsFollowedAuthor && x.IsFollowRequestPendingAuthor
+                            IsFollowRequestPendingByCurrentUser = !x.IsOwner && !x.IsFollowedAuthor && authorAndTaggedFollowRequestIdSet.Contains(hydratedPost?.AuthorAccountId ?? x.AuthorAccountId)
                         },
                         Medias = postMedias,
                         TaggedAccountsPreview = postTagInfo?.Preview
                             ?? new List<PostTaggedAccountModel>(),
                         TotalTaggedAccounts = postTagInfo?.Total ?? 0,
                         IsCurrentUserTagged = postTagInfo?.IsCurrentUserTagged ?? false,
-                        MediaCount = x.MediaCount,
+                        MediaCount = x.MediaCount > 0 ? x.MediaCount : postMedias.Count,
                         ReactCount = x.ReactCount,
                         CommentCount = x.CommentCount,
                         ReplyCount = x.ReplyCount,
                         IsFollowedAuthor = x.IsFollowedAuthor,
                         IsReactedByCurrentUser = x.IsReactedByCurrentUser,
-                        IsSavedByCurrentUser = x.IsSavedByCurrentUser,
+                        IsSavedByCurrentUser = savedPostIdSet.Contains(x.PostId),
                         IsOwner = x.IsOwner,
                         RankingScore = x.RankingScore,
                         RankingJitterRank = x.RankingJitterRank,
@@ -1267,6 +1321,35 @@ namespace CloudM.Infrastructure.Repositories.Posts
                     };
                 })
                 .ToList();
+        }
+
+        private IQueryable<Post> BuildVisibleFeedPostsQuery(
+            Guid currentId,
+            IQueryable<Guid> hiddenAccountIds,
+            IQueryable<Guid> followedIdsQuery,
+            DateTime? snapshotAt = null)
+        {
+            var query = _context.Posts
+                .AsNoTracking()
+                .Where(p =>
+                    !p.IsDeleted &&
+                    p.Account.Status == AccountStatusEnum.Active &&
+                    !hiddenAccountIds.Contains(p.AccountId) &&
+                    SocialRoleRules.SocialEligibleRoleIds.Contains(p.Account.RoleId) &&
+                    p.Medias.Any() &&
+                    (
+                        p.Privacy == PostPrivacyEnum.Public ||
+                        (p.Privacy == PostPrivacyEnum.FollowOnly && followedIdsQuery.Contains(p.AccountId)) ||
+                        p.AccountId == currentId
+                    ));
+
+            if (snapshotAt.HasValue)
+            {
+                var boundarySnapshotAt = snapshotAt.Value;
+                query = query.Where(p => p.CreatedAt <= boundarySnapshotAt);
+            }
+
+            return query;
         }
 
         private sealed class RankedFeedPostRow
@@ -1296,6 +1379,117 @@ namespace CloudM.Infrastructure.Repositories.Posts
             public DateTime? RankingWindowCursorCreatedAt { get; set; }
             public Guid? RankingWindowCursorPostId { get; set; }
             public double LegacyScore { get; set; }
+        }
+
+        private sealed class FeedCandidatePostRow
+        {
+            public Guid PostId { get; set; }
+            public string PostCode { get; set; } = string.Empty;
+            public PostPrivacyEnum Privacy { get; set; }
+            public DateTime CreatedAt { get; set; }
+            public Guid AuthorAccountId { get; set; }
+            public long RawJitterHash { get; set; }
+        }
+
+        private sealed class FeedHydratedPostRow
+        {
+            public Guid PostId { get; set; }
+            public string PostCode { get; set; } = string.Empty;
+            public string? Content { get; set; }
+            public PostPrivacyEnum Privacy { get; set; }
+            public AspectRatioEnum FeedAspectRatio { get; set; }
+            public DateTime CreatedAt { get; set; }
+            public Guid AuthorAccountId { get; set; }
+            public string AuthorUsername { get; set; } = string.Empty;
+            public string AuthorFullName { get; set; } = string.Empty;
+            public string? AuthorAvatarUrl { get; set; }
+            public AccountStatusEnum AuthorStatus { get; set; }
+        }
+
+        private sealed class FeedPostReactAggregateRow
+        {
+            public Guid PostId { get; set; }
+            public int TotalCount { get; set; }
+            public int RecentCount { get; set; }
+            public bool IsCurrentUserReacted { get; set; }
+        }
+
+        private sealed class FeedPostCommentAggregateRow
+        {
+            public Guid PostId { get; set; }
+            public int RootCount { get; set; }
+            public int ReplyCount { get; set; }
+            public int RecentRootCount { get; set; }
+            public int RecentReplyCount { get; set; }
+        }
+
+        private sealed class FeedAuthorInteractionSnapshotRow
+        {
+            public Guid AuthorAccountId { get; set; }
+            public DateTime LastInteractionAt { get; set; }
+        }
+
+        private static decimal ComputeFeedRankingScore(
+            DateTime createdAt,
+            PostPrivacyEnum privacy,
+            bool isOwner,
+            bool isFollowedAuthor,
+            bool hasHotAffinity,
+            bool hasWarmAffinity,
+            int recentReactCount,
+            int recentRootCommentCount,
+            int recentReplyCount,
+            FeedRankingProfileModel normalizedProfile,
+            DateTime freshnessDay1Threshold,
+            DateTime freshnessDay3Threshold,
+            DateTime freshnessDay7Threshold,
+            DateTime freshnessDay14Threshold,
+            DateTime freshnessDay30Threshold)
+        {
+            var freshnessScore = createdAt >= freshnessDay1Threshold
+                ? normalizedProfile.FreshnessDay1Score
+                : createdAt >= freshnessDay3Threshold
+                    ? normalizedProfile.FreshnessDay3Score
+                    : createdAt >= freshnessDay7Threshold
+                        ? normalizedProfile.FreshnessDay7Score
+                        : createdAt >= freshnessDay14Threshold
+                            ? normalizedProfile.FreshnessDay14Score
+                            : createdAt >= freshnessDay30Threshold
+                                ? normalizedProfile.FreshnessDay30Score
+                                : normalizedProfile.FreshnessOlderScore;
+
+            var affinityScore = hasHotAffinity
+                ? normalizedProfile.AffinityHotBonus
+                : hasWarmAffinity
+                    ? normalizedProfile.AffinityWarmBonus
+                    : 0m;
+
+            return freshnessScore
+                + (isFollowedAuthor ? normalizedProfile.FollowBonus : 0m)
+                + (isOwner ? normalizedProfile.SelfFallbackBonus : 0m)
+                + (!isOwner && !isFollowedAuthor && privacy == PostPrivacyEnum.Public
+                    ? normalizedProfile.DiscoverBonus
+                    : 0m)
+                + affinityScore
+                + Math.Min(recentReactCount, normalizedProfile.ReactCountCap) * normalizedProfile.ReactWeight
+                + Math.Min(recentRootCommentCount, normalizedProfile.RootCommentCountCap) * normalizedProfile.RootCommentWeight
+                + Math.Min(recentReplyCount, normalizedProfile.ReplyCountCap) * normalizedProfile.ReplyWeight;
+        }
+
+        private static bool IsBehindRankingCursor(RankedFeedPostRow rankedPost, PostFeedCursorModel cursor)
+        {
+            var cursorScore = cursor.Score!.Value;
+            var cursorJitterRank = cursor.JitterRank!.Value;
+            var cursorCreatedAt = cursor.CreatedAt!.Value;
+            var cursorPostId = cursor.PostId!.Value;
+
+            return rankedPost.RankingScore < cursorScore ||
+                   (rankedPost.RankingScore == cursorScore &&
+                    (rankedPost.RankingJitterRank < cursorJitterRank ||
+                     (rankedPost.RankingJitterRank == cursorJitterRank &&
+                      (rankedPost.CreatedAt < cursorCreatedAt ||
+                       (rankedPost.CreatedAt == cursorCreatedAt &&
+                        rankedPost.PostId.CompareTo(cursorPostId) < 0)))));
         }
 
         private sealed class PostTaggedAccountRawModel

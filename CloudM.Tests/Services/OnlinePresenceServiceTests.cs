@@ -125,5 +125,52 @@ namespace CloudM.Tests.Services
             secondResult.Allowed.Should().BeFalse();
             secondResult.RetryAfterSeconds.Should().BeGreaterThan(0);
         }
+
+        [Fact]
+        public async Task TryConsumeSnapshotRateLimitAsync_RedisTimeout_FallsBackToMemoryWindow()
+        {
+            var viewerAccountId = Guid.NewGuid();
+            var redisMock = new Mock<IConnectionMultiplexer>();
+            var databaseMock = new Mock<IDatabase>();
+            var accountBlockRepositoryMock = new Mock<IAccountBlockRepository>();
+            var onlinePresenceRepositoryMock = new Mock<IOnlinePresenceRepository>();
+            var userHubContextMock = new Mock<IHubContext<UserHub>>();
+            var loggerMock = new Mock<ILogger<OnlinePresenceService>>();
+
+            redisMock
+                .Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+                .Returns(databaseMock.Object);
+            databaseMock
+                .Setup(x => x.StringIncrementAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
+                .ThrowsAsync(new RedisTimeoutException("redis timeout", CommandStatus.Unknown));
+
+            var options = Options.Create(new OnlinePresenceOptions
+            {
+                SnapshotRateLimitWindowSeconds = 30,
+                SnapshotRateLimitMaxRequests = 1
+            });
+
+            var service = new OnlinePresenceService(
+                redisMock.Object,
+                accountBlockRepositoryMock.Object,
+                onlinePresenceRepositoryMock.Object,
+                userHubContextMock.Object,
+                new MemoryPresenceSnapshotRateLimiter(
+                    options),
+                new MemoryPresenceHiddenBroadcastTracker(),
+                options,
+                new ConfigurationBuilder().AddInMemoryCollection().Build(),
+                loggerMock.Object);
+
+            var nowUtc = DateTime.UtcNow;
+
+            var firstResult = await service.TryConsumeSnapshotRateLimitAsync(viewerAccountId, nowUtc);
+            var secondResult = await service.TryConsumeSnapshotRateLimitAsync(viewerAccountId, nowUtc);
+
+            firstResult.Allowed.Should().BeTrue();
+            firstResult.RetryAfterSeconds.Should().Be(0);
+            secondResult.Allowed.Should().BeFalse();
+            secondResult.RetryAfterSeconds.Should().BeGreaterThan(0);
+        }
     }
 }
