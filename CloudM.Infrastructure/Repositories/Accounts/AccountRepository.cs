@@ -323,6 +323,7 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 TagPermission = s?.TagPermission == TagPermissionEnum.NoOne
                     ? TagPermissionEnum.NoOne
                     : TagPermissionEnum.Anyone,
+                SoundEffectsEnabled = s?.SoundEffectsEnabled ?? true,
             };
         }
 
@@ -399,7 +400,8 @@ namespace CloudM.Infrastructure.Repositories.Accounts
                 OnlineStatusVisibility = s?.OnlineStatusVisibility ?? OnlineStatusVisibilityEnum.ContactsOnly,
                 TagPermission = s?.TagPermission == TagPermissionEnum.NoOne
                     ? TagPermissionEnum.NoOne
-                    : TagPermissionEnum.Anyone
+                    : TagPermissionEnum.Anyone,
+                SoundEffectsEnabled = s?.SoundEffectsEnabled ?? true
             };
         }
 

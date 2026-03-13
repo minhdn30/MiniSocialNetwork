@@ -39,5 +39,6 @@ namespace CloudM.Infrastructure.Models
         public GroupChatInvitePermissionEnum GroupChatInvitePermission { get; set; }
         public OnlineStatusVisibilityEnum OnlineStatusVisibility { get; set; }
         public TagPermissionEnum TagPermission { get; set; }
+        public bool SoundEffectsEnabled { get; set; }
     }
 }

@@ -151,6 +151,11 @@ namespace CloudM.Application.Services.AccountSettingServices
                 settings.TagPermission = NormalizeTagPermission(settings.TagPermission);
             }
 
+            if (request.SoundEffectsEnabled.HasValue)
+            {
+                settings.SoundEffectsEnabled = request.SoundEffectsEnabled.Value;
+            }
+
             if (request.HasLanguage)
             {
                 settings.Language = LanguagePreferenceHelper.Normalize(request.Language);

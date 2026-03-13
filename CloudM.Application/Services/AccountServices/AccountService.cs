@@ -346,7 +346,8 @@ namespace CloudM.Application.Services.AccountServices
                 StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
                 OnlineStatusVisibility = profileModel.OnlineStatusVisibility,
-                TagPermission = profileModel.TagPermission
+                TagPermission = profileModel.TagPermission,
+                SoundEffectsEnabled = profileModel.SoundEffectsEnabled
             };
 
             // enforce privacy logic
@@ -430,7 +431,8 @@ namespace CloudM.Application.Services.AccountServices
                 StoryHighlightPrivacy = profileModel.StoryHighlightPrivacy,
                 GroupChatInvitePermission = profileModel.GroupChatInvitePermission,
                 OnlineStatusVisibility = profileModel.OnlineStatusVisibility,
-                TagPermission = profileModel.TagPermission
+                TagPermission = profileModel.TagPermission,
+                SoundEffectsEnabled = profileModel.SoundEffectsEnabled
             };
 
             // Enforce privacy logic

@@ -55,6 +55,7 @@ namespace CloudM.Tests.Services
 
             result.AccountId.Should().Be(accountId);
             result.Language.Should().Be("en");
+            result.SoundEffectsEnabled.Should().BeTrue();
         }
 
         [Fact]
@@ -203,7 +204,8 @@ namespace CloudM.Tests.Services
                 StoryHighlightPrivacy = AccountPrivacyEnum.FollowOnly,
                 GroupChatInvitePermission = GroupChatInvitePermissionEnum.FollowersOrFollowing,
                 OnlineStatusVisibility = OnlineStatusVisibilityEnum.NoOne,
-                TagPermission = TagPermissionEnum.NoOne
+                TagPermission = TagPermissionEnum.NoOne,
+                SoundEffectsEnabled = true
             };
 
             _accountSettingRepository
@@ -226,8 +228,36 @@ namespace CloudM.Tests.Services
             settings.GroupChatInvitePermission.Should().Be(GroupChatInvitePermissionEnum.FollowersOrFollowing);
             settings.OnlineStatusVisibility.Should().Be(OnlineStatusVisibilityEnum.NoOne);
             settings.TagPermission.Should().Be(TagPermissionEnum.NoOne);
+            settings.SoundEffectsEnabled.Should().BeTrue();
             result.Language.Should().Be("vi");
             result.FollowPrivacy.Should().Be(FollowPrivacyEnum.Private);
+            result.SoundEffectsEnabled.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task UpdateSettingsAsync_WhenSoundEffectsEnabledIsProvided_ShouldPersistValue()
+        {
+            var accountId = Guid.NewGuid();
+            var settings = new AccountSettings
+            {
+                AccountId = accountId,
+                Language = "en",
+                SoundEffectsEnabled = true,
+                OnlineStatusVisibility = OnlineStatusVisibilityEnum.ContactsOnly
+            };
+
+            _accountSettingRepository
+                .Setup(x => x.GetGetAccountSettingsByAccountIdAsync(accountId))
+                .ReturnsAsync(settings);
+
+            var result = await _service.UpdateSettingsAsync(accountId, new AccountSettingsUpdateRequest
+            {
+                SoundEffectsEnabled = false
+            });
+
+            settings.SoundEffectsEnabled.Should().BeFalse();
+            result.SoundEffectsEnabled.Should().BeFalse();
+            _unitOfWork.Verify(x => x.CommitAsync(), Times.Once);
         }
     }
 }
