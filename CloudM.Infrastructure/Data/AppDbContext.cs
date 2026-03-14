@@ -42,6 +42,9 @@ namespace CloudM.Infrastructure.Data
         public virtual DbSet<MessageReact> MessageReacts { get; set; }
         public virtual DbSet<PinnedMessage> PinnedMessages { get; set; }
         public virtual DbSet<AccountSettings> AccountSettings { get; set; } = null!;
+        public virtual DbSet<AdminAuditLog> AdminAuditLogs { get; set; } = null!;
+        public virtual DbSet<ModerationReport> ModerationReports { get; set; } = null!;
+        public virtual DbSet<ModerationReportAction> ModerationReportActions { get; set; } = null!;
         public virtual DbSet<Notification> Notifications { get; set; } = null!;
         public virtual DbSet<NotificationReadState> NotificationReadStates { get; set; } = null!;
         public virtual DbSet<NotificationContribution> NotificationContributions { get; set; } = null!;
@@ -312,6 +315,67 @@ namespace CloudM.Infrastructure.Data
                 entity.HasOne(x => x.Recipient)
                     .WithMany()
                     .HasForeignKey(x => x.RecipientId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<AdminAuditLog>(entity =>
+            {
+                entity.HasKey(x => x.AdminAuditLogId);
+
+                entity.HasIndex(x => new { x.CreatedAt, x.AdminAuditLogId })
+                    .HasDatabaseName("IX_AdminAuditLogs_CreatedAt_AdminAuditLogId");
+
+                entity.HasIndex(x => new { x.AdminId, x.CreatedAt })
+                    .HasDatabaseName("IX_AdminAuditLogs_AdminId_CreatedAt");
+
+                entity.HasIndex(x => new { x.Module, x.ActionType, x.CreatedAt })
+                    .HasDatabaseName("IX_AdminAuditLogs_Module_ActionType_CreatedAt");
+
+                entity.HasOne(x => x.Admin)
+                    .WithMany()
+                    .HasForeignKey(x => x.AdminId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<ModerationReport>(entity =>
+            {
+                entity.HasKey(x => x.ModerationReportId);
+
+                entity.HasIndex(x => new { x.Status, x.CreatedAt, x.ModerationReportId })
+                    .HasDatabaseName("IX_ModerationReports_Status_CreatedAt_ReportId");
+
+                entity.HasIndex(x => new { x.TargetType, x.TargetId, x.CreatedAt })
+                    .HasDatabaseName("IX_ModerationReports_TargetType_TargetId_CreatedAt");
+
+                entity.HasOne(x => x.CreatedByAdmin)
+                    .WithMany()
+                    .HasForeignKey(x => x.CreatedByAdminId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasOne(x => x.ResolvedByAdmin)
+                    .WithMany()
+                    .HasForeignKey(x => x.ResolvedByAdminId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<ModerationReportAction>(entity =>
+            {
+                entity.HasKey(x => x.ModerationReportActionId);
+
+                entity.HasIndex(x => new { x.ModerationReportId, x.CreatedAt })
+                    .HasDatabaseName("IX_ModerationReportActions_ReportId_CreatedAt");
+
+                entity.HasIndex(x => new { x.AdminId, x.CreatedAt })
+                    .HasDatabaseName("IX_ModerationReportActions_AdminId_CreatedAt");
+
+                entity.HasOne(x => x.Report)
+                    .WithMany(x => x.Actions)
+                    .HasForeignKey(x => x.ModerationReportId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.Admin)
+                    .WithMany()
+                    .HasForeignKey(x => x.AdminId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
 

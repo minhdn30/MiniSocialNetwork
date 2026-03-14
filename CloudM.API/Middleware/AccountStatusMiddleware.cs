@@ -31,13 +31,15 @@ namespace CloudM.API.Middleware
                     return;
                 }
 
+                var isAdminPath = path.StartsWith("/api/admin/");
+
                 var account = await accountRepository.GetAccountById(accountId);
                 if (account != null && account.Status != AccountStatusEnum.Active)
                 {
                     throw new ForbiddenException($"Your account is currently {account.Status}. Please reactivate or contact support.");
                 }
 
-                if (account != null && !SocialRoleRules.IsSocialEligible(account))
+                if (account != null && !isAdminPath && !SocialRoleRules.IsSocialEligible(account))
                 {
                     throw new ForbiddenException("This account cannot access social features.");
                 }

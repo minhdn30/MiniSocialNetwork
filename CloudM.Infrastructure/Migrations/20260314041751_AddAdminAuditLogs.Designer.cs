@@ -3,6 +3,7 @@ using System;
 using CloudM.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CloudM.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260314041751_AddAdminAuditLogs")]
+    partial class AddAdminAuditLogs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -701,102 +704,6 @@ namespace CloudM.Infrastructure.Migrations
                         .HasDatabaseName("IX_MessageReacts_MessageId_ReactType");
 
                     b.ToTable("MessageReacts");
-                });
-
-            modelBuilder.Entity("CloudM.Domain.Entities.ModerationReport", b =>
-                {
-                    b.Property<Guid>("ModerationReportId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedByAdminId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Detail")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<string>("ReasonCode")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<DateTime?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ResolvedByAdminId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SourceType")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("TargetId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("TargetType")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("ModerationReportId");
-
-                    b.HasIndex("CreatedByAdminId");
-
-                    b.HasIndex("ResolvedByAdminId");
-
-                    b.HasIndex("Status", "CreatedAt", "ModerationReportId")
-                        .HasDatabaseName("IX_ModerationReports_Status_CreatedAt_ReportId");
-
-                    b.HasIndex("TargetType", "TargetId", "CreatedAt")
-                        .HasDatabaseName("IX_ModerationReports_TargetType_TargetId_CreatedAt");
-
-                    b.ToTable("ModerationReports");
-                });
-
-            modelBuilder.Entity("CloudM.Domain.Entities.ModerationReportAction", b =>
-                {
-                    b.Property<Guid>("ModerationReportActionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("ActionType")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("AdminId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("FromStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("ModerationReportId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<int?>("ToStatus")
-                        .HasColumnType("integer");
-
-                    b.HasKey("ModerationReportActionId");
-
-                    b.HasIndex("AdminId", "CreatedAt")
-                        .HasDatabaseName("IX_ModerationReportActions_AdminId_CreatedAt");
-
-                    b.HasIndex("ModerationReportId", "CreatedAt")
-                        .HasDatabaseName("IX_ModerationReportActions_ReportId_CreatedAt");
-
-                    b.ToTable("ModerationReportActions");
                 });
 
             modelBuilder.Entity("CloudM.Domain.Entities.Notification", b =>
@@ -1603,42 +1510,6 @@ namespace CloudM.Infrastructure.Migrations
                     b.Navigation("Message");
                 });
 
-            modelBuilder.Entity("CloudM.Domain.Entities.ModerationReport", b =>
-                {
-                    b.HasOne("CloudM.Domain.Entities.Account", "CreatedByAdmin")
-                        .WithMany()
-                        .HasForeignKey("CreatedByAdminId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CloudM.Domain.Entities.Account", "ResolvedByAdmin")
-                        .WithMany()
-                        .HasForeignKey("ResolvedByAdminId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CreatedByAdmin");
-
-                    b.Navigation("ResolvedByAdmin");
-                });
-
-            modelBuilder.Entity("CloudM.Domain.Entities.ModerationReportAction", b =>
-                {
-                    b.HasOne("CloudM.Domain.Entities.Account", "Admin")
-                        .WithMany()
-                        .HasForeignKey("AdminId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CloudM.Domain.Entities.ModerationReport", "Report")
-                        .WithMany("Actions")
-                        .HasForeignKey("ModerationReportId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Admin");
-
-                    b.Navigation("Report");
-                });
-
             modelBuilder.Entity("CloudM.Domain.Entities.Notification", b =>
                 {
                     b.HasOne("CloudM.Domain.Entities.Account", "Recipient")
@@ -1926,11 +1797,6 @@ namespace CloudM.Infrastructure.Migrations
                     b.Navigation("Medias");
 
                     b.Navigation("Reacts");
-                });
-
-            modelBuilder.Entity("CloudM.Domain.Entities.ModerationReport", b =>
-                {
-                    b.Navigation("Actions");
                 });
 
             modelBuilder.Entity("CloudM.Domain.Entities.Notification", b =>
