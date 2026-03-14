@@ -20,12 +20,14 @@ namespace CloudM.Domain.Entities
 
         public ModerationReportStatusEnum Status { get; set; } = ModerationReportStatusEnum.Open;
         public ModerationReportSourceEnum SourceType { get; set; } = ModerationReportSourceEnum.AdminInternal;
+        public Guid? ReporterAccountId { get; set; }
         public Guid? CreatedByAdminId { get; set; }
         public Guid? ResolvedByAdminId { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         public DateTime? ResolvedAt { get; set; }
 
+        public virtual Account? ReporterAccount { get; set; }
         public virtual Account? CreatedByAdmin { get; set; }
         public virtual Account? ResolvedByAdmin { get; set; }
         public virtual ICollection<ModerationReportAction> Actions { get; set; } = new List<ModerationReportAction>();

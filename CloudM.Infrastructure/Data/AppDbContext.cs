@@ -347,6 +347,11 @@ namespace CloudM.Infrastructure.Data
                 entity.HasIndex(x => new { x.TargetType, x.TargetId, x.CreatedAt })
                     .HasDatabaseName("IX_ModerationReports_TargetType_TargetId_CreatedAt");
 
+                entity.HasOne(x => x.ReporterAccount)
+                    .WithMany()
+                    .HasForeignKey(x => x.ReporterAccountId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
                 entity.HasOne(x => x.CreatedByAdmin)
                     .WithMany()
                     .HasForeignKey(x => x.CreatedByAdminId)

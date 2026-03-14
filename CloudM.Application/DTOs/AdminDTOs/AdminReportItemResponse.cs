@@ -9,6 +9,8 @@ namespace CloudM.Application.DTOs.AdminDTOs
         public string? Detail { get; set; }
         public string Status { get; set; } = string.Empty;
         public string SourceType { get; set; } = string.Empty;
+        public string ReporterEmail { get; set; } = string.Empty;
+        public string ReporterFullname { get; set; } = string.Empty;
         public string CreatedByAdminEmail { get; set; } = string.Empty;
         public string CreatedByAdminFullname { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }

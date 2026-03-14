@@ -124,6 +124,8 @@ namespace CloudM.Application.Services.AdminReportServices
                     Detail = item.Detail,
                     Status = item.Status.ToString(),
                     SourceType = item.SourceType.ToString(),
+                    ReporterEmail = item.ReporterEmail,
+                    ReporterFullname = item.ReporterFullname,
                     CreatedByAdminEmail = item.CreatedByAdminEmail,
                     CreatedByAdminFullname = item.CreatedByAdminFullname,
                     CreatedAt = item.CreatedAt,

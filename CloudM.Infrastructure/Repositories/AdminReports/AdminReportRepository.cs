@@ -65,6 +65,8 @@ namespace CloudM.Infrastructure.Repositories.AdminReports
                     Detail = report.Detail,
                     Status = report.Status,
                     SourceType = report.SourceType,
+                    ReporterEmail = report.ReporterAccount != null ? report.ReporterAccount.Email : string.Empty,
+                    ReporterFullname = report.ReporterAccount != null ? report.ReporterAccount.FullName : string.Empty,
                     CreatedByAdminEmail = report.CreatedByAdmin != null ? report.CreatedByAdmin.Email : string.Empty,
                     CreatedByAdminFullname = report.CreatedByAdmin != null ? report.CreatedByAdmin.FullName : string.Empty,
                     CreatedAt = report.CreatedAt,

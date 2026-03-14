@@ -11,6 +11,8 @@ namespace CloudM.Infrastructure.Models
         public string? Detail { get; set; }
         public ModerationReportStatusEnum Status { get; set; }
         public ModerationReportSourceEnum SourceType { get; set; }
+        public string ReporterEmail { get; set; } = string.Empty;
+        public string ReporterFullname { get; set; } = string.Empty;
         public string CreatedByAdminEmail { get; set; } = string.Empty;
         public string CreatedByAdminFullname { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
