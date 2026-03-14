@@ -10,6 +10,7 @@ namespace CloudM.Application.Services.JwtServices
     public interface IJwtService
     {
         string GenerateToken(Account account);
+        string GenerateAdminSecurityStamp(Account account);
         string? ValidateToken(string token);
     }
 }

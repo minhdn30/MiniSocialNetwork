@@ -6,12 +6,16 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Repositories.AdminAuths;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
+using System.Text.RegularExpressions;
 using static CloudM.Domain.Exceptions.CustomExceptions;
 
 namespace CloudM.Application.Services.AdminAuthServices
 {
     public class AdminAuthService : IAdminAuthService
     {
+        private const int PasswordMinLength = 6;
+        private static readonly Regex PasswordAccentRegex = new(@"[\u00C0-\u024F\u1E00-\u1EFF]", RegexOptions.Compiled);
+
         private readonly IAdminAuthRepository _adminAuthRepository;
         private readonly IAdminAuditLogService _adminAuditLogService;
         private readonly ILoginRateLimitService _loginRateLimitService;
@@ -98,6 +102,62 @@ namespace CloudM.Application.Services.AdminAuthServices
             };
         }
 
+        public async Task<AdminChangePasswordResponse> ChangePasswordAsync(
+            Guid accountId,
+            AdminChangePasswordRequest request,
+            string? requesterIpAddress)
+        {
+            ValidatePasswordInputOrThrow(request);
+
+            var account = await _adminAuthRepository.GetTrackedAdminByIdAsync(accountId);
+            if (account == null)
+            {
+                throw new ForbiddenException("Admin access is not available for this account.");
+            }
+
+            EnsureAdminAccountAllowed(account);
+
+            if (string.IsNullOrWhiteSpace(account.PasswordHash))
+            {
+                throw new BadRequestException("Admin password sign-in is not configured.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.CurrentPassword))
+            {
+                throw new BadRequestException("Current password is required.");
+            }
+
+            var isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, account.PasswordHash);
+            if (!isCurrentPasswordValid)
+            {
+                throw new BadRequestException("Current password is incorrect.");
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            account.RefreshToken = null;
+            account.RefreshTokenExpiryTime = null;
+            account.UpdatedAt = nowUtc;
+
+            await _adminAuthRepository.UpdateAsync(account);
+            await _adminAuditLogService.RecordAsync(new AdminAuditLogWriteRequest
+            {
+                AdminId = account.AccountId,
+                Module = "auth",
+                ActionType = "AdminPasswordChanged",
+                TargetType = "Account",
+                TargetId = account.AccountId.ToString(),
+                Summary = "Admin updated the password for the current admin account",
+                RequestIp = NormalizeIp(requesterIpAddress),
+            });
+            await _unitOfWork.CommitAsync();
+
+            return new AdminChangePasswordResponse
+            {
+                ChangedAt = nowUtc,
+            };
+        }
+
         private AdminLoginResponse BuildLoginResponse(Account account)
         {
             return new AdminLoginResponse
@@ -142,6 +202,39 @@ namespace CloudM.Application.Services.AdminAuthServices
         {
             var normalizedIp = (requesterIpAddress ?? string.Empty).Trim();
             return string.IsNullOrWhiteSpace(normalizedIp) ? null : normalizedIp;
+        }
+
+        private static void ValidatePasswordInputOrThrow(AdminChangePasswordRequest request)
+        {
+            if (request == null)
+            {
+                throw new BadRequestException("Request is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.NewPassword))
+            {
+                throw new BadRequestException("New password is required.");
+            }
+
+            if (request.NewPassword.Length < PasswordMinLength)
+            {
+                throw new BadRequestException($"Password must be at least {PasswordMinLength} characters long.");
+            }
+
+            if (request.NewPassword.Contains(' '))
+            {
+                throw new BadRequestException("Password cannot contain spaces.");
+            }
+
+            if (PasswordAccentRegex.IsMatch(request.NewPassword))
+            {
+                throw new BadRequestException("Password cannot contain Vietnamese accents.");
+            }
+
+            if (!string.Equals(request.NewPassword, request.ConfirmPassword, StringComparison.Ordinal))
+            {
+                throw new BadRequestException("Password and Confirm Password do not match.");
+            }
         }
 
         private async Task RecordLoginFailureAsync(string normalizedEmail, string? normalizedIpAddress, DateTime nowUtc)

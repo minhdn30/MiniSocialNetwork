@@ -91,6 +91,7 @@ using CloudM.Infrastructure.Repositories.StoryViews;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
 using System;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using StackExchange.Redis;
@@ -340,6 +341,47 @@ namespace CloudM.API
                         }
 
                         return Task.CompletedTask;
+                    },
+
+                    OnTokenValidated = async context =>
+                    {
+                        var roleClaim = context.Principal?.FindFirst(ClaimTypes.Role)?.Value;
+                        if (!string.Equals(roleClaim, "Admin", StringComparison.Ordinal))
+                        {
+                            return;
+                        }
+
+                        var accountIdClaim =
+                            context.Principal?.FindFirst("AccountId")?.Value
+                            ?? context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                        if (!Guid.TryParse(accountIdClaim, out var accountId))
+                        {
+                            context.Fail("Admin session is no longer valid.");
+                            return;
+                        }
+
+                        var tokenSecurityStamp = context.Principal?.FindFirst("adminSecurityStamp")?.Value;
+                        if (string.IsNullOrWhiteSpace(tokenSecurityStamp))
+                        {
+                            context.Fail("Admin session is no longer valid.");
+                            return;
+                        }
+
+                        var adminAuthRepository = context.HttpContext.RequestServices.GetRequiredService<IAdminAuthRepository>();
+                        var jwtService = context.HttpContext.RequestServices.GetRequiredService<IJwtService>();
+                        var adminAccount = await adminAuthRepository.GetAdminByIdAsync(accountId);
+                        if (adminAccount == null)
+                        {
+                            context.Fail("Admin session is no longer valid.");
+                            return;
+                        }
+
+                        var expectedSecurityStamp = jwtService.GenerateAdminSecurityStamp(adminAccount);
+                        if (!string.Equals(tokenSecurityStamp, expectedSecurityStamp, StringComparison.Ordinal))
+                        {
+                            context.Fail("Admin session is no longer valid.");
+                        }
                     },
 
                     OnAuthenticationFailed = context =>

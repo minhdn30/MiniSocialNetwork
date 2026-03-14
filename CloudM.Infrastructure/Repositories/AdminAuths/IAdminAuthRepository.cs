@@ -6,5 +6,7 @@ namespace CloudM.Infrastructure.Repositories.AdminAuths
     {
         Task<Account?> GetAdminByEmailAsync(string email);
         Task<Account?> GetAdminByIdAsync(Guid accountId);
+        Task<Account?> GetTrackedAdminByIdAsync(Guid accountId);
+        Task UpdateAsync(Account account);
     }
 }

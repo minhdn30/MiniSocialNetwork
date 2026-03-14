@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -37,7 +38,7 @@ namespace CloudM.Application.Services.JwtServices
                 roleName = Enum.GetName(typeof(RoleEnum), account.RoleId) ?? RoleEnum.User.ToString();
             }
 
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString()),     // account id
                 new Claim("AccountId", account.AccountId.ToString()),                   // legacy middleware claim
@@ -50,6 +51,11 @@ namespace CloudM.Application.Services.JwtServices
 
             };
 
+            if (account.RoleId == (int)RoleEnum.Admin)
+            {
+                claims.Add(new Claim("adminSecurityStamp", GenerateAdminSecurityStamp(account)));
+            }
+
             var token = new JwtSecurityToken(
                 issuer: jwtSettings["Issuer"],
                 audience: jwtSettings["Audience"],
@@ -59,6 +65,20 @@ namespace CloudM.Application.Services.JwtServices
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        public string GenerateAdminSecurityStamp(Account account)
+        {
+            var jwtSettings = _config.GetSection("Jwt");
+            var signingKey = jwtSettings["Key"] ?? string.Empty;
+            var stampPayload = $"{account.AccountId:D}|{account.PasswordHash ?? string.Empty}";
+            var stampBytes = Encoding.UTF8.GetBytes(stampPayload);
+            var signingKeyBytes = Encoding.UTF8.GetBytes(signingKey);
+
+            using var hmac = new HMACSHA256(signingKeyBytes);
+            var hashBytes = hmac.ComputeHash(stampBytes);
+
+            return Convert.ToHexString(hashBytes);
         }
         //no use
         public string? ValidateToken(string token)

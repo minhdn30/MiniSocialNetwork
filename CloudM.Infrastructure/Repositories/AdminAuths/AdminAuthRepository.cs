@@ -33,5 +33,20 @@ namespace CloudM.Infrastructure.Repositories.AdminAuths
                     x.AccountId == accountId &&
                     x.RoleId == (int)RoleEnum.Admin);
         }
+
+        public async Task<Account?> GetTrackedAdminByIdAsync(Guid accountId)
+        {
+            return await _context.Accounts
+                .Include(x => x.Role)
+                .FirstOrDefaultAsync(x =>
+                    x.AccountId == accountId &&
+                    x.RoleId == (int)RoleEnum.Admin);
+        }
+
+        public Task UpdateAsync(Account account)
+        {
+            _context.Accounts.Update(account);
+            return Task.CompletedTask;
+        }
     }
 }

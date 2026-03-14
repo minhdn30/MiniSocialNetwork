@@ -54,5 +54,25 @@ namespace CloudM.API.Controllers.Admin
             var result = await _adminAuthService.GetSessionAsync(accountId.Value);
             return Ok(result);
         }
+
+        [Authorize(Policy = "AdminOnly")]
+        [HttpPost("change-password")]
+        public async Task<ActionResult<AdminChangePasswordResponse>> ChangePassword([FromBody] AdminChangePasswordRequest request)
+        {
+            var accountId = User.GetAccountId();
+            if (accountId == null)
+            {
+                return Unauthorized();
+            }
+
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required." });
+            }
+
+            var requesterIpAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+            var result = await _adminAuthService.ChangePasswordAsync(accountId.Value, request, requesterIpAddress);
+            return Ok(result);
+        }
     }
 }

@@ -461,10 +461,7 @@ namespace CloudM.Application.Services.AuthServices
                 throw new UnauthorizedException("Invalid or expired refresh token.");
             }
 
-            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
-            {
-                throw new UnauthorizedException("Your account has been restricted.");
-            }
+            ThrowRestrictedAccountExceptionIfNeeded(account);
 
             if (account.Status == AccountStatusEnum.EmailNotVerified)
             {
@@ -661,10 +658,7 @@ namespace CloudM.Application.Services.AuthServices
 
         private static void EnsureAccountAllowedForExternalLink(Account account)
         {
-            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
-            {
-                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
-            }
+            ThrowRestrictedAccountExceptionIfNeeded(account);
         }
 
         private static void EnsureAccountCanLoginWithExternal(Account account)
@@ -679,14 +673,29 @@ namespace CloudM.Application.Services.AuthServices
 
         private static void EnsureAccountCanLoginWithPassword(Account account)
         {
-            if (account.Status == AccountStatusEnum.Banned || account.Status == AccountStatusEnum.Suspended || account.Status == AccountStatusEnum.Deleted)
-            {
-                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
-            }
+            ThrowRestrictedAccountExceptionIfNeeded(account);
 
             if (account.Status == AccountStatusEnum.EmailNotVerified)
             {
                 throw new UnauthorizedException("Email is not verified. Please verify your email.");
+            }
+        }
+
+        private static void ThrowRestrictedAccountExceptionIfNeeded(Account account)
+        {
+            if (account.Status == AccountStatusEnum.Suspended)
+            {
+                throw new UnauthorizedException("Your account has been suspended. Please contact support.");
+            }
+
+            if (account.Status == AccountStatusEnum.Banned)
+            {
+                throw new UnauthorizedException("Your account has been banned. Please contact support.");
+            }
+
+            if (account.Status == AccountStatusEnum.Deleted)
+            {
+                throw new UnauthorizedException("Your account has been restricted. Please contact support.");
             }
         }
 

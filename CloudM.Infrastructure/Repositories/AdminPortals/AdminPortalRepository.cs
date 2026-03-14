@@ -18,6 +18,7 @@ namespace CloudM.Infrastructure.Repositories.AdminPortals
                 {
                     "auth-guard",
                     "shell-ui",
+                    "password-security",
                     "account-status",
                     "moderation-center",
                     "report-center",
