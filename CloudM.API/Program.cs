@@ -16,6 +16,8 @@ using CloudM.Application.Mapping;
 using CloudM.Application.Services.AccountServices;
 using CloudM.Application.Services.AccountSearchHistoryServices;
 using CloudM.Application.Services.AccountSettingServices;
+using CloudM.Application.Services.AdminAccountLookupServices;
+using CloudM.Application.Services.AdminAccountStatusServices;
 using CloudM.Application.Services.AdminAuditLogServices;
 using CloudM.Application.Services.AdminAuthServices;
 using CloudM.Application.Services.AdminPortalServices;
@@ -52,6 +54,8 @@ using CloudM.Infrastructure.Repositories.Accounts;
 using CloudM.Infrastructure.Repositories.AccountBlocks;
 using CloudM.Infrastructure.Repositories.AccountSearchHistories;
 using CloudM.Infrastructure.Repositories.AccountSettingRepos;
+using CloudM.Infrastructure.Repositories.AdminAccountLookups;
+using CloudM.Infrastructure.Repositories.AdminAccountStatuses;
 using CloudM.Infrastructure.Repositories.AdminAuditLogs;
 using CloudM.Infrastructure.Repositories.AdminAuths;
 using CloudM.Infrastructure.Repositories.AdminPortals;
@@ -161,6 +165,8 @@ namespace CloudM.API
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             //admin
+            builder.Services.AddScoped<IAdminAccountLookupRepository, AdminAccountLookupRepository>();
+            builder.Services.AddScoped<IAdminAccountStatusRepository, AdminAccountStatusRepository>();
             builder.Services.AddScoped<IAdminAuditLogRepository, AdminAuditLogRepository>();
             builder.Services.AddScoped<IAdminAuthRepository, AdminAuthRepository>();
             builder.Services.AddScoped<IAdminPortalRepository, AdminPortalRepository>();
@@ -208,6 +214,8 @@ namespace CloudM.API
             builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 
             //admin
+            builder.Services.AddScoped<IAdminAccountLookupService, AdminAccountLookupService>();
+            builder.Services.AddScoped<IAdminAccountStatusService, AdminAccountStatusService>();
             builder.Services.AddScoped<IAdminAuditLogService, AdminAuditLogService>();
             builder.Services.AddScoped<IAdminAuthService, AdminAuthService>();
             builder.Services.AddScoped<IAdminPortalService, AdminPortalService>();
