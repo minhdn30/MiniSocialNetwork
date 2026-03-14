@@ -49,6 +49,11 @@ namespace CloudM.API.Middleware
                         await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = fEx.Message }));
                         break;
 
+                    case TooManyRequestsException tmEx:
+                        context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                        await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = tmEx.Message }));
+                        break;
+
                     case InternalServerException isEx:
                         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                         await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = isEx.Message }));

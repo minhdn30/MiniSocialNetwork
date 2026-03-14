@@ -24,6 +24,11 @@ namespace CloudM.Domain.Exceptions
             public ForbiddenException(string message) : base(message) { }
         }
 
+        public class TooManyRequestsException : Exception
+        {
+            public TooManyRequestsException(string message) : base(message) { }
+        }
+
         public class InternalServerException : Exception
         {
             public InternalServerException(string message) : base(message) { }

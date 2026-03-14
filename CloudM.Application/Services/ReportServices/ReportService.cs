@@ -3,6 +3,8 @@ using CloudM.Domain.Entities;
 using CloudM.Domain.Enums;
 using CloudM.Infrastructure.Repositories.Reports;
 using CloudM.Infrastructure.Repositories.UnitOfWork;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using static CloudM.Domain.Exceptions.CustomExceptions;
 
 namespace CloudM.Application.Services.ReportServices
@@ -11,14 +13,18 @@ namespace CloudM.Application.Services.ReportServices
     {
         private const int MaxReasonCodeLength = 100;
         private const int MaxDetailLength = 1000;
+        private const string PendingDuplicateReportIndexName = "IX_ModerationReports_UserSubmittedPendingUnique";
 
+        private readonly IReportSubmissionGuardService _reportSubmissionGuardService;
         private readonly IReportRepository _reportRepository;
         private readonly IUnitOfWork _unitOfWork;
 
         public ReportService(
+            IReportSubmissionGuardService reportSubmissionGuardService,
             IReportRepository reportRepository,
             IUnitOfWork unitOfWork)
         {
+            _reportSubmissionGuardService = reportSubmissionGuardService;
             _reportRepository = reportRepository;
             _unitOfWork = unitOfWork;
         }
@@ -37,6 +43,9 @@ namespace CloudM.Application.Services.ReportServices
             {
                 throw new BadRequestException("Reason code is required.");
             }
+
+            await _reportSubmissionGuardService.EnforceSubmissionAllowedAsync(currentId, requesterIpAddress, nowUtc);
+            await _reportSubmissionGuardService.RecordSubmissionAsync(currentId, requesterIpAddress, nowUtc);
 
             if (!await _reportRepository.CanSubmitReportAsync(currentId, targetType, request.TargetId))
             {
@@ -61,7 +70,14 @@ namespace CloudM.Application.Services.ReportServices
             };
 
             await _reportRepository.AddAsync(report);
-            await _unitOfWork.CommitAsync();
+            try
+            {
+                await _unitOfWork.CommitAsync();
+            }
+            catch (DbUpdateException ex) when (IsPendingDuplicateConstraintViolation(ex))
+            {
+                throw new BadRequestException("You already have an open report for this item.");
+            }
 
             return new ReportCreateResponse
             {
@@ -110,6 +126,19 @@ namespace CloudM.Application.Services.ReportServices
             }
 
             return normalizedDetail;
+        }
+
+        private static bool IsPendingDuplicateConstraintViolation(DbUpdateException exception)
+        {
+            if (exception.InnerException is not PostgresException postgresException)
+            {
+                return false;
+            }
+
+            return string.Equals(
+                postgresException.ConstraintName,
+                PendingDuplicateReportIndexName,
+                StringComparison.Ordinal);
         }
     }
 }

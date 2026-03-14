@@ -183,6 +183,8 @@ namespace CloudM.API
             // Services
             builder.Services.Configure<LoginSecurityOptions>(
                 builder.Configuration.GetSection("LoginSecurity"));
+            builder.Services.Configure<ReportSecurityOptions>(
+                builder.Configuration.GetSection("ReportSecurity"));
             builder.Services.Configure<EmailVerificationSecurityOptions>(
                 builder.Configuration.GetSection("EmailVerification"));
             builder.Services.Configure<GoogleAuthOptions>(
@@ -207,6 +209,7 @@ namespace CloudM.API
                 builder.Services.AddSingleton<IConnectionMultiplexer>(redisMultiplexer);
             }
             builder.Services.AddSingleton<MemoryLoginRateLimitService>();
+            builder.Services.AddSingleton<MemoryReportSubmissionGuardService>();
             builder.Services.AddSingleton<MemoryPresenceSnapshotRateLimiter>();
             builder.Services.AddSingleton<MemoryPresenceHiddenBroadcastTracker>();
 
@@ -272,6 +275,7 @@ namespace CloudM.API
             if (redisMultiplexer != null)
             {
                 builder.Services.AddScoped<ILoginRateLimitService, RedisLoginRateLimitService>();
+                builder.Services.AddScoped<IReportSubmissionGuardService, RedisReportSubmissionGuardService>();
                 builder.Services.AddScoped<IEmailVerificationRateLimitService, RedisEmailVerificationRateLimitService>();
                 builder.Services.AddScoped<IOnlinePresenceService, OnlinePresenceService>();
             }
@@ -279,6 +283,8 @@ namespace CloudM.API
             {
                 builder.Services.AddScoped<ILoginRateLimitService>(
                     provider => provider.GetRequiredService<MemoryLoginRateLimitService>());
+                builder.Services.AddScoped<IReportSubmissionGuardService>(
+                    provider => provider.GetRequiredService<MemoryReportSubmissionGuardService>());
                 builder.Services.AddScoped<IEmailVerificationRateLimitService, UnavailableEmailVerificationRateLimitService>();
                 builder.Services.AddScoped<IOnlinePresenceService, NoOpOnlinePresenceService>();
             }

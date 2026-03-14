@@ -347,6 +347,11 @@ namespace CloudM.Infrastructure.Data
                 entity.HasIndex(x => new { x.TargetType, x.TargetId, x.CreatedAt })
                     .HasDatabaseName("IX_ModerationReports_TargetType_TargetId_CreatedAt");
 
+                entity.HasIndex(x => new { x.ReporterAccountId, x.TargetType, x.TargetId })
+                    .IsUnique()
+                    .HasDatabaseName("IX_ModerationReports_UserSubmittedPendingUnique")
+                    .HasFilter("\"ReporterAccountId\" IS NOT NULL AND \"SourceType\" = 1 AND \"Status\" IN (0, 1)");
+
                 entity.HasOne(x => x.ReporterAccount)
                     .WithMany()
                     .HasForeignKey(x => x.ReporterAccountId)
