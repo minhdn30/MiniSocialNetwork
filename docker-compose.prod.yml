@@ -33,6 +33,8 @@ services:
       PORT: 10000
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};SSL Mode=Disable;Pooling=true;Maximum Pool Size=100
       ConnectionStrings__Redis: redis:6379,abortConnect=false
+    volumes:
+      - api_data_protection_keys:/root/.aspnet/DataProtection-Keys
     expose:
       - "10000"
 
@@ -88,6 +90,7 @@ services:
       - redis_data:/data
 
 volumes:
+  api_data_protection_keys:
   caddy_data:
   caddy_config:
   postgres_data:
