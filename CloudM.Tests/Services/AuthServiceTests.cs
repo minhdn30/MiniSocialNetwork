@@ -196,10 +196,12 @@ namespace CloudM.Tests.Services
         }
 
         [Theory]
-        [InlineData(AccountStatusEnum.Banned)]
-        [InlineData(AccountStatusEnum.Suspended)]
-        [InlineData(AccountStatusEnum.Deleted)]
-        public async Task LoginAsync_RestrictedAccount_ThrowsUnauthorizedException(AccountStatusEnum status)
+        [InlineData(AccountStatusEnum.Banned, "Your account has been banned. Please contact support.")]
+        [InlineData(AccountStatusEnum.Suspended, "Your account has been suspended. Please contact support.")]
+        [InlineData(AccountStatusEnum.Deleted, "Your account has been restricted. Please contact support.")]
+        public async Task LoginAsync_RestrictedAccount_ThrowsUnauthorizedException(
+            AccountStatusEnum status,
+            string expectedMessage)
         {
             // Arrange
             var request = TestDataFactory.CreateLoginRequest();
@@ -213,7 +215,7 @@ namespace CloudM.Tests.Services
 
             // Assert
             await act.Should().ThrowAsync<UnauthorizedException>()
-                .WithMessage("Your account has been restricted. Please contact support.");
+                .WithMessage(expectedMessage);
         }
 
         [Fact]
