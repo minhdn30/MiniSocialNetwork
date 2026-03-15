@@ -13,50 +13,27 @@ concurrency:
 jobs:
   deploy:
     name: Deploy backend to production
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment: production
 
     steps:
-      - name: Validate deploy secrets
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_PORT: ${{ secrets.PROD_PORT }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          PROD_SSH_PASSWORD: ${{ secrets.PROD_SSH_PASSWORD }}
+      - name: Validate production workspace
         run: |
           set -euo pipefail
 
-          if [ -z "${PROD_HOST}" ] || [ -z "${PROD_PORT}" ] || [ -z "${PROD_USER}" ]; then
-            echo "Missing PROD_HOST, PROD_PORT, or PROD_USER secret." >&2
+          if [ ! -d /opt/cloudm/backend/.git ]; then
+            echo "Missing backend repository at /opt/cloudm/backend" >&2
             exit 1
           fi
 
-          if [ -z "${PROD_SSH_PRIVATE_KEY}" ] && [ -z "${PROD_SSH_PASSWORD}" ]; then
-            echo "Set PROD_SSH_PRIVATE_KEY or PROD_SSH_PASSWORD in GitHub Secrets." >&2
+          if [ ! -f /opt/cloudm/backend/.env.production ]; then
+            echo "Missing production env file at /opt/cloudm/backend/.env.production" >&2
             exit 1
           fi
 
-      - name: Deploy over SSH
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_PORT: ${{ secrets.PROD_PORT }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          PROD_SSH_PASSWORD: ${{ secrets.PROD_SSH_PASSWORD }}
+      - name: Deploy on self-hosted runner
         run: |
           set -euo pipefail
-
-          mkdir -p "${HOME}/.ssh"
-
-          if [ -n "${PROD_SSH_PRIVATE_KEY}" ]; then
-            printf '%s\n' "${PROD_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
-            chmod 600 "${HOME}/.ssh/id_ed25519"
-            SSH_CMD=(ssh -i "${HOME}/.ssh/id_ed25519" -o StrictHostKeyChecking=no -p "${PROD_PORT}" "${PROD_USER}@${PROD_HOST}")
-          else
-            sudo apt-get update
-            sudo apt-get install -y sshpass
-            SSH_CMD=(sshpass -p "${PROD_SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no -p "${PROD_PORT}" "${PROD_USER}@${PROD_HOST}")
-          fi
-
-          "${SSH_CMD[@]}" 'cd /opt/cloudm/backend && chmod +x scripts/deploy-production.sh && DEPLOY_BRANCH=main ./scripts/deploy-production.sh'
+          cd /opt/cloudm/backend
+          chmod +x scripts/deploy-production.sh
+          DEPLOY_BRANCH=main ./scripts/deploy-production.sh
