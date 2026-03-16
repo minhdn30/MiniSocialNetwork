@@ -80,7 +80,7 @@ namespace CloudM.Application.Services.AuthServices
             account.Email = normalizedEmail;
             account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerRequest.Password);
             account.RoleId = (int)RoleEnum.User;
-            account.Status = AccountStatusEnum.EmailNotVerified;
+            account.Status = AccountStatusEnum.Active;
             account.Settings ??= new AccountSettings
             {
                 AccountId = account.AccountId
