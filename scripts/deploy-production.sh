@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
 ENV_FILE="${PROJECT_DIR}/.env.production"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 HEALTHCHECK_ATTEMPTS="${HEALTHCHECK_ATTEMPTS:-20}"
@@ -21,6 +21,7 @@ API_HEALTH_URL="${API_HEALTH_URL:-https://${API_DOMAIN}/swagger/index.html}"
 
 cd "${PROJECT_DIR}"
 
+git config --global --add safe.directory "${PROJECT_DIR}"
 git fetch origin "${DEPLOY_BRANCH}"
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"

@@ -35,4 +35,11 @@ jobs:
         run: |
           set -euo pipefail
           cd /opt/cloudm/backend
-          DEPLOY_BRANCH=main bash scripts/deploy-production.sh
+          git config --global --add safe.directory /opt/cloudm/backend
+          git restore --source=HEAD --staged --worktree -- scripts/deploy-production.sh
+          git fetch origin main
+          temp_script="$(mktemp)"
+          trap 'rm -f "${temp_script}"' EXIT
+          git show origin/main:scripts/deploy-production.sh | tr -d '\r' > "${temp_script}"
+          chmod +x "${temp_script}"
+          PROJECT_DIR=/opt/cloudm/backend DEPLOY_BRANCH=main bash "${temp_script}"
