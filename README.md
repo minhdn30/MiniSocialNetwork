@@ -1,181 +1,147 @@
 # CloudM Backend API
 
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![SignalR](https://img.shields.io/badge/Realtime-SignalR-F47C20)](https://learn.microsoft.com/aspnet/core/signalr/introduction)
+<div align="center">
+  <p>
+    <img src="docs/images/cloudm-logo.png" alt="CloudM logo" width="120" />
+  </p>
+  <p><strong>A backend project built to reflect real social product behavior, not just isolated CRUD features.</strong></p>
+  <p>
+    CloudM is a social networking project inspired by Facebook and Instagram, with familiar features such as profiles, posts, comments, stories, realtime chat, notifications, follow relationships, search, and moderation.
+  </p>
+  <p>
+    The project focuses on real product behavior rather than isolated demo features, especially around privacy, interaction flows, content delivery, and day-to-day social communication.
+  </p>
+  <p>
+    <a href="https://www.cloudm.fun">Live frontend</a>
+    ·
+    <a href="https://api.cloudm.fun/swagger/index.html">Swagger</a>
+    ·
+    <a href="https://github.com/minhdn30/CloudM.Client">Frontend repository</a>
+  </p>
 
-CloudM is a social platform backend built with ASP.NET Core, PostgreSQL, Redis, and SignalR. It supports the full backend surface of a modern social product: authentication, profile management, posts, comments, follow privacy, stories, notifications, presence, and realtime messaging.
+  <p>
+    <a href="https://dotnet.microsoft.com/">
+      <img src="https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 8" />
+    </a>
+    <a href="https://www.postgresql.org/">
+      <img src="https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+    </a>
+    <a href="https://redis.io/">
+      <img src="https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white" alt="Redis" />
+    </a>
+    <a href="https://learn.microsoft.com/aspnet/core/signalr/introduction">
+      <img src="https://img.shields.io/badge/Realtime-SignalR-F47C20" alt="SignalR" />
+    </a>
+    <a href="https://www.docker.com/">
+      <img src="https://img.shields.io/badge/Deploy-Docker%20Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose" />
+    </a>
+  </p>
+</div>
 
-This repository is meant to represent practical backend engineering for product-scale features, not just isolated endpoint work. The key strength of the codebase is the way business logic, realtime behavior, infrastructure integration, and security-sensitive configuration are organized into a maintainable system.
+## Screenshots
 
-## Table of Contents
+<p align="center"><sub>Some key product screens from CloudM.</sub></p>
 
-- [Overview](#overview)
-- [Product Scope](#product-scope)
-- [Architecture](#architecture)
-- [Request and Domain Flow](#request-and-domain-flow)
-- [Realtime and Background Work](#realtime-and-background-work)
-- [Security and Reliability](#security-and-reliability)
-- [Technology Stack](#technology-stack)
-- [Repository Structure](#repository-structure)
-- [Testing](#testing)
-- [Getting Started](#getting-started)
-- [Configuration](#configuration)
-- [Deployment](#deployment)
-- [Engineering Notes](#engineering-notes)
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/feed-overview.png" alt="CloudM feed overview" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/post-detail.png" alt="CloudM post detail" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/chat-realtime.png" alt="CloudM realtime chat" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/profile-overview.png" alt="CloudM profile overview" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/images/create-post.png" alt="CloudM create post flow" width="72%" />
+    </td>
+  </tr>
+</table>
 
-## Overview
+## About This Project
 
-The backend is split into dedicated layers so that API concerns, application orchestration, domain rules, persistence, and tests evolve independently:
+- This repository contains the backend for the live CloudM application, not just a collection of isolated APIs.
+- The codebase is organized around real product features such as follow privacy, posts, stories, chat, notifications, search, and moderation.
+- It also includes the parts that usually matter in actual work: realtime delivery, background processing, media integration, and deployment.
+- My goal with this project was to build something that feels close to a real product backend, not a demo made only to show CRUD endpoints.
 
-- `CloudM.API`
-  API host, controllers, middleware, SignalR hubs, Swagger, startup composition
-- `CloudM.Application`
-  DTOs, business services, mapping, validation helpers, application-level orchestration
-- `CloudM.Domain`
-  entities, enums, exceptions, and core domain types
-- `CloudM.Infrastructure`
-  EF Core, repositories, migrations, Redis integration, Cloudinary, email delivery, and external infrastructure
-- `CloudM.Tests`
-  service-level and repository-level tests for critical behavior
+## Product Logic Highlights
 
-The intent is simple: keep controllers thin, keep domain behavior explicit, and keep infrastructure details from leaking into core business logic.
+- Feed delivery is not just chronological. The backend includes score-based feed ranking with configurable ranking profiles, signed cursors, and tuned access indexes for feed queries.
+- Search is not a simple `LIKE` query. Sidebar search uses ranking, fuzzy similarity, and search history so the result order feels closer to an actual product.
+- Privacy rules are part of the core behavior: follow privacy, default post privacy, story visibility, and online status visibility all affect what users can see and do.
+- Moderation is treated as a real workflow, with user reports, admin actions, and audit logs instead of one-off delete endpoints.
+- Notifications and presence are handled with asynchronous and realtime paths rather than mixing everything into the request cycle.
 
-## Product Scope
+## Core Capabilities
 
-The repository currently covers the following product areas:
-
-| Area | Scope |
+| Domain | Highlights |
 | --- | --- |
-| Authentication | Register, login, logout, refresh token, Google login, email verification, forgot password, password reset |
-| Accounts | Profile details, account settings, status-aware flows, reactivation |
+| Authentication | Register, login, logout, refresh token, Google login, forgot password, password reset |
+| Accounts | Profile management, settings, account status handling, blocking |
 | Social Graph | Follow, unfollow, follow requests, privacy-aware relationship behavior |
-| Content | Posts, comments, reactions, saves, post tagging |
+| Content | Posts, comments, reactions, saves, post tagging, media-backed creation flows, score-based feed ranking |
 | Stories | Story creation, viewers, reactions, archive, highlights |
-| Messaging | Private chat, group chat, reactions, hidden messages, pinned messages, media flows |
-| Notifications | Notification generation, unread state, outbox processing |
-| Presence | Online presence snapshots and cleanup |
-| Realtime | Chat updates, post activity updates, user-driven SignalR flows |
+| Messaging | Private chat, group chat, reactions, pinned messages, media sharing |
+| Notifications and Presence | Notification outbox, unread state, online presence, realtime activity |
+| Search and Moderation | Ranked sidebar search, search history, report workflows, moderation actions, admin audit logs |
 
 ## Architecture
 
-This codebase follows a layered service-and-repository style with a clean separation between runtime delivery and business orchestration.
+| Layer | Responsibility |
+| --- | --- |
+| `CloudM.API` | Controllers, middleware, SignalR hubs, Swagger, authentication wiring, service registration |
+| `CloudM.Application` | Business services, DTOs, orchestration, validation, mapping, product rules |
+| `CloudM.Domain` | Entities, enums, exceptions, and core business models |
+| `CloudM.Infrastructure` | EF Core, repositories, migrations, Redis, Cloudinary, Resend email, hosted workers |
+| `CloudM.Tests` | Service and repository tests for important backend behavior |
 
-### API Layer
+### Realtime and Background Work
 
-The API project hosts:
+Realtime behavior is an important part of the project, so the backend includes:
 
-- controllers for the main product domains
-- global middleware for exception and account-status handling
-- SignalR hubs for realtime communication
-- JWT authentication and Swagger configuration
-- startup wiring for repositories, services, background jobs, and configuration
+- SignalR hubs: `ChatHub`, `PostHub`, `UserHub`
+- Hosted workers for notification outbox delivery, presence cleanup, email verification cleanup, follow auto-accept, and deferred Cloudinary deletion
+- Redis-backed online presence and rate limiting, with memory fallbacks where appropriate
 
-Primary controllers:
+## Production and Operations
 
-- `AccountsController`
-- `AuthsController`
-- `CommentsController`
-- `ConversationsController`
-- `FollowsController`
-- `MessagesController`
-- `NotificationsController`
-- `PostsController`
-- `PresenceController`
-- `StoriesController`
+- Live API: [https://api.cloudm.fun/swagger/index.html](https://api.cloudm.fun/swagger/index.html)
+- Docker Compose production stack with `api`, `postgres`, `redis`, `caddy`, and a migration tool container
+- GitHub Actions deployment workflow using a self-hosted runner
+- Daily PostgreSQL backup scripts for production safety
+- Environment-based configuration for JWT, database, Redis, media, email, and deployment domains
 
-Realtime hubs:
+## What I Wanted To Show In This Repository
 
-- `ChatHub`
-- `PostHub`
-- `UserHub`
+This repository reflects the kind of backend work I enjoy most:
 
-### Application Layer
-
-The application layer is where most of the product behavior lives. It contains services for:
-
-- authentication and external identity
-- account and account settings
-- follows and follow requests
-- posts, post reactions, saves, and tagging
-- comments and comment reactions
-- conversations, members, messages, media, and pinned messages
-- stories, story views, and story highlights
-- notifications and realtime dispatching
-- presence coordination
-
-This is the layer that makes the repository feel like a product backend rather than a controller-driven demo.
-
-### Infrastructure Layer
-
-Infrastructure contains:
-
-- EF Core `AppDbContext`
-- repositories and unit-of-work style coordination
-- PostgreSQL migrations
-- Redis integration
-- Cloudinary media services
-- email services
-- hosted workers for cleanup and asynchronous processing
-
-## Request and Domain Flow
-
-Most request flows follow this pattern:
-
-1. A controller receives and validates input.
-2. The controller delegates to an application service.
-3. The application service enforces business rules and coordinates repositories.
-4. Infrastructure persists state and resolves external integrations where needed.
-5. Realtime or notification side effects are dispatched when required.
-6. Middleware standardizes error handling before a response is returned.
-
-This approach keeps request handling predictable and makes business behavior easier to test in isolation.
-
-## Realtime and Background Work
-
-Realtime is not bolted on as an afterthought. It is part of the product design.
-
-- SignalR hubs are used for chat, post, and user-related event delivery.
-- JWT bearer tokens are supported for hub connections through query-string access token handling.
-- Realtime services are registered explicitly in startup and coordinated through application services.
-
-The backend also includes hosted services for operational work:
-
-- `EmailVerificationCleanupHostedService`
-- `OnlinePresenceCleanupHostedService`
-- `NotificationOutboxWorkerHostedService`
-- `CloudinaryDeleteWorkerHostedService`
-
-This combination of request/response APIs, SignalR, and background jobs is one of the stronger engineering signals in the repository.
-
-## Security and Reliability
-
-The repository includes several practical hardening choices:
-
-- JWT authentication with issuer, audience, and signing-key validation
-- refresh-token flows instead of access-token-only auth
-- Google external authentication support
-- email verification and password reset flows with OTP pepper support
-- Redis-backed rate-limiting services for login and email verification paths
-- fail-fast configuration for sensitive values such as DB connection, Redis, JWT key, and OTP pepper
-- global exception middleware so the API does not leak raw server errors to clients
-- environment-aware CORS behavior that supports controlled local development without public hard-coded fallback secrets
-
-A recent cleanup also removed public fallback secrets and local-only committed config values from the repository.
+- service-layer business logic instead of controller-heavy CRUD
+- product-scale social features with non-trivial rules and edge cases
+- realtime coordination with SignalR and asynchronous workers
+- practical infrastructure integration with PostgreSQL, Redis, Cloudinary, Resend, and Docker
+- production-minded backend ownership, not just local development
 
 ## Technology Stack
 
-- ASP.NET Core 8
-- Entity Framework Core 8
-- PostgreSQL
-- Redis / StackExchange.Redis
-- SignalR
-- Cloudinary
-- Swagger / OpenAPI
-- xUnit
-- Moq
-- FluentAssertions
+| Area | Technologies |
+| --- | --- |
+| API and Application | ASP.NET Core 8, JWT Bearer, Swagger / OpenAPI, AutoMapper, FluentValidation |
+| Data and Persistence | PostgreSQL, EF Core 8, Npgsql, repositories, migrations, targeted indexes |
+| Search and Performance | `pg_trgm`, `unaccent`, feed ranking profiles, ranked search, Redis caching, Redis rate limiting, memory fallbacks |
+| Realtime and Background Jobs | SignalR, hosted services, notification outbox worker, follow auto-accept, presence cleanup |
+| Media and Communication | Cloudinary, Resend, Google authentication |
+| Security | BCrypt password hashing, refresh tokens, global exception middleware, environment-based secrets |
+| Testing | xUnit, Moq, FluentAssertions, EF Core InMemory, coverlet |
+| Operations | Docker, Docker Compose, Caddy, GitHub Actions self-hosted runner |
 
 ## Repository Structure
 
@@ -186,43 +152,21 @@ CloudM/
 |-- CloudM.Domain/
 |-- CloudM.Infrastructure/
 |-- CloudM.Tests/
+|-- docs/
+|   `-- images/
 |-- CloudM.sln
 `-- Dockerfile
 ```
-
-## Testing
-
-The test project currently includes:
-
-- service tests for accounts, auth, comments, conversations, follows, posts, notifications, stories, and messaging
-- repository tests for selected persistence behavior
-- utility and parser tests where shared behavior matters
-
-Representative test files:
-
-- `AuthServiceTests.cs`
-- `ConversationServiceTests.cs`
-- `MessageServiceTests.cs`
-- `NotificationServiceTests.cs`
-- `StoryServiceTests.cs`
-- `StoryHighlightServiceTests.cs`
-- `PostServiceTests.cs`
-
-Run tests with:
-
-```bash
-dotnet test CloudM.Tests/CloudM.Tests.csproj
-```
-
-Note: the test project currently targets .NET 9, while the runtime API targets .NET 8.
 
 ## Getting Started
 
 ### Prerequisites
 
-- .NET SDK 9.x recommended
+- .NET SDK 9 for the full solution workflow
 - PostgreSQL
 - Redis
+
+Runtime projects target .NET 8, while the current test project targets .NET 9.
 
 ### Restore and Build
 
@@ -237,84 +181,42 @@ dotnet build CloudM.sln
 dotnet run --project CloudM.API/CloudM.API.csproj
 ```
 
-Swagger is available through the local launch profile defined in `CloudM.API/Properties/launchSettings.json`.
-
-### Apply Database Migrations
+### Apply Migrations
 
 ```bash
 dotnet ef database update --project CloudM.Infrastructure --startup-project CloudM.API
 ```
 
-## Configuration
+### Local Configuration
 
-Do not put real secrets in `appsettings.json`.
-
-For local development, use `CloudM.API/appsettings.Local.json`. A typical local setup looks like this:
-
-```json
-{
-  "ConnectionStrings": {
-    "Default": "Host=localhost;Port=5432;Database=cloudm;Username=postgres;Password=your_password",
-    "Redis": "localhost:6379,abortConnect=false"
-  },
-  "Jwt": {
-    "Key": "replace-with-a-long-random-local-secret",
-    "Issuer": "CloudM",
-    "Audience": "CloudMClient"
-  },
-  "EmailVerification": {
-    "OtpPepper": "replace-with-a-local-otp-pepper"
-  },
-  "ExternalAuth": {
-    "Google": {
-      "AllowedClientIds": [
-        "your-google-client-id"
-      ]
-    }
-  },
-  "Cloudinary": {
-    "CloudName": "",
-    "ApiKey": "",
-    "ApiSecret": ""
-  },
-  "Cors": {
-    "AllowedOrigins": [
-      "http://localhost:5500",
-      "http://127.0.0.1:5500"
-    ]
-  }
-}
-```
-
-Sensitive configuration can also be supplied through environment variables:
+Use `CloudM.API/appsettings.Local.json` or environment variables for local secrets. Important values include:
 
 - `ConnectionStrings__Default`
 - `ConnectionStrings__Redis`
-- `Redis__ConnectionString`
 - `Jwt__Key`
 - `EmailVerification__OtpPepper`
-- `DATABASE_URL`
-- `PORT`
+- `ExternalAuth__Google__AllowedClientIds`
+- `Cloudinary__CloudName`
+- `Cloudinary__ApiKey`
+- `Cloudinary__ApiSecret`
+- `Email__ResendApiKey`
 
-## Deployment
+Do not commit real secrets.
 
-The repository includes a root `Dockerfile` for containerized build and runtime packaging.
+## Testing
+
+Current tests cover services and repositories around:
+
+- auth
+- accounts
+- follows
+- posts and comments
+- stories and highlights
+- notifications
+- conversations and messages
+
+Run tests with:
 
 ```bash
-docker build -t cloudm-api .
-docker run -p 10000:10000 cloudm-api
+dotnet test CloudM.Tests/CloudM.Tests.csproj
 ```
-
-For deployed environments, configuration should come from secure environment-specific sources rather than checked-in files.
-
-## Engineering Notes
-
-This repository is intentionally product-oriented:
-
-- business logic lives in services instead of controllers
-- infrastructure is explicit rather than hidden behind magical abstractions
-- realtime behavior is treated as a first-class architectural concern
-- configuration is hardened to avoid unsafe public defaults
-- the codebase is organized for ongoing feature growth rather than a one-off assignment
-
-If you are reviewing this repository as part of my work, the strongest signal is the breadth of coherent backend engineering across authentication, social features, realtime communication, notifications, presence, media workflows, and operational reliability.
