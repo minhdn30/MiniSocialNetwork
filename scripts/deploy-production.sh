@@ -26,10 +26,14 @@ git fetch origin "${DEPLOY_BRANCH}"
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "${CURRENT_BRANCH}" != "${DEPLOY_BRANCH}" ]]; then
-  git checkout "${DEPLOY_BRANCH}"
+  if git show-ref --verify --quiet "refs/heads/${DEPLOY_BRANCH}"; then
+    git checkout "${DEPLOY_BRANCH}"
+  else
+    git checkout -B "${DEPLOY_BRANCH}" "origin/${DEPLOY_BRANCH}"
+  fi
 fi
 
-git pull --ff-only origin "${DEPLOY_BRANCH}"
+git reset --hard "origin/${DEPLOY_BRANCH}"
 
 docker compose --env-file .env.production -f docker-compose.prod.yml --profile tools run --rm migrator
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
